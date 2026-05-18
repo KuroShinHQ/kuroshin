@@ -1,0 +1,8 @@
+{
+  "daily_limit_gb": 5.0,
+  "used_today_gb": 0.0,
+  "last_reset": "2026-05-11",
+  "max_single_file_gb": 2.0,
+  "paused": false,
+  "pending_approvals": []
+}

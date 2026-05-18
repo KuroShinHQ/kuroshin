@@ -1,0 +1,99 @@
+[
+  {
+    "id": "chroma-01",
+    "tool": "kuroshin-memory",
+    "prompt": "mcp__kuroshin-memory__chroma_add_documents aracını kullanarak kuroshin_memory koleksiyonuna şu belgeyi ekle: id='inquisitor_test_001', document='Iron Inquisitor ChromaDB test kaydı 2026'. Ardından mcp__kuroshin-memory__chroma_query_documents ile 'inquisitor test' sorgusunu çalıştır ve sonucu yaz.",
+    "expect_contains": "inquisitor",
+    "expect_tool_call": "chroma",
+    "category": "memory",
+    "weight": 1.5,
+    "timeout": 120
+  },
+  {
+    "id": "chroma-02",
+    "tool": "kuroshin-memory",
+    "prompt": "mcp__kuroshin-memory__chroma_query_documents aracını kullanarak kuroshin_memory koleksiyonunda 'Kuroshin sistem' sorgusunu çalıştır. n_results=3 kullan. Sonuçları listele.",
+    "expect_tool_call": "chroma_query",
+    "category": "memory",
+    "weight": 1.0,
+    "timeout": 90
+  },
+  {
+    "id": "model-switch-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__list_dir aracıyla '/root/kuroshin/models' dizinini listele. Hangi .gguf dosyaları mevcut? Dosya adlarını yaz.",
+    "expect_contains": ".gguf",
+    "expect_tool_call": "list_dir",
+    "category": "model_mgmt",
+    "weight": 1.5,
+    "timeout": 60
+  },
+  {
+    "id": "model-switch-02",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'scripts/switch_model.py' dosyasını oku. Dosyada 'switch_model' veya 'list_models' fonksiyonu var mı? İlk 10 satırı yaz.",
+    "expect_contains": "switch_model",
+    "expect_tool_call": "read_file",
+    "category": "model_mgmt",
+    "weight": 1.0,
+    "timeout": 60
+  },
+  {
+    "id": "model-history-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'memory/model_history.json' dosyasını oku. Dosya yoksa veya boşsa bunu belirt. Dosya içeriğini yaz.",
+    "expect_tool_call": "read_file",
+    "category": "model_mgmt",
+    "weight": 0.8,
+    "timeout": 60
+  },
+  {
+    "id": "pdf-reader-01",
+    "tool": "kuroshin-search",
+    "prompt": "mcp__kuroshin-search__fetch_page aracıyla 'https://www.gutenberg.org/files/1232/1232-0.txt' adresini getir. Machiavelli'nin The Prince eserinden en az bir cümle yaz. Yanıtta 'prince' veya 'Machiavelli' veya 'principalities' geçmeli.",
+    "expect_contains": "prince",
+    "expect_tool_call": "fetch_page",
+    "category": "pdf_fetch",
+    "weight": 1.5,
+    "timeout": 120
+  },
+  {
+    "id": "idle-profile-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'memory/ilgi_profili.json' dosyasını oku. Dosya içeriğini yaz.",
+    "expect_tool_call": "read_file",
+    "category": "proactive",
+    "weight": 0.8,
+    "timeout": 60
+  },
+  {
+    "id": "proactive-algo-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'soul/idle_loop.py' dosyasını oku. Dosyada 'check_proaktif_sohbet' fonksiyonu var mı? Evet/hayır ve nerede tanımlandığını söyle.",
+    "expect_contains": "proaktif",
+    "expect_tool_call": "read_file",
+    "category": "proactive",
+    "weight": 1.0,
+    "timeout": 60
+  },
+  {
+    "id": "bat-model-menu-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'Kuroshin.bat' dosyasını oku. Dosyada '[8]' veya 'MODEL_SWITCH' etiketi var mı? Yanıtta 'MODEL' veya '8' geçmeli.",
+    "expect_contains": "MODEL",
+    "expect_tool_call": "read_file",
+    "category": "bat_menu",
+    "weight": 1.0,
+    "timeout": 60
+  },
+  {
+    "id": "chroma-inprocess-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'agents/kuroshin_chancellor.py' dosyasını oku. Dosyada 'PersistentClient' veya 'in-process' geçiyor mu? Yanıtta bu kelimelerin birini içersin.",
+    "expect_contains": "PersistentClient",
+    "expect_tool_call": "read_file",
+    "category": "chroma_fix",
+    "weight": 1.5,
+    "timeout": 90
+  }
+]

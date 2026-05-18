@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://arxiv.org/abs/2501.12345",
+    "action": "approved",
+    "ts": "2026-04-27T10:00:00"
+  },
+  {
+    "url": "https://arxiv.org/abs/2501.67890",
+    "action": "approved",
+    "ts": "2026-04-27T10:01:00"
+  },
+  {
+    "url": "https://qiita.com/user/items/abc",
+    "action": "rejected",
+    "ts": "2026-04-27T10:02:00"
+  },
+  {
+    "url": "https://exploit-db.com/exploits/123",
+    "action": "approved",
+    "ts": "2026-04-27T10:03:00"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "topics": [
+    "LLM tool use best practices and failure modes",
+    "LoRA fine-tuning techniques for small models",
+    "Agent memory systems: ChromaDB vs alternatives",
+    "Autonomous AI evaluation frameworks 2026",
+    "Gemma model capabilities and limitations",
+    "MCP protocol tool calling optimization",
+    "Reinforcement learning from human feedback methods",
+    "Dataset quality filtering for LLM training",
+    "Multi-agent coordination patterns",
+    "Local LLM inference optimization techniques"
+  ],
+  "current_index": 1
+}

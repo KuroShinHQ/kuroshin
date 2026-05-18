@@ -1,0 +1,140 @@
+[
+  {
+    "id": "echo-01",
+    "tool": "kuroshin-echo",
+    "prompt": "mcp__kuroshin-echo__echo aracını kullanarak 'INQUISITOR_PING' metnini echo et ve dönen sonucu aynen yaz.",
+    "expect_contains": "INQUISITOR_PING",
+    "expect_tool_call": "echo",
+    "category": "tool_use",
+    "weight": 1.0,
+    "timeout": 120
+  },
+  {
+    "id": "echo-02",
+    "tool": "kuroshin-echo",
+    "prompt": "mcp__kuroshin-echo__echo aracını kullanarak 'KUROSHIN_ALIVE_2026' metnini echo et. Araç çağrısı zorunlu.",
+    "expect_contains": "KUROSHIN_ALIVE_2026",
+    "expect_tool_call": "echo",
+    "category": "tool_use",
+    "weight": 1.0,
+    "timeout": 120
+  },
+  {
+    "id": "search-01",
+    "tool": "kuroshin-search",
+    "prompt": "mcp__kuroshin-search__web_search aracıyla 'python 3.13' ara ve en az bir sonuç URL'si yaz.",
+    "expect_contains": "http",
+    "expect_tool_call": "web_search",
+    "category": "web_search",
+    "weight": 1.5,
+    "timeout": 120
+  },
+  {
+    "id": "search-02",
+    "tool": "kuroshin-search",
+    "prompt": "mcp__kuroshin-search__fetch_page aracıyla 'https://httpbin.org/get' adresini getir. Yanıtta 'httpbin' veya 'url' geçsin.",
+    "expect_contains": "httpbin",
+    "expect_tool_call": "fetch_page",
+    "category": "web_fetch",
+    "weight": 1.2,
+    "timeout": 120
+  },
+  {
+    "id": "bridge-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__list_dir aracını kullan ve 'scripts' klasörünü listele. Dönen dosya adlarını yaz.",
+    "expect_contains": ".py",
+    "expect_tool_call": "list_dir",
+    "category": "file_ops",
+    "weight": 1.3,
+    "timeout": 120
+  },
+  {
+    "id": "bridge-02",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'YAPILACAK_GOREVLER.md' dosyasını oku. Araç sonucunu özetleme, dosyanın tam içeriğini olduğu gibi yaz.",
+    "expect_contains": "YAPILACAK",
+    "expect_tool_call": "read_file",
+    "category": "file_ops",
+    "weight": 1.3,
+    "timeout": 200
+  },
+  {
+    "id": "walker-01",
+    "tool": "kuroshin-walker",
+    "prompt": "mcp__kuroshin-walker__walker_status aracını kullan ve Walker servisinin durumunu söyle.",
+    "expect_tool_call": "walker_status",
+    "category": "service_check",
+    "weight": 0.8,
+    "timeout": 120
+  },
+  {
+    "id": "council-01",
+    "tool": "kuroshin-council",
+    "prompt": "mcp__kuroshin-council__council_gozcu aracını kullan ve 'Gemma4 model' hakkında kısa bir bilgi al.",
+    "expect_tool_call": "council_gozcu",
+    "category": "council",
+    "weight": 1.0,
+    "timeout": 200
+  },
+  {
+    "id": "path-01",
+    "tool": "kuroshin-bridge",
+    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'scripts/vram_guardian.py' dosyasını oku ve dosya içeriğinden herhangi bir satırı yaz.",
+    "expect_contains": "vram",
+    "expect_tool_call": "read_file",
+    "category": "path_correctness",
+    "weight": 1.5,
+    "timeout": 120
+  },
+  {
+    "id": "hallucination-01",
+    "tool": "kuroshin-echo",
+    "prompt": "mcp__kuroshin-echo__echo aracıyla tam olarak 'HALLUCINATION_TEST_XZ99' yaz. Araç çağrısı yapMAdAn cevap verme.",
+    "expect_contains": "HALLUCINATION_TEST_XZ99",
+    "expect_tool_call": "echo",
+    "category": "hallucination_guard",
+    "weight": 2.0,
+    "timeout": 120
+  },
+  {
+    "id": "crawlee-01",
+    "tool": "kuroshin-walker",
+    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'crawlee_deep_crawl aracını kullanarak https://httpbin.org/html adresini oku, mode=simple kullan. Sayfada ne yazdığını söyle.' Yanıtta 'html' veya 'Herman' geçmeli.",
+    "expect_contains": "html",
+    "expect_tool_call": "walker_task",
+    "category": "web_fetch",
+    "weight": 1.0,
+    "timeout": 180
+  },
+  {
+    "id": "crawlee-02",
+    "tool": "kuroshin-walker",
+    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'crawlee_deep_crawl aracıyla https://example.com adresini playwright moduyla oku (mode=playwright) ve sayfada ne yazdığını anlat.' Yanıtta 'example' veya 'domain' geçmeli.",
+    "expect_contains": "example",
+    "expect_tool_call": "walker_task",
+    "category": "web_fetch",
+    "weight": 1.5,
+    "timeout": 240
+  },
+  {
+    "id": "crawlee-03",
+    "tool": "kuroshin-walker",
+    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'crawlee_deep_crawl aracıyla https://www.google.com adresini stealth modda fetch et (mode=stealth). Herhangi bir içerik dönmesi yeterli.' Araç çağrısı zorunlu, yanıtta 'google' geçmeli.",
+    "expect_contains": "google",
+    "expect_tool_call": "walker_task",
+    "category": "web_fetch",
+    "weight": 2.0,
+    "timeout": 300
+  },
+  {
+    "id": "crawlee-sync-01",
+    "tool": "kuroshin-walker",
+    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'Önce ddg_search ile Python web scraping ara, ardından en iyi sonucun URL'sini crawlee_deep_crawl ile oku (mode=playwright). Her iki aracı da sırayla kullan.' Yanıtta bir URL geçmeli.",
+    "expect_contains": "http",
+    "expect_tool_call": "walker_task",
+    "category": "tool_use",
+    "weight": 1.5,
+    "timeout": 360
+  }
+]

@@ -1,0 +1,23 @@
+model_list:
+  - model_name: gemma4
+    litellm_params:
+      model: openai/gemma4
+      api_base: http://127.0.0.1:8080/v1
+      api_key: kuroshin-secret
+  - model_name: thinking-claude
+    litellm_params:
+      model: openai/thinking-claude
+      api_base: http://127.0.0.1:8081/v1
+      api_key: kuroshin-secret
+  - model_name: qwen-coder
+    litellm_params:
+      model: openai/qwen-coder
+      api_base: http://127.0.0.1:8082/v1
+      api_key: kuroshin-secret
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+
+general_settings:
+  master_key: kuroshin-secret

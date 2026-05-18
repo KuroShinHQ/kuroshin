@@ -1,0 +1,100 @@
+# Model dosyaları (GB'larca)
+*.gguf
+*.bin
+*.safetensors
+*.pt
+*.pth
+models/
+finetune/
+
+# Log dosyaları
+logs/
+*.log
+
+# Python ortamı
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Node.js
+node_modules/
+
+# Geçici ve yedek dosyalar
+*.tmp
+*.bak
+backup/
+backups/
+backup_bats/
+archives/
+outputs/
+
+# Hassas veriler (token, key)
+*.env
+.env*
+config/secrets*
+memory/thresholds.json
+
+# Büyük veri dizinleri
+data/
+kuroshin-downloads/
+openclaude-main_BACKUP/
+openclaude-main_BACKUP_PROTOKOL_3/
+Kuroshin_CORE_v4.2.9_MASTER/
+
+# ChromaDB vektör veritabanı
+memory/chroma/
+memory/walker_chroma/
+memory/chromadb/
+
+# Çalışma zamanı hafıza dosyaları (kişisel veri)
+memory/active_model.json
+memory/energy_budget.json
+memory/hype_last_scan.json
+memory/hype_reports/
+memory/ilgi_profili.json
+memory/last_dream.json
+memory/model_history.json
+memory/schema_onerileri.json
+memory/scout_last_scan.json
+memory/scout_reports/
+memory/arsiv/
+
+# Soul çalışma zamanı
+soul/mood_state.json
+
+# Raporlar (büyük + runtime)
+reports/
+
+# OS dosyaları
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PID dosyaları
+*.pid
+
+# OpenClaw workspace (ayrı git repo, garip isimli klasör)
+CUserspc.openclawworkspace/
+C:\Users\pc\.openclaw\workspace/
+.claw/
+openclaude-main/
+openclaude-main_BACKUP/
+openclaude-main_BACKUP_PROTOKOL_3/
+
+# Obsidian
+.obsidian/
+
+# Claude settings
+.claude/
+
+# Büyük binary/asset klasörleri
+kuroshin avatar vrm/
+tools/storage/
+Desktop/
+
+# Aider geçici dosyaları
+.aider*
