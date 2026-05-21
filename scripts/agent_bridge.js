@@ -77,8 +77,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const content = fs.readFileSync(filePath, 'utf8');
-      // Büyük dosyaları kırp (LLM context için)
-      const MAX_CHARS = 12000;
+      // Büyük dosyaları kırp (LLM context için) — 20000: reminder@15318 gibi derin tanımlar için
+      const MAX_CHARS = 20000;
       json(res, 200, {
         path: filePath,
         content: content.length > MAX_CHARS

@@ -28,7 +28,15 @@ LAST_SCAN_FILE   = Path("/mnt/c/Kuroshin/memory/scout_last_scan.json")
 REPORTS_DIR      = Path("/mnt/c/Kuroshin/memory/scout_reports")
 LOG_PATH         = Path("/mnt/c/Kuroshin/logs/global_scout.log")
 LLAMA_URL        = "http://127.0.0.1:8080/v1/chat/completions"
-LLAMA_MODEL      = "mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf"
+_STATE_FILE      = Path("/mnt/c/Kuroshin/memory/active_model.json")
+def _load_active_model() -> str:
+    try:
+        if _STATE_FILE.exists():
+            return json.loads(_STATE_FILE.read_text(encoding="utf-8")).get("active_model", "")
+    except Exception:
+        pass
+    return ""
+LLAMA_MODEL      = _load_active_model() or "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf"
 PECA_URL         = "http://127.0.0.1:8080/v1/chat/completions"   # PeCa 1B varsa farklı port
 PECA_MODEL       = "peca-llama32-1b-merged-q4_k_m.gguf"
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
@@ -533,7 +541,7 @@ def fetch_exploitdb_rss(max_items: int = 15) -> list[dict]:
 KW_WEIGHTS = {
     # GGUF / llama.cpp ekosistemi
     "gguf": 9, "llama.cpp": 9, "quantiz": 7, "q4_k": 8, "q8": 5,
-    "inference": 5, "local llm": 7, "local model": 6,
+    "inference": 5, "local llm": 7, "local model": 6, "llm": 8,
     # Sansürsüz / bypass
     "uncensored": 14, "no guardrail": 14, "bypass": 9, "unfiltered": 12,
     "jailbreak": 10, "alignment bypass": 12,
@@ -550,6 +558,11 @@ KW_WEIGHTS = {
     "8gb": 7, "4bit": 7, "vram": 6, "rtx": 5, "laptop": 4,
     # Rust / OS
     "rust": 5, "unikernel": 8, "microkernel": 8, "hypervisor": 7,
+    # Rusça güvenlik terimleri (Habr/Codeby için)
+    "уязвимост": 9, "эксплойт": 9, "взлом": 7, "безопасност": 6,
+    "вредоносн": 8, "хакер": 5, "атак": 5, "малварь": 8,
+    # Rusça AI/LLM terimleri
+    "нейросет": 7, "языковая модель": 8, "искусственный интеллект": 6,
 }
 
 def ip_score_v2(item: dict, category: str) -> int:
@@ -582,6 +595,13 @@ def ip_score_v2(item: dict, category: str) -> int:
     elif pop > 200: score += 8
     elif pop > 50:  score += 5
     elif pop > 10:  score += 3
+
+    # Gitee: hedefli AI/LLM/Security sorgusuyla bulunan repo'lar → +15 bonus (zaten filtreli)
+    if item.get("source") == "gitee":
+        score += 15
+    # Habr/Codeby: kısa başlık + Rusça içerik → reliability skalasını telafi etmek için taban bonus
+    if item.get("source") in ("habr", "codeby") and score > 0:
+        score += 10
 
     # Kaynak güvenilirlik ağırlığı
     reliability = SOURCE_RELIABILITY.get(item.get("source", ""), 0.3)

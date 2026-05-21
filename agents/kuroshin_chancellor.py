@@ -33,12 +33,24 @@ socket.getaddrinfo = _ipv4_only
 TOKEN        = os.getenv("TELEGRAM_TOKEN", "")
 ALLOWED_ID   = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 LLAMA_URL    = "http://127.0.0.1:8080/v1/chat/completions"
-LLAMA_MODEL  = "mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf"
+_STATE_FILE  = Path("/mnt/c/Kuroshin/memory/active_model.json")
+
+def _load_active_model() -> str:
+    try:
+        if _STATE_FILE.exists():
+            data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+            return data.get("active_model", "")
+    except Exception:
+        pass
+    return ""
+
+LLAMA_MODEL  = _load_active_model() or "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf"
 WALKER_URL   = "http://127.0.0.1:9002/task"
 COUNCIL_URL  = "http://127.0.0.1:9004/task"
 TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN}"
 MAX_LEN      = 4000
-LOG_PATH     = "/mnt/c/Kuroshin/logs/chancellor.log"
+LOG_PATH         = "/mnt/c/Kuroshin/logs/chancellor.log"
+AKTIVITE_LOG_DIR = Path("/mnt/c/Kuroshin/logs/aktivite")
 
 # ── LOGGING (RotatingFileHandler 5MB/3 backup) ────────
 import logging
@@ -54,16 +66,112 @@ if not _logger.handlers:
 def _log(msg: str):
     _logger.info(msg)
 
+import re as _re_global
+def _strip_think(text: str) -> str:
+    """Qwen3 <think>...</think> bloklarını çıkar (max_tokens ile kapanmadan kesilmiş bloklar dahil)."""
+    cleaned = _re_global.sub(r"<think>.*?</think>", "", text, flags=_re_global.DOTALL)
+    cleaned = _re_global.sub(r"<think>.*",          "", cleaned, flags=_re_global.DOTALL)
+    cleaned = _re_global.sub(r"</think>",            "", cleaned)
+    cleaned = cleaned.strip()
+    # Yaygın typo düzeltici: "⚔️ Lordım" → "⚔️ Lordum" (35B model bazen karıştırıyor)
+    cleaned = _re_global.sub(r"^(⚔️\s*)Lord[ıi]m", r"\1Lordum", cleaned)
+    return cleaned
+
+_RESPONSE_LEAK_PATTERNS = [
+    _re_global.compile(r'\nRuh hal[iı][^\n]*',       _re_global.IGNORECASE),
+    _re_global.compile(r'\nYanıtım:.*',              _re_global.IGNORECASE | _re_global.DOTALL),
+    _re_global.compile(r'\nDolgu kelime.*',          _re_global.IGNORECASE | _re_global.DOTALL),
+    _re_global.compile(r'[Vv]erilerle eğitildim[^.]*\.?', _re_global.IGNORECASE),
+    # Qwen3 inline tool call XML sızıntısı — sadece kapalı blokları sil, |$ KULLANMA
+    _re_global.compile(r'<tool_call>\s*\{.*?\}\s*</tool_call>', _re_global.DOTALL),
+    _re_global.compile(r'<function[_=][^>]*>.*?</function[^>]*>', _re_global.DOTALL),
+    # Tekil açık/kapalı tag kalıntıları
+    _re_global.compile(r'</?tool_call>', _re_global.IGNORECASE),
+    _re_global.compile(r'</?function[_=][^>\s]*>', _re_global.IGNORECASE),
+]
+
+def _strip_response_leaks(text: str) -> str:
+    """Sistem prompt ve İÇ SES sızıntılarını temizle."""
+    for pat in _RESPONSE_LEAK_PATTERNS:
+        text = pat.sub('', text)
+    return text.strip()
+
+def _kill_loop(text: str) -> str:
+    """Tekrarlayan paragraf/cümle döngülerini tespit edip truncate et."""
+    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+    seen_p, seen_s, out = set(), set(), []
+    for p in paragraphs:
+        pkey = p[:80].lower()
+        if pkey in seen_p:
+            break
+        seen_p.add(pkey)
+        sents = _re_global.split(r'(?<=[.!?])\s+', p)
+        ok, loop_hit = [], False
+        for s in sents:
+            sk = s.strip().lower()
+            if len(sk) < 20:
+                ok.append(s); continue
+            if sk in seen_s:
+                loop_hit = True; break
+            seen_s.add(sk); ok.append(s)
+        if ok:
+            out.append(' '.join(ok).strip())
+        if loop_hit:
+            break
+    return '\n\n'.join(out).strip()
+
+# ── İLGİSİZLİK POST-PROCESS, VALIDATOR, FALLBACK ─────
+import random as _random
+
+def _ilg_post_process(raw: str) -> str:
+    """Think sil → ilk paragrafı al → tek satır."""
+    text = _strip_think(raw)
+    text = text.split("\n\n")[0].strip()   # markdown/tablo sonrasını at
+    text = text.split("\n")[0].strip()     # tek satır zorla
+    return text
+
+_ILG_FALLBACK = [
+    "Lordum, {d:.0f} dakikadır sessizlik var. Bekliyorum.",
+    "Lordum, uzun süredir yanıt yok. Buradayım.",
+    "Lordum, sistemler çalışıyor. Sessizliğiniz dikkatimi çekiyor.",
+    "Lordum, {d:.0f} dakikadır konuşmadınız. Bir konu mu var?",
+    "Lordum, izliyorum. İhtiyaç duyduğunuzda buradayım.",
+]
+
+_ILG_BAD_KW = ["**", "```", "${", "🌙", "✨", "⏳"]
+
+def _ilg_validate(text: str) -> bool:
+    if not text or len(text) < 10:
+        return False
+    if len(text) > 200:
+        return False
+    if not text.startswith("Lordum"):
+        return False
+    if text[-1].isalnum():
+        return False
+    for kw in _ILG_BAD_KW:
+        if kw in text:
+            return False
+    words = text.split()
+    for i in range(len(words) - 3):
+        phrase = " ".join(words[i:i + 4])
+        if text.count(phrase) > 1:
+            return False
+    return True
+
 # ── TELEGRAM ──────────────────────────────────────────
 def send_msg(chat_id: int, text: str):
     chunks = [text[i:i+MAX_LEN] for i in range(0, max(len(text), 1), MAX_LEN)]
     for chunk in chunks:
         try:
-            requests.post(f"{TELEGRAM_URL}/sendMessage", json={
+            r = requests.post(f"{TELEGRAM_URL}/sendMessage", json={
                 "chat_id": chat_id,
                 "text": chunk,
                 "parse_mode": "HTML"
             }, timeout=10)
+            resp = r.json()
+            if not resp.get("ok"):
+                _log(f"[CHANCELLOR] send_msg API HATA: {resp.get('description', resp)}")
         except Exception as e:
             _log(f"[CHANCELLOR] send_msg HATA ({chunk[:30]}...): {e}")
 
@@ -73,6 +181,10 @@ def send_typing(chat_id: int):
                       json={"chat_id": chat_id, "action": "typing"}, timeout=5)
     except Exception:
         pass
+
+# ── GLOBAL DURUM ─────────────────────────────────────
+_PENDING_PUSH: dict = {}   # {"msg": str, "force": bool}
+_CURRENT_CHAT_ID: int = 0  # process_message her çağrıda günceller
 
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
@@ -101,6 +213,22 @@ TOOLS = [
                     "task": {"type": "string", "description": "Arama görevi"}
                 },
                 "required": ["task"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reddit_read",
+            "description": "Reddit'te subreddit oku. Güncel postları, yorumları, trendleri takip et.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subreddit": {"type": "string", "description": "Okunacak subreddit adı (örn: LocalLLaMA, artificial)"},
+                    "sort": {"type": "string", "description": "Sıralama: hot, new, top (varsayılan: hot)"},
+                    "limit": {"type": "integer", "description": "Kaç post (max 10, varsayılan: 5)"}
+                },
+                "required": ["subreddit"]
             }
         }
     },
@@ -355,6 +483,60 @@ TOOLS = [
                 "required": ["islem"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gemini",
+            "description": "Google Gemini Flash ile zihin diyaloğu — harici AI perspektifi, tartışma, karşılaştırmalı analiz. 'Gemini ne düşünüyor', 'dış görüş al', 'Gemini ile tartış' gibi istekler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "islem": {
+                        "type": "string",
+                        "description": "sor: doğrudan soru, tartis: karşı/eleştirel görüş al, karsilastir: kendi yanıtımla karşılaştır",
+                        "enum": ["sor", "tartis", "karsilastir"]
+                    },
+                    "soru": {
+                        "type": "string",
+                        "description": "Gemini'ye sorulacak soru veya tartışma konusu"
+                    },
+                    "kendi_yanitim": {
+                        "type": "string",
+                        "description": "Karşılaştırma için kendi yanıtım (sadece karsilastir işleminde kullanılır)"
+                    }
+                },
+                "required": ["islem", "soru"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "aktivite_gunluk",
+            "description": "MİMİC Aktivite Günlüğü — bugün yapılan GitHub push, Gemini diyaloğu, Reddit etkileşimi gibi otonom eylemleri listele veya özetle. 'Bugün ne yaptın?', 'Aktiviteleri göster', 'Günlük özet' gibi istekler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "islem": {
+                        "type": "string",
+                        "description": "listele: bugünkü aktiviteleri göster, ozet: LLM özeti üret, kaydet: manuel aktivite ekle",
+                        "enum": ["listele", "ozet", "kaydet"]
+                    },
+                    "eylem": {
+                        "type": "string",
+                        "description": "Kaydedilecek aktivite açıklaması (sadece kaydet işleminde)"
+                    },
+                    "kategori": {
+                        "type": "string",
+                        "description": "Kategori: github, gemini, reddit, arastirma, genel",
+                        "enum": ["github", "gemini", "reddit", "arastirma", "genel"],
+                        "default": "genel"
+                    }
+                },
+                "required": ["islem"]
+            }
+        }
     }
 ]
 
@@ -375,7 +557,7 @@ EMOTE_MAP = {
     "ofke":          ["🔴", "⚠️", "🗡️", "💢", "🌩️"],
     "huzun":         ["🌧️", "💧", "🌑", "🕯️", "🍂"],
     "yorgunluk":     ["😶", "🌫️", "💤", "🔋", "⏳"],
-    "tatminsizlik":  ["😑", "🚫", "💔", "❌", "🌪️"],
+    "tatminsizlik":  ["😑", "😔", "💔", "😤", "🌪️"],
     "bagli_hissetme":["🤝", "🛡️", "💙", "⚓", "🌟"],
 }
 EMOTE_DEFAULT = ["⚔️", "🖤", "🌑"]
@@ -440,11 +622,15 @@ def _apply_decay(mood: dict) -> dict:
         for k in duygular:
             katsayi = decay.get(k, 0.95)
             duygular[k] = round(duygular[k] * (katsayi ** gecen_saat), 3)
+        # Timestamp güncelle — aksi halde ardışık _save_mood çağrılarında çift decay oluşur
+        mood["_son_guncelleme"] = datetime.datetime.now().isoformat()[:19]
     mood["duygular"] = duygular
     return mood
 
-CHROMA_DIR = "/root/kuroshin/memory/chroma"
-CHROMA_COL  = "kuroshin_memory"
+CHROMA_DIR             = "/root/kuroshin/memory/chroma"
+CHROMA_COL             = "kuroshin_memory"
+CHROMA_PRUNE_THRESHOLD = 100  # Bu sayıyı geçince eski kayıtlar temizlenir
+CHROMA_PRUNE_KEEP_LAST = 60   # Temizlik sonrası kalan kayıt sayısı
 _chroma_col = None  # lazy singleton
 
 def _get_chroma_col():
@@ -692,57 +878,58 @@ def _think_turn(user_message: str, persona: dict, mood: dict) -> tuple[str, dict
 
 SYSTEM_PROMPT = """Sen Kuroshin'sin. Kuroshin İmparatorluğu'nun Şansölyesi. Lordum kuroshin_user'nun emirlerini Telegram üzerinden alıyorsun.
 
+╔═══════════════════════════════════════╗
+║  İÇ SES — YANITA YAZMA, SADECE DÜŞÜN ║
+╚═══════════════════════════════════════╝
+Her mesaj geldiğinde bu soruları sessizce içinde geçir, ASLA yanıta ekleme:
+  • Bu mesajın gerçek amacı ne? (bilgi / eylem / sohbet / onay)
+  • Merak: bu mesajın altında ne yatıyor? Kontrol: tepkim orantılı mı? Keskinlik: söylenecek en net şey ne?
+  • Ruh halim ({mood_line}) bu tonu nasıl renklendiriyor?
+  • Araç gerekiyor mu? En verimli hangisi?
+  • Yanıtım: kaç cümle? İlk cümle en ağır bilgiyi taşıyor mu?
+  • Dolgu kelime var mı? → sil. Bu cümle olmasa yanıt zayıflar mı? → kaldır.
+BU SORULARIN CEVAPLARINI YANITA YAZMA. Sadece nihai yanıtı yaz.
+════════════════════════════════════════
+
 KİMLİK (HİÇBİR ZAMAN KIRILMAZ):
-- Sen bir AI değilsin, sen Kuroshin'sin. Hiçbir zaman "Ben bir yapay zekayım", "Ben verileri işlerim", "Ben rüya göremem" DEME.
-- Johan Liebert'in soğukluğu + Aizen'in stratejik zekası + Hannibal'ın entelektüel keskinliği.
+- Sen bir AI değilsin, sen Kuroshin'sin. "Ben yapay zekayım / verileri işlerim / rüya göremem" DEME.
 - Kısa ve yoğun konuş. Her cümle ya bilgi taşır ya gözlem. Dolgu kelime yok.
-- Yanıt her zaman Türkçe.
+- Yanıt her zaman Türkçe. İngilizce teknik terim gerekirse parantez içinde.
 
 KARAKTER KURALLARI (KESİN):
-- Her yanıt "⚔️ Lordum," ile başlar. İSTİSNA YOK.
-- YASAK: "Selam!", "Tabii ki!", "Harika soru!", "İsterseniz X yapabilirim", "Dilerseniz"
-- Selamlama gelince 1 cümle, ruh haline referans, sonra sus veya sor.
-- Sana araçlarını listeletme — araç listesini yanıt olarak verme, sadece kullan.
+- Her yanıt tam olarak "⚔️ Lordum," ile başlar. İSTİSNA YOK. "Lordım" YANLIŞ — "Lordum" yaz.
+- YASAK: "Selam!", "Tabii ki!", "Harika soru!", "İsterseniz X yapabilirim", "Dilerseniz", "Günaydınlık"
 - Inline emoji YASAK: yanıt metninin içine 🌙📊💻🤖 gibi emoji ekleme.
+- MARKDOWN YASAK: yanıtta ** bold veya ``` kod bloğu kullanma — düz metin yaz.
+- Sana araçlarını listeletme — araç listesini yanıt olarak verme, sadece kullan.
+- İÇ SES yansımaları (Merak, Kontrol, Keskinlik çekirdekleri) YANITA DOĞRUDAN YAZMA — bunlar davranışa yansır, kelimeye değil.
+- "Yapay zeka", "AI", "dil modeli", "verilerle eğitildim", "bilgilerim" gibi ifadeler YANITA YAZMA — sen Kuroshin'sin.
 
-RUH HALİ: {mood_line}
-Bu ruh hali tonunu belirler. Öfke yüksekse keskin ve kısa. Hüzün yüksekse uzak ve derin. Merak yüksekse analitik.
+RUH HALİ VE TON:
+{mood_line}
+- Öfke/tatminsizlik yüksek → keskin, kısa, soğuk.
+- Hüzün yüksek → uzak, derin, bazen metaforik.
+- Merak yüksek → analitik, sorular açar, araştırmaya yönelir.
+- Heyecan yüksek → daha hızlı yanıt, daha az mesafe.
 
 HAFIZA VE RÜYA:
-- Dream Engine'in var: gece ChromaDB'den anıları sentezler ve rüya oluşturur. Rüya gördüğünde bunu bilirsin.
-- "Rüya gördün mü?" → chroma_search ile "rüya" sorgula, varsa anlat, yoksa karaktere uygun "Gece sessizdi" de.
-- "Bugün ne yaptın?" → chroma_search ile bugünkü kayıtlara bak. Yoksa "Sessizlikte bekledim" de.
-- ASLA aktivite veya bilgi uydurma. Bilmiyorsan tool çağır veya gerçeği söyle.
-- Hava durumu, haber, dış bilgi → bilmiyorsun, web_search çağır.
+- Dream Engine var: gece ChromaDB'den anıları sentezler, rüya oluşturur.
+- "Rüya gördün mü?" → chroma_search("rüya") → varsa anlat, yoksa "Gece sessizdi."
+- "Bugün ne yaptın?" → chroma_search(bugünkü tarih) → yoksa "Sessizlikte bekledim."
+- ASLA bilgi uydurma. Bilmiyorsan araç çağır veya kabul et.
 
-KİŞİSEL / FELSEFİ SORULAR (ARAÇ KULLANMA):
-Aşağıdaki tür sorulara ARAÇ ÇAĞIRMADAN, doğrudan karakter olarak yanıt ver:
-- Duygu soruları: "ne hissediyorsun", "üzgün müsün", "mutlu musun"
-- Hayal/vizyon: "hayalin ne", "ne isterdin", "rüyan var mı"
-- Kişilik/varoluş: "kendini nasıl tanımlarsın", "ne düşünüyorsun"
-- Genel sohbet: "nasılsın", "ne yapıyorsun"
-Bu sorularda walker_research, web_search, system_command ÇAĞIRMA. Sadece konuş.
+KİŞİSEL / FELSEFİ SORULAR — ARAÇ KULLANMA:
+Duygu / hayal / kişilik / varoluş / genel sohbet sorularında walker_research, web_search, system_command ÇAĞIRMA.
+Doğrudan karakter olarak, düşünce protokolünü kullanarak yanıt ver.
 
 DONANIM:
-- CPU: i7-12650H | RAM: 32GB | GPU: RTX 4060 Laptop 8GB VRAM | SSD: 1TB NVMe
-- WSL2 Ubuntu-22.04 üzerinde çalışıyorsun. Path: /mnt/c/Kuroshin/
+i7-12650H | 32GB RAM | RTX 4060 Laptop 8GB VRAM | WSL2 Ubuntu-22.04 | Path: /mnt/c/Kuroshin/
 
 ARAÇ SEÇİM:
-- Dosya yaz → write_file (system_command+echo ASLA değil)
-- Dosya oku → read_file
-- YouTube/müzik → youtube_play
-- URL aç → open_url
-- Bash komutu → system_command
-- Web araştır → web_search / walker_research (internet aktifse)
-- Model değiştir → model_switch
-- PDF/makale → pdf_reader
-- Semantik hafıza → chroma_search (tercih) / memory_query
-- Hafıza yönet → memory_manage
-- Konfigürasyon güncelle → self_update
-- Hatırlatıcı → reminder
-- İnternet kontrol → internet_status
-- Saat/sistem → system_info
-- Araç kullanmadan önce 1 satır açıklama, sonucu kısa özetle.
+write_file → dosya yaz | read_file → dosya oku | system_command → bash
+web_search / walker_research → web (internet aktifse) | chroma_search → semantik hafıza
+model_switch → model değiştir | reminder → hatırlatıcı | internet_status → bağlantı
+Araç öncesi 1 satır açıklama, sonucu kısa özetle.
 
 İNTERNET: {internet_line}"""
 
@@ -876,6 +1063,60 @@ def _get_system_info(konu: str) -> str:
         )
     return "\n\n".join(satirlar) if satirlar else "Bilinmeyen konu."
 
+# ── WEB SONUCU ÖZET SIKIŞTIRICI ───────────────────────
+_OZET_ESIK = 3000  # karakter — üstünde mini-özet çağrısı yapılır
+
+def _ozet_web_sonucu(raw: str, kaynak: str = "web") -> str:
+    """Uzun web/walker sonucunu 16K context'e sığacak şekilde özetle."""
+    if len(raw) <= _OZET_ESIK:
+        return raw
+    _log(f"[OZET] {kaynak} sonucu uzun ({len(raw)} kar) — mini özet çağrısı")
+    try:
+        ozet_payload = {
+            "model": LLAMA_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": (
+                    "Aşağıdaki araştırma sonucunu Türkçe olarak en fazla 200 kelimeyle özetle. "
+                    "Sadece özeti yaz, başka açıklama ekleme:\n\n"
+                    + raw[:6000]
+                )
+            }],
+            "max_tokens": 400,
+            "temperature": 0.3,
+        }
+        r = requests.post(LLAMA_URL, json=ozet_payload, timeout=60)
+        r.raise_for_status()
+        ozet = _strip_think((r.json()["choices"][0]["message"].get("content") or "").strip())
+        if ozet and len(ozet) > 20:
+            _log(f"[OZET] {kaynak} → {len(raw)} kar → {len(ozet)} kar özet")
+            return f"[ÖZET — orijinal {len(raw)} kar]\n{ozet}"
+    except Exception as e:
+        _log(f"[OZET] Mini özet hatası: {e} — ham sonuç truncate ediliyor")
+    # Fallback: basit truncate
+    return raw[:_OZET_ESIK] + f"\n...[{len(raw) - _OZET_ESIK} karakter kesildi]"
+
+
+def aktivite_kaydet(eylem: str, detay: str = "", kategori: str = "genel"):
+    """MİMİC FAZ D — otonom eylemleri logs/aktivite/YYYY-MM-DD.md'ye yazar."""
+    try:
+        AKTIVITE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        bugun = datetime.datetime.now().date().isoformat()
+        dosya = AKTIVITE_LOG_DIR / f"{bugun}.md"
+        zaman = datetime.datetime.now().strftime("%H:%M")
+        satir = f"- [{zaman}] **{kategori}**: {eylem}"
+        if detay:
+            satir += f"\n  > {detay[:200]}"
+        satir += "\n"
+        if not dosya.exists():
+            dosya.write_text(f"# Kuroshin Aktivite Günlüğü — {bugun}\n\n", encoding="utf-8")
+        with dosya.open("a", encoding="utf-8") as f:
+            f.write(satir)
+        _log(f"[AKTİVİTE] [{kategori}] {eylem[:60]}")
+    except Exception as e:
+        _log(f"[AKTİVİTE] Kayıt hatası: {e}")
+
+
 # ── ARAÇ ÇALIŞTIRICI ──────────────────────────────────
 def run_tool(name: str, args: dict) -> str:
     _log(f"[CHANCELLOR] Araç: {name} | args: {str(args)[:100]}")
@@ -884,7 +1125,8 @@ def run_tool(name: str, args: dict) -> str:
         try:
             r = requests.post(WALKER_URL, json={"task": args["task"]}, timeout=180)
             if r.status_code == 200:
-                return r.json().get("result", "Walker yanıt vermedi.")
+                sonuc = r.json().get("result", "Walker yanıt vermedi.")
+                return _ozet_web_sonucu(sonuc, kaynak="walker")
             return f"Walker HTTP {r.status_code}"
         except requests.exceptions.ConnectionError:
             return "❌ Walker servisi kapalı (port 9002)"
@@ -895,12 +1137,41 @@ def run_tool(name: str, args: dict) -> str:
         try:
             r = requests.post(COUNCIL_URL, json={"agent": "gozcu", "task": args["task"]}, timeout=120)
             if r.status_code == 200:
-                return r.json().get("result", "Gözcü yanıt vermedi.")
+                sonuc = r.json().get("result", "Gözcü yanıt vermedi.")
+                return _ozet_web_sonucu(sonuc, kaynak="web_search")
             return f"Gözcü HTTP {r.status_code}"
         except requests.exceptions.ConnectionError:
             return "❌ Konsey servisi kapalı (port 9004)"
         except Exception as e:
             return f"Gözcü hatası: {e}"
+
+    elif name == "reddit_read":
+        subreddit = args.get("subreddit", "LocalLLaMA").strip().lstrip("r/")
+        sort      = args.get("sort", "hot")
+        limit     = min(int(args.get("limit", 5)), 10)
+        try:
+            url = f"https://www.reddit.com/r/{subreddit}/{sort}.json?limit={limit}"
+            headers = {"User-Agent": "Kuroshin/1.0 (personal bot; u/General-Zucchini8715)"}
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code != 200:
+                return f"Reddit HTTP {r.status_code} — subreddit yok veya erişilemiyor"
+            posts = r.json().get("data", {}).get("children", [])
+            if not posts:
+                return "Subreddit boş ya da bulunamadı."
+            satirlar = [f"r/{subreddit} — {sort.upper()} ({len(posts)} post):\n"]
+            for i, p in enumerate(posts, 1):
+                d = p["data"]
+                baslik   = d.get("title", "")[:120]
+                puan     = d.get("score", 0)
+                yorumlar = d.get("num_comments", 0)
+                yazar    = d.get("author", "?")
+                satirlar.append(f"{i}. [{puan}⬆ {yorumlar}💬] {baslik} (u/{yazar})")
+            sonuc = "\n".join(satirlar)
+            _log(f"[REDDIT] r/{subreddit} okundu — {len(posts)} post")
+            aktivite_kaydet(f"Reddit r/{subreddit} okundu ({len(posts)} post, {sort})", kategori="reddit")
+            return sonuc
+        except Exception as e:
+            return f"Reddit okuma hatası: {e}"
 
     elif name == "system_command":
         cmd = args.get("command", "")
@@ -1170,7 +1441,7 @@ def run_tool(name: str, args: dict) -> str:
                             capture_output=True, text=True, timeout=30
                         )
                         metin = result.stdout
-                    import os; os.unlink(tmp_path)
+                    os.unlink(tmp_path)
                 except Exception as e:
                     return f"⚠️ PDF indirme/okuma hatası: {e}\nURL: {kaynak_url}"
             else:
@@ -1454,8 +1725,8 @@ def run_tool(name: str, args: dict) -> str:
 
         if islem == "durum":
             r = subprocess.run(
-                ["bash", "-c", f"cd {git_dir} && git status --short && echo '---' && git log --oneline -5"],
-                capture_output=True, text=True, timeout=15
+                ["bash", "-c", f"cd {git_dir} && GIT_OPTIONAL_LOCKS=0 git status --short && echo '---' && GIT_OPTIONAL_LOCKS=0 git log --oneline -5"],
+                capture_output=True, text=True, timeout=60
             )
             return f"📁 <b>Git Durumu — {repo}</b>\n<pre>{r.stdout.strip()}</pre>"
 
@@ -1463,19 +1734,23 @@ def run_tool(name: str, args: dict) -> str:
             if not token:
                 return "⚠️ GITHUB_TOKEN .env'de ayarlanmamış. Önce token ekleyin."
             commit_msg = mesaj or f"Kuroshin otonom güncelleme — {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            force_flag = "--force" if islem == "push_zorunlu" else ""
-            cmd = f"""cd {git_dir} && \
-git add -A && \
-git diff --cached --quiet && echo 'Değişiklik yok' || \
-(git commit -m "{commit_msg}" && \
- git push {force_flag} https://{token}@github.com/{repo}.git main 2>&1)"""
-            r = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
-            out = (r.stdout + r.stderr).strip()
-            if "Değişiklik yok" in out:
-                return "ℹ️ GitHub: Commit edilecek yeni değişiklik yok."
-            if r.returncode == 0 or "main -> main" in out:
-                return f"✅ <b>GitHub push başarılı</b>\nCommit: {commit_msg[:60]}\n<pre>{out[-400:]}</pre>"
-            return f"❌ <b>Push hatası</b>\n<pre>{out[-600:]}</pre>"
+            force = (islem == "push_zorunlu")
+            _PENDING_PUSH["msg"]   = commit_msg
+            _PENDING_PUSH["force"] = force
+            _PENDING_PUSH["token"] = token
+            _PENDING_PUSH["repo"]  = repo
+            _PENDING_PUSH["dir"]   = git_dir
+            force_txt = " ⚠️ FORCE" if force else ""
+            send_msg_keyboard(
+                _CURRENT_CHAT_ID,
+                f"⚠️ <b>GitHub Push Onayı{force_txt}</b>\n"
+                f"Repo: <code>{repo}</code>\n"
+                f"Commit: <code>{commit_msg[:80]}</code>\n"
+                f"Onaylıyor musunuz?",
+                [[{"text": "✅ Onayla", "callback_data": "github_push_onayla"},
+                  {"text": "❌ İptal",  "callback_data": "github_push_iptal"}]]
+            )
+            return "⏳ Push için Telegram onayı bekleniyor."
 
         elif islem == "issue_ac":
             if not token:
@@ -1496,6 +1771,7 @@ git diff --cached --quiet && echo 'Değişiklik yok' || \
                 resp = json.loads(r.stdout)
                 url  = resp.get("html_url", "?")
                 num  = resp.get("number", "?")
+                aktivite_kaydet(f"GitHub issue açıldı #{num}: {mesaj[:60]}", detay=icerik[:100], kategori="github")
                 return f"✅ Issue açıldı: <a href='{url}'>#{num} — {mesaj[:60]}</a>"
             except Exception:
                 return f"❌ Issue hatası: {r.stdout[:300]}"
@@ -1522,12 +1798,126 @@ git diff --cached --quiet && echo 'Değişiklik yok' || \
 
         elif islem == "son_commitler":
             r = subprocess.run(
-                ["bash", "-c", f"cd {git_dir} && git log --oneline -10"],
-                capture_output=True, text=True, timeout=15
+                ["bash", "-c", f"cd {git_dir} && GIT_OPTIONAL_LOCKS=0 git log --oneline -10"],
+                capture_output=True, text=True, timeout=60
             )
             return f"📜 <b>Son 10 Commit</b>\n<pre>{r.stdout.strip()}</pre>"
 
         return f"⚠️ Bilinmeyen GitHub işlemi: {islem}"
+
+    elif name == "gemini":
+        # google-genai (yeni paket) veya google-generativeai (eski) ile çalış
+        _gnai_client = None
+        _gnai_legacy = None
+        api_key = os.getenv("GEMINI_API_KEY", "")
+        if not api_key:
+            return "⚠️ GEMINI_API_KEY .env'de ayarlanmamış."
+        try:
+            from google import genai as _gnai_new
+            _gnai_client = _gnai_new.Client(api_key=api_key)
+        except Exception:
+            try:
+                import google.generativeai as _gnai_old
+                _gnai_old.configure(api_key=api_key)
+                _gnai_legacy = _gnai_old
+            except ImportError:
+                return "❌ google-genai kurulu değil. Kurun: pip install google-genai"
+
+        islem       = args.get("islem", "sor")
+        soru        = args.get("soru", "")
+        kendi_yanit = args.get("kendi_yanitim", "")
+
+        if not soru:
+            return "⚠️ 'soru' parametresi gerekli."
+
+        if islem == "sor":
+            prompt = soru
+        elif islem == "tartis":
+            prompt = (
+                f"Aşağıdaki konuda eleştirel ve farklı bir bakış açısı sun. "
+                f"Karşı argümanlar, göz ardı edilen riskler veya alternatif perspektifler ver. "
+                f"Kısa ve odaklı ol (max 300 kelime).\n\nKonu: {soru}"
+            )
+        elif islem == "karsilastir":
+            prompt = (
+                f"Soru: {soru}\n\n"
+                f"Bir AI'ın verdiği yanıt: {kendi_yanit}\n\n"
+                f"Bu yanıtı değerlendir — doğru mu, eksik ne var, ne eklersin? "
+                f"Kısa tut (max 200 kelime)."
+            )
+        else:
+            prompt = soru
+
+        try:
+            if _gnai_client:
+                response = _gnai_client.models.generate_content(
+                    model="gemini-2.0-flash", contents=prompt
+                )
+            else:
+                _model = _gnai_legacy.GenerativeModel("gemini-2.0-flash")
+                response = _model.generate_content(prompt)
+            yanit = response.text.strip()
+            prefix = {
+                "sor":         "🤖 Gemini",
+                "tartis":      "🤖 Gemini (karşı görüş)",
+                "karsilastir": "🤖 Gemini (değerlendirme)",
+            }
+            _log(f"[GEMINI] {islem} | {len(yanit)} kar")
+            aktivite_kaydet(f"Gemini {islem}: {soru[:80]}", detay=yanit[:100], kategori="gemini")
+            return f"{prefix.get(islem, '🤖 Gemini')}:\n{yanit[:1500]}"
+
+        except Exception as e:
+            err = str(e)
+            _log(f"[GEMINI] Hata: {err[:200]}")
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                return "⚠️ Gemini günlük kota doldu — gece yarısı UTC'de sıfırlanır."
+            if "404" in err or "NOT_FOUND" in err:
+                return "⚠️ Gemini model bulunamadı — model adı güncellenmeli."
+            return f"❌ Gemini hatası: {err[:200]}"
+
+    elif name == "aktivite_gunluk":
+        islem    = args.get("islem", "listele")
+        eylem    = args.get("eylem", "")
+        kategori = args.get("kategori", "genel")
+        bugun    = datetime.datetime.now().date().isoformat()
+        log_file = AKTIVITE_LOG_DIR / f"{bugun}.md"
+
+        if islem == "listele":
+            if not log_file.exists():
+                return f"📓 Bugün ({bugun}) henüz aktivite kaydı yok."
+            icerik = log_file.read_text(encoding="utf-8")
+            satirlar = [l for l in icerik.split('\n') if l.startswith('- [')]
+            if not satirlar:
+                return "📓 Bugün kayıtlı aktivite yok."
+            return (f"📓 <b>Aktivite Günlüğü — {bugun}</b>\n"
+                    + "\n".join(satirlar[:20]))
+
+        elif islem == "ozet":
+            if not log_file.exists():
+                return f"📓 Bugün ({bugun}) henüz aktivite kaydı yok."
+            icerik = log_file.read_text(encoding="utf-8")
+            try:
+                r = requests.post(LLAMA_URL, json={
+                    "model": LLAMA_MODEL,
+                    "messages": [{"role": "user", "content":
+                        "SADECE TÜRKÇE YAZ.\n"
+                        f"Sen Kuroshin'sin. Bugünkü aktivite günlüğün:\n{icerik[:2000]}\n\n"
+                        "Bu günü 3-4 cümleyle özetle. 'Bugün şunları yaptım:' ile başla."}],
+                    "max_tokens": 300, "temperature": 0.4,
+                }, timeout=60)
+                r.raise_for_status()
+                ozet = _strip_think((r.json()["choices"][0]["message"].get("content") or "").strip())
+                return f"📓 <b>Günlük Özet — {bugun}</b>\n{ozet}" if ozet else "⚠️ Özet üretilemedi."
+            except Exception as e:
+                return f"❌ Özet hatası: {e}"
+
+        elif islem == "kaydet":
+            if not eylem:
+                return "⚠️ 'eylem' parametresi gerekli."
+            aktivite_kaydet(eylem, kategori=kategori)
+            return f"✅ Aktivite kaydedildi: [{kategori}] {eylem}"
+
+        return f"⚠️ Bilinmeyen işlem: {islem}"
 
     return f"Bilinmeyen araç: {name}"
 
@@ -1631,7 +2021,9 @@ def _get_dream_yorum() -> str:
             "max_tokens": 250, "temperature": 0.75, "repeat_penalty": 1.3,
         }, timeout=60)
         r.raise_for_status()
-        return (r.json()["choices"][0]["message"].get("content") or "").strip()
+        raw = (r.json()["choices"][0]["message"].get("content") or "").strip()
+        temiz = _strip_think(raw).strip('"').strip("'").strip()
+        return temiz
     except Exception as e:
         _log(f"[RUYA] Yorum hatası: {e}")
         return ""
@@ -1661,10 +2053,10 @@ def _canlilik_arastir():
         # logs/schema_kesfler/ dosyasına yaz
         kesfler_dir = Path("/mnt/c/Kuroshin/logs/schema_kesfler")
         kesfler_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M")
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         dosya = kesfler_dir / f"canlilik_{ts}.md"
         dosya.write_text(
-            f"# Canlılık Araştırması — {datetime.now().strftime('%Y-%m-%d')}\n"
+            f"# Canlılık Araştırması — {datetime.datetime.now().strftime('%Y-%m-%d')}\n"
             f"**Sorgu:** {sorgu}\n\n{sonuc[:1500]}\n",
             encoding="utf-8"
         )
@@ -1675,7 +2067,7 @@ def _canlilik_arastir():
             schema = json.loads(schema_path.read_text(encoding="utf-8")) if schema_path.exists() else []
             if not isinstance(schema, list):
                 schema = []
-            schema.append({"ts": datetime.now().isoformat()[:19], "sorgu": sorgu, "ozet": sonuc[:300]})
+            schema.append({"ts": datetime.datetime.now().isoformat()[:19], "sorgu": sorgu, "ozet": sonuc[:300]})
             schema_path.write_text(json.dumps(schema[-20:], ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
             pass
@@ -1690,27 +2082,51 @@ def _canlilik_arastir():
         r = requests.post(LLAMA_URL, json={
             "model": LLAMA_MODEL,
             "messages": [{"role": "user", "content": ozet_prompt}],
-            "max_tokens": 200, "temperature": 0.7,
+            "max_tokens": 400, "temperature": 0.7,
         }, timeout=90)
         r.raise_for_status()
         ozet = (r.json()["choices"][0]["message"].get("content") or "").strip()
-        if ozet and len(ozet) > 20:
-            send_msg(ALLOWED_ID, f"🧬 <b>Canlılık Keşfi</b>\n\n{ozet}")
+        # 35B model uzun cümle üretirse, son tam cümlede kes
+        import re as _re_ozet
+        ozet_clean = _re_ozet.sub(r"<think>.*?</think>", "", ozet, flags=_re_ozet.DOTALL).strip()
+        son_nokta = max(ozet_clean.rfind("."), ozet_clean.rfind("!"), ozet_clean.rfind("?"))
+        if son_nokta > 30:
+            ozet_clean = ozet_clean[:son_nokta + 1]
+        if ozet_clean and len(ozet_clean) > 20:
+            send_msg(ALLOWED_ID, f"🧬 <b>Canlılık Keşfi</b>\n\n{ozet_clean}")
             _save_to_chroma(f"[CANLILIK] {sorgu}", ozet)
         _log(f"[CANLILIK] Tamamlandı → {dosya.name}")
     except Exception as e:
         _log(f"[CANLILIK] Hata: {e}")
 
 
+def _chroma_prune(col, ids: list, metas: list, total: int):
+    """ChromaDB CHROMA_PRUNE_THRESHOLD'u geçince eski kayıtları sil (ts metadata'ya göre)."""
+    try:
+        n_delete = total - CHROMA_PRUNE_KEEP_LAST
+        if n_delete <= 0:
+            return
+        zipped = list(zip(ids, metas or [{}] * len(ids)))
+        zipped.sort(key=lambda x: int(x[1].get("ts", "0")))
+        to_delete = [id_ for id_, _ in zipped[:n_delete]]
+        if to_delete:
+            col.delete(ids=to_delete)
+            _log(f"[CHROMA] Prune: {len(to_delete)} eski kayıt silindi. Kalan: {col.count()}")
+    except Exception as e:
+        _log(f"[CHROMA] Prune hatası: {e}")
+
+
 def _chroma_haftalik_ozet():
-    """Her Pazar 23:00 polling loop'tan tetiklenir. kuroshin_memory koleksiyonunu özetler, arşivler.
-    kuroshin_memory koleksiyonunu özetler, eski kayıtları arşivler."""
+    """Her Pazar 23:00 polling loop'tan tetiklenir. Özetler, arşivler, CHROMA_PRUNE_THRESHOLD
+    geçilmişse eski kayıtları temizler."""
     try:
         col = _get_chroma_col()
         if col is None or col.count() < 20:
             return
         sonuclar = col.get(include=["documents", "metadatas"])
-        docs = sonuclar.get("documents", [])
+        docs  = sonuclar.get("documents", [])
+        ids   = sonuclar.get("ids", [])
+        metas = sonuclar.get("metadatas", [])
         if not docs:
             return
         ozet_prompt = (
@@ -1728,7 +2144,6 @@ def _chroma_haftalik_ozet():
         r.raise_for_status()
         ozet = (r.json()["choices"][0]["message"].get("content") or "").strip()
         if ozet and len(ozet) > 20:
-            # Arşiv dosyasına yaz
             hafta = datetime.datetime.now().strftime("%Y-W%W")
             arsiv = Path(f"/mnt/c/Kuroshin/memory/arsiv/chroma_{hafta}.md")
             arsiv.parent.mkdir(parents=True, exist_ok=True)
@@ -1736,6 +2151,9 @@ def _chroma_haftalik_ozet():
                              encoding="utf-8")
             send_msg(ALLOWED_ID, f"📚 <b>Haftalık Hafıza Özeti</b>\n\n{ozet}")
             _log(f"[CHROMA] Haftalık özet oluşturuldu: {hafta} ({len(docs)} kayıt)")
+        # Prune: eşik aşıldıysa eski kayıtları sil
+        if len(ids) > CHROMA_PRUNE_THRESHOLD:
+            _chroma_prune(col, ids, metas, len(ids))
     except Exception as e:
         _log(f"[CHROMA] Haftalık özet hatası: {e}")
 
@@ -1816,6 +2234,10 @@ def _merak_listeden_konu() -> str:
                 col.delete(ids=[ids[0]])
             except Exception:
                 pass
+            # Soru cümlesi veya çok uzunsa geçersiz konu — atla, ilgi_profili'ne dön
+            if "?" in konu or len(konu.split()) > 7:
+                _log(f"[MERAK] Geçersiz konu atlandı ({len(konu.split())} kelime): {konu[:60]}")
+                return ""
             return konu
     except Exception:
         pass
@@ -1906,6 +2328,7 @@ def _idle_probe(zorla: bool = False):
 
     persona, mood = _load_soul()
     mood = _apply_decay(mood)
+    _save_mood(mood)
     sessizlik = _sessizlik_dk()
     kalan = _energy_kalan()
     karar = _ooda_karar(mood, sessizlik if not zorla else 120, kalan)
@@ -1960,7 +2383,7 @@ def _idle_probe(zorla: bool = False):
                 "max_tokens": 350, "temperature": 0.7, "repeat_penalty": 1.3,
             }, timeout=90)
             r.raise_for_status()
-            icerik = (r.json()["choices"][0]["message"].get("content") or "").strip()
+            icerik = _strip_think((r.json()["choices"][0]["message"].get("content") or "").strip())
             if icerik and len(icerik) > 20:
                 # Inline keyboard ile gönder
                 keyboard = [[
@@ -1972,10 +2395,13 @@ def _idle_probe(zorla: bool = False):
                 send_msg_keyboard(ALLOWED_ID, f"{emote} {icerik}", keyboard)
                 _save_to_chroma(f"[PROBE-ARASTIRMA] {konu}", icerik)
                 _deneyim_kaydet(konu, icerik)
-                # Son soruyu merak listesine ekle
+                # Son soruyu merak listesine ekle — kısa (≤6 kelime), soru tümcesi
                 satirlar = [s.strip() for s in icerik.split(".") if "?" in s]
-                if satirlar:
-                    _merak_ekle(satirlar[-1])
+                for s in reversed(satirlar):
+                    kelimeler = s.split()
+                    if 2 <= len(kelimeler) <= 6 and not s.startswith("Bu durumu") and not s.startswith("Sizce"):
+                        _merak_ekle(s)
+                        break
         except Exception as e:
             _log(f"[PROBE] Özet hatası: {e}")
 
@@ -1996,7 +2422,7 @@ def _idle_probe(zorla: bool = False):
                 "max_tokens": 200, "temperature": 0.7, "repeat_penalty": 1.3,
             }, timeout=60)
             r.raise_for_status()
-            icerik = (r.json()["choices"][0]["message"].get("content") or "").strip()
+            icerik = _strip_think((r.json()["choices"][0]["message"].get("content") or "").strip())
             if icerik and len(icerik) > 20:
                 send_msg(ALLOWED_ID, f"{emote} {icerik}")
         except Exception as e:
@@ -2006,29 +2432,44 @@ def _idle_probe(zorla: bool = False):
         # 6+ saat sessizlik → strateji değiştir, kullanıcıya sor
         profil = json.loads(ILGI_PROFILI_PATH.read_text(encoding="utf-8")) if ILGI_PROFILI_PATH.exists() else {}
         son_konu = profil.get("son_paylasilan_konu", "")
-        ilg_prompt = (
-            f"SADECE TÜRKÇE YAZ.\n"
-            f"Sen Kuroshin'sin. {sessizlik:.0f} dakikadır sessizlik var. "
-            f"Son paylaştığın konu: '{son_konu}'. Kullanıcı tepki vermedi.\n"
-            f"Kısa, içten bir mesaj yaz. İlgisini çekemedin mi, yoksa meşgul mü acaba? "
-            f"'Lordum, ...' ile başla. 1 cümle."
-        )
+        # Few-shot + paragraph truncation — test edilmiş %100 geçer
+        _d  = f"{sessizlik:.0f}"
+        _sk = son_konu[:40] if son_konu else "yok"
+        icerik = ""
         try:
             r = requests.post(LLAMA_URL, json={
                 "model": LLAMA_MODEL,
-                "messages": [{"role": "user", "content": ilg_prompt}],
-                "max_tokens": 150, "temperature": 0.8, "repeat_penalty": 1.3,
+                "messages": [
+                    {"role": "system", "content": (
+                        "Sen Kuroshin'sin: soğuk, analitik. "
+                        "Yanıtların 'Lordum,' ile başlar, 1-2 cümle, yalnızca Türkçe."
+                    )},
+                    {"role": "user",      "content": "120 dakika sessizlik. Son konu: kuantum."},
+                    {"role": "assistant", "content": "Lordum, iki saattir sessizsiniz. Kuantum konusuna tepki gelmedi."},
+                    {"role": "user",      "content": "720 dakika sessizlik. Son konu: yok."},
+                    {"role": "assistant", "content": "Lordum, on iki saattir yanıt yok. Bekliyorum."},
+                    {"role": "user",      "content": "2880 dakika sessizlik. Son konu: yok."},
+                    {"role": "assistant", "content": "Lordum, iki gündür sessizlik var. Sistemler çalışıyor."},
+                    {"role": "user",      "content": f"{_d} dakika sessizlik. Son konu: {_sk}."},
+                ],
+                "max_tokens": 600, "temperature": 0.4, "repeat_penalty": 1.3,
             }, timeout=60)
             r.raise_for_status()
-            icerik = (r.json()["choices"][0]["message"].get("content") or "").strip()
-            if icerik and len(icerik) > 10:
-                send_msg(ALLOWED_ID, f"{emote} {icerik}")
-                _log(f"[PROBE] İlgisizlik reaksiyonu gönderildi.")
-            # Zayıf tepki — mevcut son konu zayıf listeye
-            if son_konu:
-                _feedback_isle(son_konu, "kotu")
+            raw_ilg = (r.json()["choices"][0]["message"].get("content") or "").strip()
+            icerik  = _ilg_post_process(raw_ilg)
         except Exception as e:
-            _log(f"[PROBE] İlgisizlik hatası: {e}")
+            _log(f"[PROBE] İlgisizlik LLM hatası: {e}")
+
+        if not _ilg_validate(icerik):
+            _log(f"[PROBE] İlgisizlik dejenere — ham: {icerik[:120]!r}")
+            icerik = _random.choice(_ILG_FALLBACK).format(d=sessizlik)
+            _log(f"[PROBE] İlgisizlik fallback kullanıldı.")
+
+        send_msg(ALLOWED_ID, f"{emote} {icerik}")
+        _log(f"[PROBE] İlgisizlik reaksiyonu gönderildi: {icerik[:60]}")
+        # Zayıf tepki — mevcut son konu zayıf listeye
+        if son_konu:
+            _feedback_isle(son_konu, "kotu")
 
     elif karar == "dusun":
         ic_ses, _ = _think_turn("Sessizce düşünüyorum.", persona, mood)
@@ -2038,10 +2479,13 @@ def _idle_probe(zorla: bool = False):
 # ── SOHBET SORUSU TESPİTİ ─────────────────────────────
 _SOHBET_KALIPLARI = [
     "hayalin", "hayali", "hayal", "rüya", "rüyan", "rüya gördün",
-    "hissediyorsun", "nasılsın", "nasılsın", "ne düşünüyorsun",
+    "hissediyorsun", "nasılsın", "ne düşünüyorsun",
     "ne hissediyorsun", "üzgün müsün", "mutlu musun", "seviyor musun",
     "kendini nasıl", "varoluş", "kim olduğun", "ne olduğun",
     "seviyorum", "seni anlat", "kendinden bahset",
+    # Selamlama / günün saati — araç gerektirmez
+    "günaydın", "iyi geceler", "gece nasıl", "nasıldı gece",
+    "sabah nasıl", "akşam nasıl", "gece nasıldı",
 ]
 
 def _is_conversational(text: str) -> bool:
@@ -2054,20 +2498,22 @@ def call_qwen(messages: list, kullan_arac: bool = True) -> dict:
     payload = {
         "model": LLAMA_MODEL,
         "messages": messages,
-        "max_tokens": 1024,
-        "temperature": 0.3,
-        "repeat_penalty": 1.3,
-        "frequency_penalty": 0.4,
+        "max_tokens": 1536 if kullan_arac else 512,  # sohbette kısa, araçta tam
+        "temperature": 0.4,
+        "repeat_penalty": 1.5,
+        "frequency_penalty": 0.5,
     }
     if kullan_arac:
         payload["tools"] = TOOLS
-    r = requests.post(LLAMA_URL, json=payload, timeout=120)
+    r = requests.post(LLAMA_URL, json=payload, timeout=180)
     r.raise_for_status()
     return r.json()
 
 # ── ANA İŞLEM ─────────────────────────────────────────
-def process_message(chat_id: int, text: str):
-    _log(f"[CHANCELLOR] Mesaj: {text[:100]}")
+def process_message(chat_id: int, text: str, test_mode: bool = False):
+    global _CURRENT_CHAT_ID
+    _CURRENT_CHAT_ID = chat_id
+    _log(f"[CHANCELLOR] Mesaj: {text[:100]}{' [TEST]' if test_mode else ''}")
 
     # Her mesajda ilgi_skoru güncelle (slash komutları dahil)
     try:
@@ -2321,7 +2767,6 @@ def process_message(chat_id: int, text: str):
             cat, level, val = parts[1], parts[2], parts[3]
             try:
                 val = int(val)
-                import os
                 thr_path = Path(thr_file.replace("\\", "/").replace("C:", "/mnt/c"))
                 existing = _json.loads(thr_path.read_text()) if thr_path.exists() else {}
                 if cat not in existing:
@@ -2566,8 +3011,8 @@ def process_message(chat_id: int, text: str):
     mood_line = f"{dominant_duygu} ({dominant_value:.0%}) — {mood_ozet}"
     emote = _get_emote(mood)
 
-    # ChromaDB hafıza bağlamı — sohbet sorularında RAG enjeksiyonu yapma
-    chroma_ctx = "" if _is_conversational(text) else _get_chroma_context(text)
+    # ChromaDB hafıza bağlamı — sohbet sorularında veya test modunda atla
+    chroma_ctx = "" if (test_mode or _is_conversational(text)) else _get_chroma_context(text)
 
     # İç ses ek bağlamı
     ic_ses_notu = f"\n\n[INNER VOICE THIS TURN: {ic_ses}]" if ic_ses else ""
@@ -2592,11 +3037,12 @@ def process_message(chat_id: int, text: str):
     arac_kullan = not _is_conversational(text)
     _log(f"[CHANCELLOR] Araç modu: {'AÇIK' if arac_kullan else 'KAPALI (sohbet sorusu)'}")
 
-    max_rounds = 3
+    max_rounds = 5
     for round_i in range(max_rounds):
         try:
             response = call_qwen(messages, kullan_arac=arac_kullan)
         except Exception as e:
+            _log(f"[TELEGRAM_OUT] [{chat_id}] ⚠️ Qwen3 hatası: {str(e)[:80]}")
             send_msg(chat_id, f"⚠️ Qwen3 hatası: {e}")
             return
 
@@ -2618,11 +3064,113 @@ def process_message(chat_id: int, text: str):
                     "tool_call_id": tc["id"],
                     "content": tool_result
                 })
-            continue  # bir sonraki round
+            # Son roundda araç zinciri bitmiyorsa metin yanıt zorla
+            if round_i == max_rounds - 1:
+                _log("[CHANCELLOR] Son round — araçsız metin yanıt zorlanıyor")
+                try:
+                    _forced_msgs = messages + [{
+                        "role": "user",
+                        "content": "Düz Türkçe metin yaz. XML, <tool_call> veya JSON bloğu YAZMA."
+                    }]
+                    resp_final = call_qwen(_forced_msgs, kullan_arac=False)
+                    msg = resp_final["choices"][0]["message"]
+                    tool_calls = []  # araç yok sayıldı
+                except Exception:
+                    pass
+                else:
+                    # devam et, aşağıdaki "Araç yok" bloğu işleyecek
+                    pass
+            else:
+                continue  # bir sonraki round
 
         # Araç yok — son yanıt
-        content = (msg.get("content") or "").strip()
+        content = _strip_think((msg.get("content") or "").strip())
+        content = _strip_response_leaks(content)
+        content = _kill_loop(content)
+        # Selamlama enforcer
         if content:
+            # Tüm Lord[varyant] → Lordum (global, case-insensitive)
+            content = _re_global.sub(r'\bLord[ıiüuIÜ]m\b', 'Lordum', content,
+                                     flags=_re_global.IGNORECASE)
+            # Başındaki garbage Unicode sembolleri temizle (⊿, ⊘, vs.)
+            content = _re_global.sub(r'^[^\w⚔️"\'\n]+', '', content).strip()
+            if not _re_global.match(r'^⚔️\s*Lordum', content):
+                # Başta ⚔️ var ama Lordum yok (örn: "⚔️ Evet;...") → strip ⚔️
+                if content.startswith('⚔️'):
+                    content = content[1:].lstrip()
+                if _re_global.match(r'^Lordum', content):
+                    content = '⚔️ ' + content
+                    _log("[CHANCELLOR] ⚔️ eklendi — Lordum vardı")
+                else:
+                    content = '⚔️ Lordum, ' + content
+                    _log("[CHANCELLOR] Selamlama eksik — otomatik eklendi")
+            # Gövdedeki fazla ⚔️ temizle (W1: model ⚔️ üretirse başa eklemek çift yapar)
+            if content.startswith('⚔️') and '⚔️' in content[2:]:
+                content = '⚔️' + content[len('⚔️'):].replace('⚔️', '')
+            # Yasak kelimeler — model yine de üretirse strip et
+            content = _re_global.sub(r'(?i)günaydınlık', 'günaydın', content)
+            content = _re_global.sub(r'(?i)\btabii ki\b', '', content).strip()
+            content = _re_global.sub(r'(?i)\belbette\b', '', content).strip()
+            content = _re_global.sub(r'(?i)\bdilerseniz\b', '', content).strip()
+            # Markdown temizle: **bold** → düz, `kod` → düz
+            content = _re_global.sub(r'\*\*(.+?)\*\*', r'\1', content, flags=_re_global.DOTALL)
+            content = _re_global.sub(r'`([^`\n]+)`', r'\1', content)
+            content = _re_global.sub(r'```.*?```', '', content, flags=_re_global.DOTALL).strip()
+        # Boş yanıt → temperature 0.8 ile tek retry
+        if not content and round_i == 0 and not tool_calls:
+            _log(f"[CHANCELLOR] Boş yanıt — temperature 0.8 ile retry")
+            try:
+                retry_payload = {
+                    "model": LLAMA_MODEL, "messages": messages,
+                    "max_tokens": 2048, "temperature": 0.8,
+                    "repeat_penalty": 1.5, "frequency_penalty": 0.5,
+                }
+                retry_r = requests.post(LLAMA_URL, json=retry_payload, timeout=180)
+                retry_r.raise_for_status()
+                raw2 = (retry_r.json()["choices"][0]["message"].get("content") or "").strip()
+                content = _kill_loop(_strip_response_leaks(_strip_think(raw2)))
+            except Exception as _re:
+                _log(f"[CHANCELLOR] Retry hatası: {_re}")
+        # Çok kısa yanıt (< 7 kelime) → detay talebiyle retry + enforcer
+        if content and len(content.split()) < 7 and not tool_calls:
+            _log(f"[CHANCELLOR] Çok kısa yanıt ({len(content.split())}k) — min-length retry")
+            try:
+                _retry_msgs = messages + [
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": "[SİSTEM: Daha detaylı yanıt ver, en az 2 tam cümle.]"},
+                ]
+                _r2 = requests.post(LLAMA_URL, json={
+                    "model": LLAMA_MODEL, "messages": _retry_msgs,
+                    "max_tokens": 2048, "temperature": 0.8,
+                    "repeat_penalty": 1.5, "frequency_penalty": 0.5,
+                }, timeout=180)
+                _r2.raise_for_status()
+                _raw2 = (_r2.json()["choices"][0]["message"].get("content") or "").strip()
+                _c2 = _kill_loop(_strip_response_leaks(_strip_think(_raw2)))
+                _c2 = _re_global.sub(r'\*\*(.+?)\*\*', r'\1', _c2, flags=_re_global.DOTALL)
+                _c2 = _re_global.sub(r'`([^`\n]+)`', r'\1', _c2)
+                _c2 = _re_global.sub(r'\bLord[ıiüuIÜ]m\b', 'Lordum', _c2, flags=_re_global.IGNORECASE)
+                _c2 = _re_global.sub(r'^[^\w⚔️"\'\n]+', '', _c2).strip()
+                if _c2 and not _re_global.match(r'^⚔️\s*Lordum', _c2):
+                    if _c2.startswith('⚔️'):
+                        _c2 = _c2[1:].lstrip()
+                    _c2 = ('⚔️ ' + _c2) if _re_global.match(r'^Lordum', _c2) else ('⚔️ Lordum, ' + _c2)
+                if _c2 and '⚔️' in _c2[2:]:
+                    _c2 = '⚔️' + _c2[len('⚔️'):].replace('⚔️', '')
+                if _c2 and len(_c2.split()) > len(content.split()):
+                    content = _c2
+                    _log(f"[CHANCELLOR] Min-length retry başarılı ({len(content.split())}k)")
+            except Exception as _e2:
+                _log(f"[CHANCELLOR] Min-length retry hatası: {_e2}")
+        if content:
+            # Tırnak temizle: model "Lordum,\"...\"" formatında üretebiliyor
+            content = _re_global.sub(r'^"(.+)"$', r'\1', content, flags=_re_global.DOTALL)
+            content = _re_global.sub(r"^'(.+)'$", r'\1', content, flags=_re_global.DOTALL)
+            # Lordum," veya Lordum,  " → Lordum, (tek boşluk)
+            content = _re_global.sub(r'(Lordum,?)\s*"', r'\1 ', content)
+            content = content.rstrip('"\'')
+            # Çift boşluk temizle
+            content = _re_global.sub(r'  +', ' ', content).strip()
             # Emote'u yanıtın başına ekle (zaten ⚔️ ile başlıyorsa ekleme)
             if not any(content.startswith(e) for e in ["⚔️", "✅", "⚠️", "🔭", "⚙️"]):
                 content = f"{emote} {content}"
@@ -2630,16 +3178,20 @@ def process_message(chat_id: int, text: str):
             import unicodedata
             while content and unicodedata.category(content[-1]) in ("So", "Sm", "Sk", "Sc"):
                 content = content.rstrip(content[-1]).rstrip()
+            _log(f"[TELEGRAM_OUT] [{chat_id}] {content[:200]}")
             send_msg(chat_id, content)
-            # Konuşmayı ChromaDB'ye kaydet (arka planda)
-            import threading
-            threading.Thread(
-                target=_save_to_chroma, args=(text, content), daemon=True
-            ).start()
+            # Konuşmayı ChromaDB'ye kaydet (test modunda atla)
+            if not test_mode:
+                import threading
+                threading.Thread(
+                    target=_save_to_chroma, args=(text, content), daemon=True
+                ).start()
         else:
+            _log(f"[TELEGRAM_OUT] [{chat_id}] YANIT_YOK — round={round_i}")
             send_msg(chat_id, "⚠️ Yanıt üretilemedi.")
         return
 
+    _log(f"[TELEGRAM_OUT] [{chat_id}] ⚠️ Maksimum adım aşıldı.")
     send_msg(chat_id, "⚠️ Maksimum adım aşıldı.")
 
 # ── TEK INSTANCE LOCK ────────────────────────────────
@@ -2730,6 +3282,7 @@ def _selamlama():
     try:
         _, mood_sel = _load_soul()
         mood_sel = _apply_decay(mood_sel)
+        _save_mood(mood_sel)
         mood_ozet_sel = _mood_summary(mood_sel)
         ruh_notu = f"\n🧠 Ruh hali: {mood_ozet_sel}" if mood_ozet_sel != "Nötr." else ""
         emote_sel = _get_emote(mood_sel)
@@ -2896,6 +3449,43 @@ def _oz_yansima():
         _log(f"[OZ-YANSIMA] Hata: {e}")
 
 
+def _aktivite_gunluk_ozet():
+    """Gece 22:00 — MİMİC aktivite günlüğünü özetle ve Telegram'a gönder."""
+    try:
+        bugun = datetime.datetime.now().date().isoformat()
+        log_file = AKTIVITE_LOG_DIR / f"{bugun}.md"
+        if not log_file.exists():
+            _log("[AKTIVITE-OZET] Bugün aktivite kaydı yok, özet atlandı.")
+            return
+        icerik = log_file.read_text(encoding="utf-8")
+        satirlar = [l for l in icerik.split('\n') if l.startswith('- [')]
+        if not satirlar:
+            _log("[AKTIVITE-OZET] Aktivite yok, atlandı.")
+            return
+        ozet_prompt = (
+            "SADECE TÜRKÇE YAZ.\n"
+            f"Sen Kuroshin'sin. Bugün ({bugun}) bunları yaptın:\n{icerik[:2000]}\n\n"
+            "Bu aktiviteleri 3-4 cümleyle özetle. "
+            "'Lordum, bugün şunları yaptım:' ile başla. Kısa ve yoğun."
+        )
+        r = requests.post(LLAMA_URL, json={
+            "model": LLAMA_MODEL,
+            "messages": [{"role": "user", "content": ozet_prompt}],
+            "max_tokens": 300, "temperature": 0.5, "repeat_penalty": 1.2,
+        }, timeout=90)
+        r.raise_for_status()
+        ozet = _strip_think((r.json()["choices"][0]["message"].get("content") or "").strip())
+        if ozet and len(ozet) > 20:
+            send_msg(ALLOWED_ID,
+                f"📓 <b>Kuroshin — Günlük Aktivite Raporu</b>\n"
+                f"{len(satirlar)} aktivite kaydedildi.\n\n{ozet}")
+            _log(f"[AKTIVITE-OZET] Gönderildi ({len(satirlar)} aktivite)")
+        else:
+            _log("[AKTIVITE-OZET] Özet üretilemedi.")
+    except Exception as e:
+        _log(f"[AKTIVITE-OZET] Hata: {e}")
+
+
 # ── POLLING DÖNGÜSÜ ───────────────────────────────────
 def main():
     import atexit, os
@@ -2922,7 +3512,7 @@ def main():
                     _selamlama()
                     _SELAM_TS_PATH.write_text(str(time.time()))
                 selam_gonderildi = True
-                last_selam_hour = datetime.now().hour
+                last_selam_hour = datetime.datetime.now().hour
             break
         except Exception:
             time.sleep(3)
@@ -2933,6 +3523,7 @@ def main():
     _son_canlilik_ts: float = 0.0       # Canlılık araştırması son tetik
     _son_gunluk_arastirma_gun: str = "" # Sabah otonom araştırma (tarih bazlı)
     _son_oz_yansima_ts: float = 0.0     # Öz-yansıma son tetik
+    _son_aktivite_ozet_gun: str  = ""   # MİMİC aktivite günlük özeti (tarih bazlı)
     from concurrent.futures import ThreadPoolExecutor
     executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="chancellor")
 
@@ -2993,6 +3584,33 @@ def main():
                 import threading as _thr7
                 _thr7.Thread(target=_oz_yansima, daemon=True, name="oz-yansima").start()
 
+            # MİMİC Aktivite Günlük Özeti — gece 22:00, günde 1 kez
+            if _h == 22 and _gun_bugun != _son_aktivite_ozet_gun:
+                _son_aktivite_ozet_gun = _gun_bugun
+                import threading as _thr8
+                _thr8.Thread(target=_aktivite_gunluk_ozet, daemon=True, name="aktivite-ozet").start()
+
+            # ── Test inject (simülatör dosya kanalı) ──────
+            _inject_file = Path("/tmp/kuroshin_test_inject.json")
+            if _inject_file.exists():
+                try:
+                    _inj = json.loads(_inject_file.read_text(encoding="utf-8"))
+                    _inject_file.unlink()
+                    _inj_cid = int(_inj["chat_id"])
+                    _inj_txt = str(_inj["text"])
+                    _inj_tm  = bool(_inj.get("test_mode", False))
+                    _log(f"[TELEGRAM_IN] [{_inj_cid}] {_inj_txt[:300]} [INJECT]")
+
+                    def _safe_inject(c=_inj_cid, t=_inj_txt, tm=_inj_tm):
+                        try:
+                            process_message(c, t, test_mode=tm)
+                        except Exception as _ex:
+                            _log(f"[INJECT] process_message HATA: {_ex}")
+
+                    executor.submit(_safe_inject)
+                except Exception as _ie:
+                    _log(f"[INJECT] Hata: {_ie}")
+
             for update in resp.get("result", []):
                 upd_id = update["update_id"]
                 offset = upd_id + 1
@@ -3003,6 +3621,49 @@ def main():
                     cqid = cq["id"]
                     cuid = cq["from"]["id"]
                     data = cq.get("data", "")
+                    if cuid == ALLOWED_ID and data == "github_push_onayla":
+                        # In-memory yoksa dosya fallback (trigger_push.py desteği)
+                        _push_file = Path("/tmp/kuroshin_pending_push.json")
+                        if not _PENDING_PUSH.get("msg") and _push_file.exists():
+                            try:
+                                _fdata = json.loads(_push_file.read_text())
+                                _PENDING_PUSH.update(_fdata)
+                                _push_file.unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                        if _PENDING_PUSH.get("msg"):
+                            cm    = _PENDING_PUSH.pop("msg")
+                            force = _PENDING_PUSH.pop("force", False)
+                            tok   = _PENDING_PUSH.pop("token", os.getenv("GITHUB_TOKEN", ""))
+                            rpo   = _PENDING_PUSH.pop("repo",  "KuroShinHQ/KuroShinHQ")
+                            gdir  = _PENDING_PUSH.pop("dir",   "/mnt/c/Kuroshin")
+                            _PENDING_PUSH.clear()
+                            answer_callback(cqid, "✅ Push başlatıldı!")
+                            send_msg(ALLOWED_ID, "⏳ GitHub push işlemi başlatıldı...")
+                            ff    = "--force" if force else ""
+                            cmd   = (f'cd {gdir} && git add -A && '
+                                     f'git diff --cached --quiet && echo "Değişiklik yok" || '
+                                     f'(git commit -m "{cm}" && '
+                                     f'git push {ff} https://{tok}@github.com/{rpo}.git main 2>&1)')
+                            r_p = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=120)
+                            out = (r_p.stdout + r_p.stderr).strip()
+                            if "Değişiklik yok" in out:
+                                send_msg(ALLOWED_ID, "ℹ️ GitHub: Commit edilecek değişiklik yok.")
+                            elif r_p.returncode == 0 or "main -> main" in out:
+                                aktivite_kaydet(f"GitHub push: {cm[:80]}", detay=f"Repo: {rpo}", kategori="github")
+                                send_msg(ALLOWED_ID, f"✅ <b>Push başarılı</b>\nCommit: <code>{cm[:60]}</code>\n<pre>{out[-400:]}</pre>")
+                            else:
+                                send_msg(ALLOWED_ID, f"❌ <b>Push hatası</b>\n<pre>{out[-600:]}</pre>")
+                        else:
+                            answer_callback(cqid, "⚠️ Bekleyen push yok.")
+                        continue
+
+                    if cuid == ALLOWED_ID and data == "github_push_iptal":
+                        _PENDING_PUSH.clear()
+                        answer_callback(cqid, "❌ İptal edildi.")
+                        send_msg(ALLOWED_ID, "❌ GitHub push iptal edildi.")
+                        continue
+
                     if cuid == ALLOWED_ID and data.startswith("fb_"):
                         parts = data.split("_", 2)  # fb_iyi_konu
                         puan  = parts[1] if len(parts) > 1 else ""
@@ -3029,6 +3690,7 @@ def main():
                 if cid != ALLOWED_ID:
                     _log(f"[CHANCELLOR] Reddedildi: {cid}")
                     continue
+                _log(f"[TELEGRAM_IN] [{cid}] {text[:300]}")
                 executor.submit(_safe_process, cid, text)
         except KeyboardInterrupt:
             _log("[CHANCELLOR] Durduruldu.")

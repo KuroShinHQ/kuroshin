@@ -41,7 +41,15 @@ PENDING_DOWNLOADS_FILE = Path("/root/kuroshin/memory/pending_downloads.json")
 LOG_PATH          = Path("/root/kuroshin/logs/auto_integrator.log")
 MODELS_DIR        = Path("/root/kuroshin/models")
 LLAMA_URL         = "http://127.0.0.1:8080/v1/chat/completions"
-LLAMA_MODEL       = "mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf"
+_STATE_FILE       = Path("/mnt/c/Kuroshin/memory/active_model.json")
+def _load_active_model() -> str:
+    try:
+        if _STATE_FILE.exists():
+            return json.loads(_STATE_FILE.read_text(encoding="utf-8")).get("active_model", "")
+    except Exception:
+        pass
+    return ""
+LLAMA_MODEL       = _load_active_model() or "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf"
 LLAMA_HEALTH      = "http://127.0.0.1:8080/health"
 CHROMA_URL        = "http://127.0.0.1:8100"
 TELEGRAM_TOKEN    = os.getenv("TELEGRAM_TOKEN", "")

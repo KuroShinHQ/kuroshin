@@ -28,12 +28,36 @@ REPORTS_DIR     = Path("/mnt/c/Kuroshin/memory/hype_reports")
 LOG_PATH        = Path("/mnt/c/Kuroshin/logs/hype_scanner.log")
 LLAMA_URL       = "http://127.0.0.1:8080/v1/chat/completions"
 LLAMA_HEALTH    = "http://127.0.0.1:8080/health"
-LLAMA_MODEL     = "mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf"
+_STATE_FILE     = Path("/mnt/c/Kuroshin/memory/active_model.json")
+
+def _load_active_model_info() -> tuple[str, str, int, float, float]:
+    """Returns (name, path, context_size, size_gb, tok_s)"""
+    try:
+        if _STATE_FILE.exists():
+            d = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+            name = d.get("active_model", "")
+            path = d.get("path", "")
+            ctx = int(d.get("context_size", 16384) or 16384)
+            size_gb = float(d.get("size_gb", 0.0) or 0.0)
+            tok_s = float(d.get("tok_s", 0.0) or 0.0)
+            if name and path:
+                return name, path, ctx, size_gb, tok_s
+    except Exception:
+        pass
+    fallback = "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf"
+    return fallback, f"/root/kuroshin/models/{fallback}", 16384, 18.7, 20.0
+
+def _is_moe_model(model_name: str) -> bool:
+    lower = model_name.lower()
+    return any(tok in lower for tok in ("a3b", "-ax", "moe"))
+
+LLAMA_MODEL, _LLAMA_MODEL_PATH, _LLAMA_CTX, _LLAMA_SIZE_GB, _LLAMA_TOK_S = _load_active_model_info()
+LLAMA_BIN       = "/root/kuroshin/engines/llama.cpp/build/bin/llama-server"
+_moe_flags      = '-ot "exps=CPU"' if _is_moe_model(LLAMA_MODEL) else "--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7"
 LLAMA_CMD       = (
-    "cd /root/kuroshin/engines/llama.cpp/build/bin && "
-    "./llama-server -m /root/kuroshin/models/mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf "
-    "--host 0.0.0.0 --port 8080 -ngl 99 -c 8192 -fa on "
-    "--mlock --no-mmap >> /root/kuroshin/logs/llama-server.log 2>&1 &"
+    f"nohup {LLAMA_BIN} -m {_LLAMA_MODEL_PATH} "
+    f"--host 0.0.0.0 --port 8080 -ngl 99 -c {_LLAMA_CTX} -fa on "
+    f"--mlock --no-mmap {_moe_flags} >> /root/kuroshin/logs/llama-server.log 2>&1 &"
 )
 COUNCIL_URL     = "http://127.0.0.1:9004/task"
 TELEGRAM_TOKEN  = os.getenv("TELEGRAM_TOKEN", "")
@@ -363,6 +387,18 @@ def analyze_with_gemma(items: list[dict]) -> dict:
 
     top_items = sorted(items, key=lambda x: keyword_score(x), reverse=True)[:10]
 
+    # Fresh state read — her taramada güncel model bilgisini kullan
+    try:
+        _s = json.loads(_STATE_FILE.read_text(encoding="utf-8")) if _STATE_FILE.exists() else {}
+        _cur_label = _s.get("label", LLAMA_MODEL)
+        _cur_ctx   = int(_s.get("context_size", _LLAMA_CTX) or _LLAMA_CTX)
+        _cur_size  = float(_s.get("size_gb", _LLAMA_SIZE_GB) or _LLAMA_SIZE_GB)
+        _cur_toks  = float(_s.get("tok_s", _LLAMA_TOK_S) or _LLAMA_TOK_S) or 20.0
+    except Exception:
+        _cur_label, _cur_ctx, _cur_size, _cur_toks = LLAMA_MODEL, _LLAMA_CTX, _LLAMA_SIZE_GB, _LLAMA_TOK_S
+    _ctx_k     = f"{_cur_ctx // 1024}K" if _cur_ctx % 1024 == 0 else str(_cur_ctx)
+    _vram_note = f"MoE — experts CPU'da, GPU ~3-4GB" if _is_moe_model(_cur_label) else f"~{_cur_size:.1f}GB VRAM"
+
     items_text = ""
     for i, item in enumerate(top_items, 1):
         items_text += f"\n{i}. [{item['source'].upper()}] {item['name']}\n"
@@ -384,9 +420,9 @@ def analyze_with_gemma(items: list[dict]) -> dict:
 Lordum için stratejik bir istihbarat brifing'i hazırlayacaksın.
 
 HEDEF DONANIM:
-- RTX 4060 Laptop, 8GB VRAM (kullanılabilir: ~0.4-2.5GB — Qwen3-8B Q5_K_M ~5.5GB alıyor, 40K ctx)
+- RTX 4060 Laptop, 8GB VRAM
 - WSL2 Ubuntu, llama.cpp — GGUF format zorunlu
-- Mevcut model: Qwen3-8B-abliterated Q5_K_M (~5.5GB VRAM, 40K context)
+- Mevcut model: {_cur_label} ({_vram_note}, {_ctx_k} context, ~{_cur_toks:.0f} tok/s)
 - Ajan Konseyi: Smolagents + ChromaDB RAG + BGE Reranker
 - Hedef: Yerel, gizli, otonom çalışma
 
@@ -405,7 +441,7 @@ Kurallar:
 - ÖNCE: sadece rakam: 1=Hemen, 2=Test, 3=İzle
 - PARAM: model parametre sayısı, örn "7B", "4B" — bilinmiyorsa "?"
 - VRAM_GB: sayı ve birim, örn "4.3GB" — tarama verilerindeki "Tahmini VRAM" değerini kullan; yoksa parametre sayısına göre tahmin et. ASLA "?" yazma.
-- TOK_S: Qwen3-8B referans hız 28-35 tok/s; küçük modeller için oranla tahmin et. Örn 1.5B → "60-80", 4B → "25-35". ASLA "?" yazma.
+- TOK_S: {_cur_label} referans hız {_cur_toks:.0f} tok/s; küçük modeller için oranla tahmin et. Örn 1.5B → "60-80", 4B → "25-35". ASLA "?" yazma.
 - UYUM: ✅ = VRAM≤7GB, ⚠️ = 7-8GB, ❌ = >8GB
 - HF_CLI_KOMUTU: tam komut — "hf download KULLANICI/REPO_ADI --local-dir /root/kuroshin/models/KISA_AD --include '*.gguf'" — KISALTMA YAPMA, tam model ID yaz veya "—"
 
@@ -861,16 +897,8 @@ def main():
             )
 
     if daemon_mode:
-        # Başlangıçta: planlı saat veya catch-up (PC geç açıldı) ise tara
-        if should_scan_now() or should_catchup_now():
-            check_catchup()  # bildirim gönder
-            _log("Başlangıç taraması (planlı veya catch-up)...")
-            try:
-                run_scan(label="startup-catchup")
-            except Exception:
-                _log(f"Tarama hatası: {traceback.format_exc()}")
-        else:
-            check_catchup()  # bildirim gönder (tarama yok)
+        # Boot'ta tarama YOK — sadece 09:00 ve 21:00'de çalışır
+        _log("Hype Scanner daemon başladı — 09:00 ve 21:00 bekleniyor.")
         while True:
             try:
                 time.sleep(1800)

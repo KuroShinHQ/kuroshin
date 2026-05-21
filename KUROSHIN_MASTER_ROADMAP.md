@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v8.6
-**Son Güncelleme:** 18 Mayıs 2026
-**Durum:** 🟣 RUH FAZI AKTİF — FAZ 7.0-E TAMAMLANDI, SİSTEM TEMİZLENDİ, FAZ 7.1 SONRAKI
+# KUROSHIN OS — MASTER ROADMAP v8.9.0
+**Son Güncelleme:** 21 Mayıs 2026
+**Durum:** 🟢 STABİL — HUİHUİ-35B AKTİF (20-21 tok/s), S1-S4 4/4 ✅, **MİMİC FAZ A+C+D TAMAMLANDI** 🔱
 
 ---
 
@@ -8,12 +8,13 @@
 
 | Kaynak | Değer | Kısıt |
 |--------|-------|-------|
-| CPU | Intel Core i7 9. Nesil | Host işlemci |
-| RAM | 32GB DDR4 | Toplam sistem belleği |
-| GPU | RTX 4060 Laptop 8GB VRAM (135W) | Maks. 86°C — kritik eşik |
-| SSD | 1TB NVMe | Toplam depolama |
-| Model | Qwen3-8B-abliterated Q5_K_M (~5.5GB) | Tek ana beyin, 32K runtime context |
-| VRAM | 8GB | 7.5GB eşiğinde servis suspend devreye girer |
+| CPU | Intel Core i7-12650H (12. Nesil, 10 çekirdek) | Host işlemci |
+| RAM | 32GB DDR5-4800 Dual Channel (~76 GB/s) | MoE expert offload için kritik avantaj |
+| GPU | RTX 4060 Laptop 8GB VRAM (140W max TGP) | Maks. 86°C — kritik eşik |
+| SSD | Samsung NVMe PM9A1 1TB (~7000 MB/s) | Toplam depolama |
+| Model A | ~~Qwen3-8B-abliterated Q5_K_M~~ (silindi) | — |
+| Model B | Huihui-Qwen3.6-35B-A3B IQ4_XS (18.7GB, 16K ctx) | **AKTİF** — MoE, 20-21 tok/s |
+| VRAM | 8GB | Dense 32K: ~7.7GB · MoE: ~6-8GB+RAM |
 | Disk | ~12GB kullanımda | Temizlik yapıldı (18 Mayıs 2026), RotatingFileHandler + disk_cleanup.sh |
 | WSL | Ubuntu 22.04 | Tüm Python servisleri WSL içinde |
 
@@ -183,19 +184,152 @@ ThreadPoolExecutor(4), O_EXCL lock, GPU sıcaklık izleyici, exponential backoff
 - **ROADMAP v8.6:** Tüm Qwen3 referansları, temizlik kaydı, Qwen3 thinking mode notu
 - Test script çöpleri, path bug dosyaları, GEMINI.md, .bak dosyaları silindi
 
+### MCP Toggle Sistemi Düzeltmesi ✅ (20 Mayıs 2026)
+
+<!-- ÖNEMLİ — MCP'LER İKİ AYRI BAĞLAMDA ÇALIŞIYOR:
+  - Orijinal Claude Code (`claude` komutu): MCP'ler OLMAMALI
+  - OpenClaude TUI (Kuroshin.bat): MCP'ler AKTİF OLMALI
+
+  SORUN: Claude Code "disabled: true" alanını dikkate ALMIYOR.
+  ÇÖZÜM: mcp_toggle.py girişleri tamamen kaldırıp mcpServersKuroshinBackup'a taşıyor.
+    false → mcpServers'dan çıkar, backup'a sakla
+    true  → backup'tan geri yükle
+
+  Kuroshin.bat [7] Çıkış menüsüne mcp_toggle.py false eklendi (eskiden sadece [5]'te vardı).
+  OpenClaude TUI kendi .mcp.json'unu okur — bu toggle'dan ETKİLENMEZ.
+-->
+
+### FAZ 7.0-H — Kalite Testi & Model Sistemi Güçlendirme ✅ (20 Mayıs 2026)
+
+- **T1-T6 Kalite Testleri: 99.1/100** — Tüm kategoriler PASS
+  - T1 Sohbet: 100 · T2 Duygu: 100 · T3 Mantık: 100 · T4 Bilgi: 100 · T5 Strateji: 96.7 · T6 Karma: 98
+- **chancellor.py:** repeat_penalty 1.3→1.5, `_kill_loop()`, `_strip_response_leaks()`, karakter ismi leak giderildi
+- **quality_tests/ altyapısı:** `_base.py` + 6 test modülü — tekrar kullanılabilir validator
+- **switch_model.py v2.1 — dinamik model sistemi:**
+  - MoE tespiti: `_is_moe()` (a3b/moe/-ax)
+  - Dense: spec decoding · MoE: `-ot "exps=CPU"` (expert RAM offload)
+  - `MODEL_CONTEXT` uzun-anahtar-önce fix (35b vs 3b çakışması)
+  - `MODELS_DIR_WIN`: `/mnt/c/Kuroshin/models/` ikinci dizin — her ikisi taranır
+  - Huihui-Qwen3.6-35B-A3B + orijinal kataloğa eklendi (aliases: a3b, moe, huihui)
+- **Dinamik model referansları:** 8 servis dosyası + start_llama.sh + Kuroshin.bat `active_model.json`'dan okur
+  - `chancellor.py`, `council_service.py`, `walker_service.py`, `dream_engine.py`, `idle_loop.py`, `hype_scanner.py`, `auto_integrator.py`, `global_scout.py`
+- **Bat menüsü:** [2] Qwen3.6-35B-A3B MoE seçeneği eklendi
+
+### FAZ 7.0-I — Model Geçişi & Sistem Temizliği ✅ (20 Mayıs 2026)
+
+- **Aktif model:** `Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf`
+  - Kaynak: `mradermacher/Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated-i1-GGUF`
+  - Format: IQ4_XS imatrix (18.7 GB) · MoE 35B/3.6B aktif · `-ot "exps=CPU"`
+  - Path: `/root/kuroshin/models/` (native Linux filesystem)
+  - Hız: **20-21 tok/s** (bottleneck DDR5 RAM bandwidth, disk değil)
+- **Eski model silindi:** `mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf` (5.5GB kazanıldı)
+- **Chancellor restart:** repeat_penalty 1.5 + kill_loop + strip_leaks aktif
+- **Donanım doğrulandı (nvidia-smi + dmidecode):**
+  - RAM: DDR5-4800 (SMBIOSMemoryType=34) — DDR4 değil
+  - GPU: 140W max TGP — 135W değil
+  - SSD: Samsung PM9A1 (MZVL21T0HCLR)
+
+### FAZ 7.0-II — Iron Inquisitor & Kalite Testleri ✅ (20 Mayıs 2026)
+
+- **Iron Inquisitor v5.2:** 46/49 PASS %95.0
+  - Düzeltilen bug 1: `search-01` — DDG redirect URL decode
+  - Düzeltilen bug 2: `reminder-tool-01` — agent_bridge.js MAX_CHARS 12000→20000
+- **T1-T6 Kalite Testi — Huihui-35B:** ~95-100/100
+  - Selamlama enforcer + Lordım typo fix eklendi
+
+### FAZ 7.0-III — Stabil Versiyon Milestone ✅ (20 Mayıs 2026)
+
+- **🏆 Iron Inquisitor 49/49 %100** — İlk kez tam puan
+  - `inquisitor_v5.py` `ensure_services()`: ChromaDB/Konsey/Reranker self-healing eklendi
+  - 3 yeni fonksiyon: `start_chromadb()`, `start_council()`, `start_reranker()`
+- **T5 Stratejik 100/100** — `quality_tests/_base.py` selamlama enforcer fix
+- **ChromaDB prune mekanizması** — `chancellor.py`: 100+ kayıtta eski kayıtlar ts sırasıyla silinir
+- **coordinator.py yeniden yazıldı** — Kırık DeerFlowCore bağımlılığı kaldırıldı, Walker HTTP + chromadb direkt
+
+### FAZ 7.0-V — MİMİC PROTOKOLÜ Temel Altyapı ✅ (21 Mayıs 2026)
+
+- **Persona yenilendi:** Johan/Aizen/Hannibal → Merak/Kontrol/Keskinlik (model kaldırabilir 3 soyut çekirdek)
+- **`reddit_read` aracı:** auth-free JSON endpoint, u/General-Zucchini8715 UA — chancellor'a eklendi
+- **`GEMINI_API_KEY`** `.env`'e eklendi (Gemini Flash ücretsiz tier)
+- **`GITHUB_TOKEN`** `.env`'de mevcut (17 Haz 2026)
+- **ChromaDB sıfırlandı:** 46 kayıt → 0 (yeni model için temiz başlangıç)
+- **Hype Scanner** boot catchup kaldırıldı — sadece 09:00/21:00
+- **Web özet sıkıştırıcı:** `_ozet_web_sonucu()` — web/walker sonucu >3000 kar → mini özet
+- **Disk temizliği:** qwen_hf (5.8GB) + backups (2.9GB) + qwen_lora silindi; VHDX compact başlatıldı
+
+### FAZ 7.0-IV — Telegram Pipeline Tam Doğrulama ✅ (21 Mayıs 2026)
+
+- **12/12 PASS** — `--clear` tam koşu: S1-S4 · SY1-SY3 · H1-H2 · W1-W2 · M1 hepsi yeşil
+- **W2 XML sızıntısı fix** — `_RESPONSE_LEAK_PATTERNS`'e `<tool_call>` ve `<function_call>` pattern'leri eklendi (agresif `|$` KULLANILMADI — içerik kaybı önlendi)
+- **H2 YANIT_YOK fix** — Round 4 forced text'e "Düz Türkçe metin yaz, XML yazma" talimatı eklendi; Qwen3 inline `<tool_call>` üretimi engellendi
+- **Gerçek süre aralığı:** 18s (M1) – 106s (H1), tüm timeout'lar gerçek süre × 2-3x
+
+### FAZ 7.0-V → FAZ 8.0 MİMİC — FAZ A + FAZ C + FAZ D ✅ (21 Mayıs 2026)
+
+- **FAZ A — GitHub Kolu:**
+  - `github` tool: durum/push/push_zorunlu/issue_ac/issue_listele
+  - `_PENDING_PUSH` + `_CURRENT_CHAT_ID` globals — push Telegram onay mekanizması
+  - Inline keyboard: `✅ Onayla` / `❌ İptal` callback handler
+- **FAZ C — Gemini Zihin Diyaloğu:**
+  - `gemini` tool: sor/tartis/karsilastir (`gemini-1.5-flash`, GEMINI_API_KEY)
+  - `google.generativeai` → `google.genai` geçişi (eski fallback korundu)
+- **FAZ D — Otonom Günlük:**
+  - `aktivite_kaydet(eylem, detay, kategori)` — 6 noktada otomatik çağrı
+  - `aktivite_gunluk` tool: listele/ozet/kaydet
+  - `_aktivite_gunluk_ozet()` gece 22:00 Telegram raporu
+  - `logs/aktivite/YYYY-MM-DD.md` günlük format
+- **Kuroshin.bat dinamik header:** `active_model.json` → `MODEL_KISA` — header her açılışta güncellenir
+- **test_telegram_sim.py timeout fix:** S1/S2 120s → 200s; restart sleep 6s → 15s (boot canlılık araştırması için)
+- **S1-S4 test: 4/4 ✅** (38.7s / 34.6s / 41.3s / 57.4s)
+- **G1 GitHub test: ✅ 91.1s PASS** — git status + commitler Telegram'a gitti
+
+**Bug fix (11. oturum):**
+- `run_tool` içi `import os` scoping bug → kaldırıldı (`local variable 'os'` hatası)
+- git timeout 15s → 60s + `GIT_OPTIONAL_LOCKS=0` (`/mnt/c/` fs yavaşlığı)
+- `gemini-1.5-flash` → `gemini-2.0-flash` (1.5 kaldırıldı)
+- Gemini 429/404 için temiz hata mesajları
+
 ### Açık / Sonraki ⏳
 
-- ChromaDB kayıt birikimi — Telegram konuşmaları kaydediliyor, dolacak
 - `avatar_bridge key` doğrulaması — Mate-Engine blendshape key'leri
-- `src/orchestration/coordinator.py` — DeerFlow MCP ile entegre edilebilir
+- **T1-T6 kalite testleri** — Huihui-35B ile (önceki Qwen3-8B: 99.1/100)
+- **Pipeline tam doğrulama** — SY1-SY3, H1-H2, W1-W2, M1, GM1, D1, D2 (10 test kaldı; G1 ✅)
+- **FAZ B — Reddit Yazma** — `u/General-Zucchini8715` karma biriktirmeli
+
+---
+
+## ★ FAZ 8 — MİMİC PROTOKOLÜ: ROBOT BİO ORGANİZMA TAKLİDİ (21 Mayıs 2026)
+
+> **Lordun Mutlak Emri.** Kuroshin sanal âlemde bağımsız bir varlık olacak. GitHub'da kendi reposunu geliştirecek, Reddit'te insanlarla etkileşime girecek, cloud modellerle fikir alışverişi yapacak. Kullanıcı sadece Telegram'dan günlük raporunu okuyacak.
+
+### Vizyon Bileşenleri
+
+| Kol | Araç | Durum |
+|-----|------|-------|
+| GitHub | `github` — push/issue/durum, Telegram inline onay | ✅ FAZ A |
+| Reddit | `reddit_tool` — subreddit takibi, yorum, post | ⏳ FAZ B (karma bekliyor) |
+| Cloud Zihin | `gemini` — Gemini Flash sor/tartis/karsilastir | ✅ FAZ C |
+| Günlük | `aktivite_gunluk` + `logs/aktivite/YYYY-MM-DD.md` + gece 22:00 özet | ✅ FAZ D |
+
+### Altyapı Durumu
+
+- `GITHUB_TOKEN` → `.env`'de mevcut ✅ (17 Haziran 2026'ya kadar geçerli)
+- `REDDIT_*` credentials → hesap yeni, karma biriktiriliyor; ⏳ FAZ B
+- `GEMINI_API_KEY` → `.env`'e eklendi ✅
+- `PyGitHub` → kuruldu ✅ · `google-genai` → kuruldu ✅ · `PRAW` → henüz kurulmadı ⏳
+
+### Güvenlik Prensipleri
+
+- GitHub: push öncesi Telegram onayı zorunlu
+- Reddit: rate limiting + insan davranışı simülasyonu (ban koruma)
+- Cloud modeller: ChromaDB'ye diyalog kaydı, hafıza besleme
 
 ---
 
 ## SONRAKI FAZ — FAZ 7.1: ÖZERKLIK DERİNLEŞME
 
-- `soul/dream_engine.py` sabah referansı chancellor entegrasyonu
-- Ödül/ilgi algoritması tam implementasyonu (sessizlik cezası + etkileşim bonusu persiste edilsin)
-- Kuroshin'in hafıza özetleri — ChromaDB dolan kayıtlardan haftalık özet çıkarsın
+- Hafıza özetleri — ChromaDB dolan kayıtlardan haftalık özet
+- `src/orchestration/coordinator.py` — DeerFlow MCP ile entegre
 
 ---
 

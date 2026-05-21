@@ -64,6 +64,16 @@ async def decode_google_news_url(url: str) -> str:
     
     return url
 
+def _decode_ddg_url(href: str) -> str:
+    """DDG redirect URL'sinden gerçek URL'yi çıkar: //duckduckgo.com/l/?uddg=https%3A..."""
+    if href.startswith("http"):
+        return href
+    parsed = urllib.parse.urlparse("https:" + href if href.startswith("//") else href)
+    uddg = urllib.parse.parse_qs(parsed.query).get("uddg", [""])
+    if uddg and uddg[0]:
+        return urllib.parse.unquote(uddg[0])
+    return "https:" + href if href.startswith("//") else href
+
 async def get_duckduckgo_fallback(query: str):
     """Fallback search using DuckDuckGo HTML interface."""
     url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
@@ -78,9 +88,10 @@ async def get_duckduckgo_fallback(query: str):
                 title_tag = row.find('a', class_='result__a')
                 snippet_tag = row.find('a', class_='result__snippet')
                 if title_tag and title_tag.get('href'):
+                    real_url = _decode_ddg_url(title_tag.get('href'))
                     results.append({
                         "title": title_tag.get_text(strip=True),
-                        "url": title_tag.get('href'),
+                        "url": real_url,
                         "snippet": snippet_tag.get_text(strip=True) if snippet_tag else ""
                     })
             return results[:5]

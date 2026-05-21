@@ -22,6 +22,7 @@ from pathlib import Path
 
 BASE_DIR = Path("/mnt/c/Kuroshin")
 MODELS_DIR = Path("/root/kuroshin/models")
+MODELS_DIR_WIN = BASE_DIR / "models"
 HISTORY_FILE = BASE_DIR / "memory" / "model_history.json"
 LOG_FILE = BASE_DIR / "logs" / "model_switch.log"
 STATE_FILE = BASE_DIR / "memory" / "active_model.json"
@@ -38,6 +39,9 @@ MODEL_CONTEXT = {
     "7b": 65536,
     "8b": 32768,
     "14b": 16384,
+    "30b": 16384,
+    "35b": 16384,
+    "a3b": 16384,
 }
 
 MODEL_HINTS = [
@@ -45,6 +49,16 @@ MODEL_HINTS = [
         "match": "qwen3-8b-abliterated",
         "label": "Qwen3-8B abliterated Q5_K_M",
         "aliases": ["qwen3", "qwen3-abliterated", "qwen3-8b", "main"],
+    },
+    {
+        "match": "huihui-qwen3.6-35b-a3b",
+        "label": "Huihui-Qwen3.6-35B-A3B abliterated IQ4_XS (MoE)",
+        "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe", "huihui"],
+    },
+    {
+        "match": "qwen3.6-35b-a3b",
+        "label": "Qwen3.6-35B-A3B MoE",
+        "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe"],
     },
     {
         "match": "qwen2.5-coder",
@@ -128,9 +142,14 @@ def unique_preserve(items: list[str]) -> list[str]:
     return out
 
 
+def _is_moe(model_name: str) -> bool:
+    lower = model_name.lower()
+    return any(tok in lower for tok in ("a3b", "-ax", "moe"))
+
+
 def _get_context_size(model_name: str) -> int:
     name_lower = model_name.lower()
-    for key, ctx in MODEL_CONTEXT.items():
+    for key, ctx in sorted(MODEL_CONTEXT.items(), key=lambda x: -len(x[0])):
         if key in name_lower:
             return ctx
     return 65536
@@ -217,11 +236,16 @@ def get_active_model() -> str:
 
 def list_models() -> list[dict]:
     models = []
-    if not MODELS_DIR.exists():
-        return models
     active = get_active_model()
-    for file_path in sorted(MODELS_DIR.glob("*.gguf")):
-        models.append(_describe_model(file_path, active))
+    seen = set()
+    for scan_dir in (MODELS_DIR, MODELS_DIR_WIN):
+        if not scan_dir.exists():
+            continue
+        for file_path in sorted(scan_dir.glob("*.gguf")):
+            if file_path.name in seen:
+                continue
+            seen.add(file_path.name)
+            models.append(_describe_model(file_path, active))
     return models
 
 
@@ -280,13 +304,18 @@ def stop_llama() -> bool:
 
 
 def start_llama(model_path: str) -> bool:
-    ctx = _get_context_size(Path(model_path).name)
+    model_name = Path(model_path).name
+    ctx = _get_context_size(model_name)
+    if _is_moe(model_name):
+        extra = '-ot "exps=CPU"'
+    else:
+        extra = "--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7"
     cmd = (
         f"source /root/kuroshin/venv/bin/activate; "
         f"nohup {LLAMA_BIN} -m {model_path} "
         f"--host 0.0.0.0 --port 8080 -ngl 99 -c {ctx} -fa on "
         f"-ctk q4_0 -ctv q4_0 --embeddings --mlock --no-mmap "
-        f"--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7 "
+        f"{extra} "
         f"> /root/kuroshin/logs/llama-server.log 2>&1 &"
     )
     _log(f"Baslatiliyor: {Path(model_path).name} (ctx={ctx})")

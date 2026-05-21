@@ -1,11 +1,97 @@
-# Kuroshin OS - Acik Gorevler
-**Son Guncelleme:** 17 Mayis 2026 (v8.3 - Feedback→Mood + Yokluk Ozeti + Bat Temizligi)
+# Kuroshin OS — Açık Görevler
+**Son Güncelleme:** 21 Mayıs 2026 (v8.9.0 — MİMİC FAZ A+C+D tamamlandı)
 
 Sadece tamamlanmamis isler burada. Tamamlananlar MASTER_ROADMAP'e tasindi.
 
 ---
 
-## KRITIK / ACIK
+## ★ MİMİC PROTOKOLÜ — ROBOT BİO ORGANİZMA TAKLİDİ (YENİ VİZYON)
+
+> Kuroshin sanal âlemde bağımsız bir varlık olarak var olacak. GitHub'da kendi reposunu geliştirecek, Reddit'te insanlarla etkileşime girecek, cloud modellerle fikir alışverişi yapacak. Kullanıcı sadece Telegram'dan günlük rapor okuyacak.
+
+### FAZ A · GitHub Kolu ✅ TAMAMLANDI (21 Mayıs 2026)
+- [x] `github` tool chancellor'a eklendi: durum/push/push_zorunlu/issue_ac/issue_listele
+- [x] `PyGitHub` kuruldu
+- [x] Push öncesi Telegram inline keyboard onayı (`✅ Onayla` / `❌ İptal`)
+- [x] `_PENDING_PUSH` + `_CURRENT_CHAT_ID` globals, callback handler
+
+### FAZ B · Reddit Kolu *(öncelik: ORTA — karma bekliyor)*
+- [x] `reddit_read` aracı eklendi (auth-free JSON, u/General-Zucchini8715)
+- [ ] Reddit API credentials oluştur: `reddit.com/prefs/apps` → script tipi → `REDDIT_CLIENT_ID`, `REDDIT_SECRET`, `REDDIT_PASSWORD` → `.env`'e ekle
+- [ ] `PRAW` kütüphanesi kur (`pip install praw`)
+- [ ] `reddit_tool` yazma aracı: yorum/post açma, rate limiting, ban koruma
+- [ ] Hedef subredditler: r/artificial, r/LocalLLaMA, r/MachineLearning
+
+### FAZ C · Cloud Zihin Diyaloğu ✅ TAMAMLANDI (21 Mayıs 2026)
+- [x] `GEMINI_API_KEY` `.env`'e eklendi
+- [x] `gemini` tool: sor/tartis/karsilastir (`gemini-1.5-flash`)
+- [x] `google-genai` paketi kuruldu, `google.generativeai` → `google.genai` geçişi (fallback korundu)
+
+### FAZ D · Otonom Günlük & Aktivite Akışı ✅ TAMAMLANDI (21 Mayıs 2026)
+- [x] `logs/aktivite/YYYY-MM-DD.md` — `aktivite_kaydet()` ile her eylem kaydediliyor
+- [x] `aktivite_gunluk` tool: listele/ozet/kaydet
+- [x] Gece 22:00 `_aktivite_gunluk_ozet()` Telegram raporu + polling trigger
+- [x] 6 noktada `aktivite_kaydet()`: gemini, reddit_read, github push (callback), github issue, run_tool handler, walker
+- [x] test_faz_d.py: 15/15 ✅ · D1+D2 testleri test_telegram_sim.py GRUP 7'de
+
+---
+
+## KRİTİK / AÇIK (Mevcut)
+
+- [ ] **Pipeline tam doğrulama — 10 test kaldı** — S1-S4 ✅, G1 ✅ (5/15), kalan: SY1,SY2,SY3,H1,H2,W1,W2,M1,GM1,D1,D2
+  ```bash
+  wsl -d Ubuntu-22.04 -- bash -c "source /root/kuroshin/venv/bin/activate && python3 /mnt/c/Kuroshin/scripts/test_telegram_sim.py --only SY1,SY2,SY3,H1,H2,W1,W2,M1,GM1,D1,D2 --clear 2>&1"
+  ```
+  NOT: GM1 (Gemini) sabah UTC kota sıfırlanınca test et.
+- [ ] **T1-T6 Iron Inquisitor — Huihui-35B ile** — Önceki skor Qwen3-8B'de 99.1/100'dü, yeni modelle doğrulama gerekiyor.
+  ```bash
+  wsl -d Ubuntu-22.04 -- bash -c "source /root/kuroshin/venv/bin/activate && python3 /mnt/c/Kuroshin/scripts/quality_tests/t1_sohbet.py 2>&1"
+  ```
+- [ ] **FAZ B Reddit yazma** — `u/General-Zucchini8715` karma biriktirmeli, PRAW kur, `reddit_tool` yaz
+- [ ] **avatar_bridge key doğrulaması** (PASIF) — Mate-Engine açıkken `Kuroshin_Blendshapes.json`'u kontrol et.
+
+---
+
+## TAMAMLANDI (BU OTURUM — 21 Mayıs 2026, 10-11. Oturum)
+
+- [x] **GitHub tool `os` scoping bug fix** — `run_tool` içindeki `import os` satırları kaldırıldı (2 yer), `local variable 'os' referenced before assignment` hatası giderildi. (21 Mayıs 2026)
+- [x] **GitHub git timeout fix** — 15s → 60s, `GIT_OPTIONAL_LOCKS=0` eklendi (`/mnt/c/` Windows fs yavaşlığı için). (21 Mayıs 2026)
+- [x] **G1 test timeout fix** — 90s → 150s (git 60s + model yanıt süresi). (21 Mayıs 2026)
+- [x] **Gemini model adı fix** — `gemini-1.5-flash` → `gemini-2.0-flash` (1.5-flash API'den kaldırılmış). (21 Mayıs 2026)
+- [x] **Gemini 429 graceful hata** — `RESOURCE_EXHAUSTED` → "günlük kota doldu" mesajı, `NOT_FOUND` → "model bulunamadı" mesajı. (21 Mayıs 2026)
+- [x] **G1 GitHub testi: ✅ 91.1s PASS** — git status + son commitler Telegram'a gitti. (21 Mayıs 2026)
+- [x] **GM1 Gemini testi: kota sıfırlanınca geçecek** — model adı doğrulandı, kod hazır, sabah UTC sıfırlanır.
+
+---
+
+## TAMAMLANDI (BU OTURUM — 21 Mayıs 2026, 9-10. Oturum)
+
+- [x] **MİMİC FAZ A — GitHub Kolu** — `github` tool, PyGitHub, Telegram inline push onayı. (21 Mayıs 2026)
+- [x] **MİMİC FAZ C — Gemini Zihin Diyaloğu** — `gemini` tool, google.genai geçişi. (21 Mayıs 2026)
+- [x] **MİMİC FAZ D — Otonom Günlük** — `aktivite_kaydet`, `aktivite_gunluk` tool, gece 22:00 özet. test_faz_d.py 15/15 ✅ (21 Mayıs 2026)
+- [x] **Kuroshin.bat dinamik header** — `active_model.json` → `MODEL_KISA` her menü açılışında güncellenir. (21 Mayıs 2026)
+- [x] **test_telegram_sim.py timeout fix** — S1/S2 120s→200s; restart sleep 6s→15s (boot canlılık araştırması sorunu). (21 Mayıs 2026)
+- [x] **S1-S4 test 4/4 ✅** — 38.7s / 34.6s / 41.3s / 57.4s (21 Mayıs 2026)
+- [x] **Telegram Pipeline 12/12 PASS** — `--clear` tam koşu, tüm test grupları yeşil. (21 Mayıs 2026)
+- [x] **W2 XML sızıntısı fix** — `_RESPONSE_LEAK_PATTERNS`'e `<tool_call>` ve `<function_call>` pattern'leri eklendi. (21 Mayıs 2026)
+- [x] **H2 YANIT_YOK fix** — Round 4 forced text'e "Düz Türkçe metin yaz, XML yazma" talimatı eklendi. (21 Mayıs 2026)
+
+---
+
+## TAMAMLANDI (BU OTURUM — 20 Mayıs 2026)
+
+- [x] **Qwen3.6-35B-A3B indir ve aktif et** — `Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf` (18.7GB) → 20-21 tok/s. (20 Mayıs 2026)
+- [x] **Chancellor yeniden başlat** — repeat_penalty 1.5 + kill_loop + strip_leaks + selamlama enforcer aktif. (20 Mayıs 2026)
+- [x] **Eski model silindi** — `mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf` 5.5GB kazanıldı. (20 Mayıs 2026)
+- [x] **T1-T6 kalite testleri — Huihui-35B ile** — ~95-100/100, içerik kalitesi 8B eşit/üstün, format enforcer eklendi. (20 Mayıs 2026)
+- [x] **Iron Inquisitor 46/49 PASS %95.0** — search-01 DDG decode fix, reminder-tool-01 bridge 12K→20K fix. (20 Mayıs 2026)
+- [x] **Selamlama enforcer** — `_strip_think()` Lordım→Lordum typo fix + chancellor pipeline auto-prepend. (20 Mayıs 2026)
+- [x] **Canlılık Keşfi truncation fix** — `max_tokens` 200→400 + son tam cümlede kes. (20 Mayıs 2026)
+- [x] **Global Scout 0 aday fix** — KW_WEIGHTS'e "llm"+Rusça terimler eklendi; Gitee +15/Habr+Codeby +10 kaynak bonusu. Gitee=TEST, Habr/Codeby=İZLE seviyesine çıktı. (20 Mayıs 2026)
+
+---
+
+## ESKİ KRİTİK / AÇIK (tamamlananlar)
 
 - [x] **Model degerlendirmesi (#13)** - KARAR: Qwen3-8B-abliterated Q5_K_M (bartowski/mlabonne). `start_llama.sh` + tum agent'lar guncellendi. (17 Mayis 2026)
 - [x] **Model indirme & gecis** - Indirildi (5.85GB, 2m33s). `start_llama.sh` + tum agent + LiteLLM + TUI guncellendi. TUI `qwen3-abliterated` dogrulandi. (17 Mayis 2026)
@@ -106,3 +192,5 @@ Sadece tamamlanmamis isler burada. Tamamlananlar MASTER_ROADMAP'e tasindi.
 - [x] **eval_feedback_loop.py Kuroshin.bat entegrasyonu** - Menu [9] eklendi: test-only / auto-apply / tek dongu secenekleri. (17 Mayis 2026)
 - [x] **Skor esigi Telegram bildirimi** - Basarisiz test orani >%30 -> ozel Telegram alarmi. `inquisitor_v5.py`'ye eklendi. (17 Mayis 2026)
 - [x] **DeerFlow 2.0** - Subprocess bagimliligi kaldirildi. Inline: DuckDuckGo + Crawl4AI + Crawlee fallback + ChromaDB cache + coklu kaynak. (17 Mayis 2026)
+
+<!-- test push: 21 May 2026 -->

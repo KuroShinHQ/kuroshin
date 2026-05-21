@@ -94,17 +94,77 @@ def start_walker() -> bool:
         )
     return wait_port("127.0.0.1", 9002, max_wait=20, label="Walker (9002)")
 
+def start_chromadb() -> bool:
+    """ChromaDB (port 8100) — uvicorn FastAPI, nohup ile başlat."""
+    if port_open("127.0.0.1", 8100):
+        print("[INIT] ChromaDB ✅ (zaten çalışıyor)")
+        return True
+    print("[INIT] ChromaDB başlatılıyor...")
+    log = Path("/root/kuroshin/logs/chromadb.log")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a") as lf:
+        subprocess.Popen(
+            ["/bin/bash", "/mnt/c/Kuroshin/scripts/start_chromadb.sh"],
+            stdout=lf, stderr=lf
+        )
+    return wait_port("127.0.0.1", 8100, max_wait=30, label="ChromaDB (8100)")
+
+
+def start_council() -> bool:
+    """Ajan Konseyi (port 9004) — Python servisi, nohup ile başlat."""
+    if port_open("127.0.0.1", 9004):
+        print("[INIT] Ajan Konseyi ✅ (zaten çalışıyor)")
+        return True
+    print("[INIT] Ajan Konseyi başlatılıyor...")
+    log = Path("/root/kuroshin/logs/council.log")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a") as lf:
+        subprocess.Popen(
+            ["/bin/bash", "-c",
+             "source /root/kuroshin/venv/bin/activate && "
+             "cd /mnt/c/Kuroshin/agents && "
+             "nohup python3 kuroshin_council_service.py &"],
+            stdout=lf, stderr=lf
+        )
+    return wait_port("127.0.0.1", 9004, max_wait=30, label="Ajan Konseyi (9004)")
+
+
+def start_reranker() -> bool:
+    """BGE Reranker (port 9003) — Python servisi, nohup ile başlat."""
+    if port_open("127.0.0.1", 9003):
+        print("[INIT] BGE Reranker ✅ (zaten çalışıyor)")
+        return True
+    print("[INIT] BGE Reranker başlatılıyor...")
+    log = Path("/root/kuroshin/logs/reranker.log")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a") as lf:
+        subprocess.Popen(
+            ["/bin/bash", "-c",
+             "source /root/kuroshin/venv/bin/activate && "
+             "nohup python3 /mnt/c/Kuroshin/scripts/kuroshin_reranker_service.py &"],
+            stdout=lf, stderr=lf
+        )
+    return wait_port("127.0.0.1", 9003, max_wait=45, label="BGE Reranker (9003)")
+
+
 def ensure_services(skip_llama: bool = False):
     """Test başlamadan önce tüm servisleri hazır et."""
     print("[INIT] ── Servis Kontrolü ──────────────────────")
-    bridge_ok = start_bridge()
-    walker_ok = start_walker()
-    llama_ok  = True
+    bridge_ok   = start_bridge()
+    walker_ok   = start_walker()
+    chroma_ok   = start_chromadb()
+    council_ok  = start_council()
+    reranker_ok = start_reranker()
+    llama_ok    = True
     if not skip_llama:
         llama_ok = start_llama()
-    print(f"[INIT] Bridge:{bridge_ok} Walker:{walker_ok} Llama:{llama_ok}")
+    print(f"[INIT] Bridge:{bridge_ok} Walker:{walker_ok} ChromaDB:{chroma_ok} "
+          f"Council:{council_ok} Reranker:{reranker_ok} Llama:{llama_ok}")
     print("[INIT] ─────────────────────────────────────────")
-    return {"bridge": bridge_ok, "walker": walker_ok, "llama": llama_ok}
+    return {
+        "bridge": bridge_ok, "walker": walker_ok, "llama": llama_ok,
+        "chromadb": chroma_ok, "council": council_ok, "reranker": reranker_ok,
+    }
 
 # ─────────────────────────────────────────────
 # MCP STDIO İSTEMCİSİ

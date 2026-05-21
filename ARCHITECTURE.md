@@ -1,5 +1,5 @@
-# Kuroshin OS — Mimari Belge v8.6
-**Son Güncelleme:** 18 Mayıs 2026
+# Kuroshin OS — Mimari Belge v8.9.0
+**Son Güncelleme:** 21 Mayıs 2026
 
 Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saatte anlayabilmelidir.
 
@@ -9,10 +9,10 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
 
 | Kaynak | Değer | Not |
 |--------|-------|-----|
-| CPU | Intel Core i7-12650H (12. Nesil) | Host işlemci |
-| RAM | 32GB DDR4 | Toplam sistem belleği |
-| GPU | RTX 4060 Laptop 8GB VRAM (140W) | Max 86°C — kritik eşik |
-| SSD | 1TB NVMe | Toplam depolama |
+| CPU | Intel Core i7-12650H (12. Nesil, 10 çekirdek) | Host işlemci |
+| RAM | 32GB DDR5-4800 Dual Channel (~76 GB/s) | MoE expert offload için kritik |
+| GPU | RTX 4060 Laptop 8GB VRAM (140W max TGP) | Max 86°C — kritik eşik |
+| SSD | Samsung NVMe PM9A1 1TB (~7000 MB/s) | Toplam depolama |
 | Disk Doluluğu | ~12GB kullanımda | Temizlik sonrası (18 Mayıs 2026), RotatingFileHandler + disk_cleanup.sh |
 | WSL | Ubuntu 22.04 (`-d Ubuntu-22.04`) | Tüm servisler WSL içinde |
 | Windows | Python 3.x + Node.js | Dashboard + Agent Bridge |
@@ -23,7 +23,7 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
 
 | Port | Servis | Dosya | Health Endpoint |
 |------|--------|-------|-----------------|
-| 8080 | llama-server (Qwen3-abliterated) | `engines/llama.cpp/build/bin/llama-server` | `GET /health` → `{"status":"ok"}` |
+| 8080 | llama-server (aktif model — dynamic) | `engines/llama.cpp/build/bin/llama-server` | `GET /health` → `{"status":"ok"}` |
 | 6000 | LiteLLM Proxy | `venv/bin/uvicorn litellm...` | `GET /health` → HTTP 200/401 |
 | 6001 | LitServe | `src/serving/kuroshin_litserve.py` | — |
 | 8100 | ChromaDB | `scripts/start_chromadb.sh` | `GET /api/v2/heartbeat` → `{"nanosecond heartbeat":...}` |
@@ -46,7 +46,7 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
              research_harvester, telegram_bridge, auto_integrator
       rm -f: /tmp/kuroshin_*.pid, /tmp/kuroshin_*.lock
 
-[1/6] llama-server (Qwen3 128K)
+[1/6] llama-server (active_model.json'dan dinamik — dense veya MoE)
       → curl /health polling max 120s
 
 [2/6] LiteLLM + ChromaDB + Nuclear Search
@@ -75,22 +75,39 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
 
 [6/6] Dashboard + MCP + TUI
       kuroshin_dashboard.py
-      mcp_toggle.py → MCP'leri aktif et
-      OpenClaude TUI
+      mcp_toggle.py true → ~/.claude.json mcpServers'a Kuroshin sunucularını ekler
+      <!-- NOT: Bu sadece orijinal Claude Code içindir. OpenClaude .mcp.json'dan okur. -->
+      OpenClaude TUI (C:\Kuroshin\openclaude-main\openclaude-main\ dizininden başlar)
 ```
 
 ---
 
 ## Bileşen Açıklamaları
 
+### Model Sistemi (`scripts/switch_model.py` + `memory/active_model.json`)
+Tek merkezli model yönetimi — tüm servisler bu dosyadan okur.
+
+- **Model kataloğu:** `MODEL_HINTS` + `MODEL_CONTEXT` — alias eşleştirme, context boyutu
+- **MoE tespiti:** `_is_moe()` — isimde `a3b`, `-ax`, `moe` varsa MoE modu
+- **Dense:** `--spec-type ngram-cache --draft-max 16` (speculative decoding)
+- **MoE (Qwen3.6-35B-A3B):** `-ot "exps=CPU"` (expert'ler RAM'e, attention GPU'da)
+- **Aktif model:** Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated IQ4_XS (18.7GB, 16K ctx, 20-21 tok/s)
+- `start_llama.sh` ve 7 servis dosyası `active_model.json`'dan dinamik okur
+
 ### Kuroshin Şansölye (`agents/kuroshin_chancellor.py`)
-Telegram botu — kullanıcının Qwen3 ile konuştuğu tek kapı.
+Telegram botu — kullanıcının aktif modelle konuştuğu tek kapı.
 
 - **Polling:** `getUpdates` long-polling (timeout=20s), exponential backoff
 - **Mesaj işleme:** `ThreadPoolExecutor(max_workers=4)` — Qwen3'ün 120s timeout'u ana döngüyü bloklamaz
 - **Lock:** `/tmp/kuroshin_chancellor.pid` O_EXCL atomik — tek instance garantisi
-- **Araçlar (8):** `walker_research` · `web_search` · `system_command` · `memory_query` · `write_file` · `read_file` · `open_url` · `youtube_play`
+- **Araçlar (13):** `walker_research` · `web_search` · `system_command` · `memory_query` · `write_file` · `read_file` · `open_url` · `youtube_play` · `reddit_read` · `github` · `gemini` · `aktivite_gunluk` · `internet_status`
 - **write_file Desktop:** Agent Bridge safePath bypass → Python `Path.write_text()` direkt
+- **Selamlama enforcer (v8.6.5):** `_strip_think()` → Lordım→Lordum typo fix; pipeline: boş/eksik selamlama → "⚔️ Lordum, " auto-prepend + log
+- **XML sızıntı temizleyici (v8.6.9):** `_RESPONSE_LEAK_PATTERNS` — `<tool_call>{...}</tool_call>` ve `<function_call>` blokları strip edilir; agresif `|$` kullanılmaz (içerik kaybı önlenir)
+- **Round 4 forced text (v8.6.9):** Son araç roundunda `"Düz Türkçe metin yaz, XML yazma"` talimatıyla çağrı yapılır — model `<tool_call>` XML üretimini bırakır
+- **MİMİC Araçları (v8.8-8.9):** `reddit_read` (auth-free JSON), `github` (PyGitHub — push öncesi Telegram inline keyboard onayı; git timeout 60s + GIT_OPTIONAL_LOCKS=0), `gemini` (google.genai `gemini-2.0-flash` — sor/tartis/karsilastir; 429/404 graceful hata), `aktivite_gunluk` (listele/ozet/kaydet — `logs/aktivite/YYYY-MM-DD.md`)
+- **Aktivite günlüğü (v8.9):** `aktivite_kaydet(eylem, detay, kategori)` — 6 noktada otomatik çağrılır (gemini, reddit, github push, github issue, run_tool, walker). Gece 22:00 `_aktivite_gunluk_ozet()` Telegram özeti.
+- **Kuroshin.bat dinamik header (v8.9):** `:MAIN_MENU` başında PowerShell ile `active_model.json` okunur → `MODEL_KISA` değişkeni → `Beyin: !MODEL_KISA! | OODA Probe | KADEMELI UYANIS` header her açılışta güncellenir.
 - **Log:** `RotatingFileHandler` 5MB/3 backup → `/mnt/c/Kuroshin/logs/chancellor.log`
 
 ### Walker Agent (`agents/kuroshin_walker_service.py`, port 9002)
@@ -205,14 +222,18 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 ```
 /mnt/c/Kuroshin/logs/
-├── chancellor.log       RotatingFileHandler 5MB/3 backup
-├── hype_scanner.log     RotatingFileHandler 5MB/3 backup
-├── global_scout.log     RotatingFileHandler 5MB/3 backup
-├── llama-server.log     düz dosya (büyüyebilir)
-├── litellm.log          düz dosya
-├── agent_bridge.log     Node.js stdout
-├── system.log           Kuroshin.bat olay kayıtları
-└── disk_cleanup.log     günlük temizlik raporu
+├── chancellor.log           RotatingFileHandler 5MB/3 backup
+├── hype_scanner.log         RotatingFileHandler 5MB/3 backup
+├── global_scout.log         RotatingFileHandler 5MB/3 backup
+├── llama-server.log         düz dosya (büyüyebilir)
+├── litellm.log              düz dosya
+├── agent_bridge.log         Node.js stdout
+├── system.log               Kuroshin.bat olay kayıtları
+├── disk_cleanup.log         günlük temizlik raporu
+├── aktivite/                MİMİC aktivite günlükleri
+│   └── YYYY-MM-DD.md        günlük eylem kaydı (aktivite_kaydet)
+└── dreams/                  Dream Engine rüya kayıtları
+    └── rüya_TARIH.txt
 ```
 
 `scripts/disk_cleanup.sh` her gece 03:00'da çalışır:
@@ -225,7 +246,24 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 ## MCP Sunucuları (Claude Code için)
 
-`C:\Kuroshin\.mcp.json` — Claude Code'un kullandığı araçlar:
+<!-- ÖNEMLİ — İKİ FARKLI BAĞLAM:
+  1. Orijinal Claude Code (`claude` komutu): MCP'ler KAPALI olmalı.
+     Toggle mekanizması: scripts/mcp_toggle.py
+       - false → 6 sunucuyu ~/.claude.json mcpServers'dan kaldırır, mcpServersKuroshinBackup'a saklar
+       - true  → backup'tan geri yükler, mcpServers'a ekler
+     NOT: Claude Code'da "disabled: true" alanı dikkate ALINMIYOR — girişleri tamamen kaldırmak gerekiyor.
+
+  2. OpenClaude TUI (Kuroshin.bat [1] Walker Modu): MCP'ler AKTİF.
+     Config: C:\Kuroshin\openclaude-main\openclaude-main\.mcp.json (ve üst dizin .mcp.json)
+     OpenClaude bu dosyayı kendi çalışma dizininden okur — ~/.claude.json'dan bağımsız.
+
+  Kuroshin.bat akışı:
+    [1] Walker başlar → mcp_toggle.py true  → mcpServers'a eklenir (orijinal Claude Code için)
+    [5] Sistem Kapat  → mcp_toggle.py false → mcpServers'dan kaldırılır
+    [7] Çıkış        → mcp_toggle.py false → mcpServers'dan kaldırılır
+-->
+
+`openclaude-main/.mcp.json` — OpenClaude TUI'nin kullandığı araçlar (orijinal Claude Code'dan bağımsız):
 
 | MCP | Araç | Açıklama |
 |-----|------|----------|
@@ -237,6 +275,8 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 | `kuroshin-deerflow` | `deerflow_research`, `walker_deep_research` | Otonom araştırma motoru |
 
 `scripts/mcp_toggle.py`: MCP'leri boot'ta aktif, shutdown'da devre dışı bırakır.
+- `true`  → `~/.claude.json` `mcpServers`'a Kuroshin sunucularını geri yükler
+- `false` → `mcpServers`'dan kaldırır, `mcpServersKuroshinBackup` key'inde saklar
 
 ---
 

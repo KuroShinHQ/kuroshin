@@ -28,8 +28,18 @@ from smolagents import (
 # ─────────────────────────────────────────
 SERVICE_PORT   = 9004
 LLAMA_BASE_URL = "http://127.0.0.1:8080/v1"
-LLAMA_MODEL    = "mlabonne_Qwen3-8B-abliterated-Q5_K_M.gguf"
 COUNCIL_LOG    = "/root/kuroshin/logs/council.log"
+
+_STATE_FILE = Path("/mnt/c/Kuroshin/memory/active_model.json")
+def _load_active_model() -> str:
+    try:
+        if _STATE_FILE.exists():
+            import json as _json
+            return _json.loads(_STATE_FILE.read_text(encoding="utf-8")).get("active_model", "")
+    except Exception:
+        pass
+    return ""
+LLAMA_MODEL = _load_active_model() or "Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf"
 
 Path(COUNCIL_LOG).parent.mkdir(parents=True, exist_ok=True)
 
