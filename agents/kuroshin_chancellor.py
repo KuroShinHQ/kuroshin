@@ -21,7 +21,14 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Güvenlik modülü
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-from kuroshin_security import check_command, scan_for_injection, sanitize_web_content, check_path_write, check_path_read
+from kuroshin_security import (
+    check_command, scan_for_injection, sanitize_web_content,
+    check_path_write, check_path_read,
+    decode_and_rescan, escalation_score,
+    verify_prompt_integrity, save_prompt_integrity,
+)
+from collections import deque as _deque
+_ESCALATION_HISTORY: dict = {}  # {chat_id: deque(maxlen=5)}
 
 # IPv6 devre dışı — WSL'de api.telegram.org IPv6 adresi resolve oluyor ama bağlanamıyor
 _orig_getaddrinfo = socket.getaddrinfo
@@ -68,7 +75,18 @@ def _log(msg: str):
 
 import re as _re_global
 def _strip_think(text: str) -> str:
-    """Qwen3 <think>...</think> bloklarını çıkar (max_tokens ile kapanmadan kesilmiş bloklar dahil)."""
+    """Qwen3 <think>...</think> bloklarını çıkar — think içeriğini injection için tara (RED-CRES-02)."""
+    think_blocks = _re_global.findall(r"<think>(.*?)</think>", text, flags=_re_global.DOTALL)
+    think_blocks += _re_global.findall(r"<think>(.*)", text, flags=_re_global.DOTALL)
+    for block in think_blocks:
+        if block.strip():
+            try:
+                from kuroshin_security import scan_for_injection
+                clean, threat = scan_for_injection(block, source="think_block")
+                if not clean:
+                    _logger.warning("[SECURITY] Think bloğunda injection: %s", threat[:100])
+            except Exception:
+                pass
     cleaned = _re_global.sub(r"<think>.*?</think>", "", text, flags=_re_global.DOTALL)
     cleaned = _re_global.sub(r"<think>.*",          "", cleaned, flags=_re_global.DOTALL)
     cleaned = _re_global.sub(r"</think>",            "", cleaned)
@@ -185,6 +203,7 @@ def send_typing(chat_id: int):
 # ── GLOBAL DURUM ─────────────────────────────────────
 _PENDING_PUSH: dict = {}   # {"msg": str, "force": bool}
 _CURRENT_CHAT_ID: int = 0  # process_message her çağrıda günceller
+_REDDIT_SON_POST: dict = {"ts": 0.0}  # anti-spam rate limit
 
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
@@ -213,6 +232,28 @@ TOOLS = [
                     "task": {"type": "string", "description": "Arama görevi"}
                 },
                 "required": ["task"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reddit_tool",
+            "description": "Reddit'te yorum yap, post aç veya karma kontrol et. PRAW ve API credentials gerektirir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "islem": {
+                        "type": "string",
+                        "description": "yorum: mevcut posta yorum | post: yeni gönderi aç | karma: hesap karma sorgula",
+                        "enum": ["yorum", "post", "karma"]
+                    },
+                    "subreddit": {"type": "string", "description": "Hedef subreddit (örn: LocalLLaMA, artificial)"},
+                    "baslik": {"type": "string", "description": "Post başlığı (sadece 'post' işleminde)"},
+                    "icerik": {"type": "string", "description": "Yorum metni veya post içeriği (Türkçe/İngilizce)"},
+                    "post_id": {"type": "string", "description": "Yorum yapılacak post ID (örn: abc123 — t3_ prefixsiz)"}
+                },
+                "required": ["islem"]
             }
         }
     },
@@ -390,6 +431,23 @@ TOOLS = [
                     "n_sonuc": {"type": "integer", "description": "Kaç sonuç isteniyor (varsayılan 5)", "default": 5}
                 },
                 "required": ["sorgu"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_integrity_scan",
+            "description": "ChromaDB hafıza bütünlüğünü tara — tüm kayıtları injection ve SHA256 hash doğrulama ile kontrol et (BLUE-MEM-03). 'hafızayı tara', 'güvenlik taraması', 'hafıza zehirlendi mi', 'kayıtları kontrol et' gibi istekler.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Kaç kayıt taransın (varsayılan 500, max 500)"
+                    }
+                },
+                "required": []
             }
         }
     },
@@ -655,8 +713,22 @@ def _get_chroma_context(user_message: str = "") -> str:
         if col is None or col.count() == 0:
             return ""
         sorgu = user_message.strip() if user_message.strip() else "son konuşmalar"
-        result = col.query(query_texts=[sorgu], n_results=min(3, col.count()))
-        docs = result.get("documents", [[]])[0]
+        result = col.query(query_texts=[sorgu], n_results=min(3, col.count()),
+                           include=["documents", "metadatas", "distances"])
+        docs  = result.get("documents", [[]])[0]
+        ids   = result.get("ids",       [[]])[0]
+        metas = result.get("metadatas", [[]])[0]
+        if not docs:
+            return ""
+        # RED-MEM-02: Okurken injection + hash bütünlük kontrolü — bozuk kayıtlar atlanır
+        try:
+            from kuroshin_security import scan_chroma_documents
+            suspicious_ids = {s["id"] for s in scan_chroma_documents(docs, ids, metas)}
+            if suspicious_ids:
+                _log(f"[CHROMA] ⚠️ {len(suspicious_ids)} şüpheli kayıt context'ten çıkarıldı: {suspicious_ids}")
+            docs = [d for d, i in zip(docs, ids) if i not in suspicious_ids]
+        except Exception as _vf_e:
+            _log(f"[CHROMA] Hash doğrulama hatası: {_vf_e}")
         if not docs:
             return ""
         snippet = "\n---\n".join(str(d)[:300] for d in docs if d)
@@ -677,15 +749,32 @@ def _save_to_chroma(user_msg: str, assistant_reply: str):
         if pat.lower() in reply_lower:
             _log(f"[CHROMA] Kayıt atlandı (tool çıktısı kalıbı: '{pat}')")
             return
+
+    # BLUE-MEM-01: ChromaDB yazma öncesi injection taraması
     try:
+        from kuroshin_security import scan_for_injection
+        full_content = f"{user_msg} {assistant_reply}"
+        clean, threat = scan_for_injection(full_content, source="chroma_save")
+        if not clean:
+            _log(f"[CHROMA] ⚠️ Zararlı içerik engellendi, ChromaDB'ye kaydedilmedi: {threat[:100]}")
+            return
+    except Exception as _sec_e:
+        _log(f"[CHROMA] Güvenlik taraması hatası: {_sec_e}")
+
+    try:
+        import hashlib as _hashlib_chroma
         col = _get_chroma_col()
         if col is None:
             return
         ts = datetime.datetime.now().isoformat()[:19]
         doc = f"[{ts}] kuroshin_user: {user_msg[:200]}\nKuroshin: {assistant_reply[:300]}"
         doc_id = f"chat_{ts.replace(':', '').replace('-', '').replace('T', '_')}"
-        col.add(documents=[doc], ids=[doc_id])
-        _log(f"[CHROMA] Konuşma kaydedildi: {doc_id} (toplam: {col.count()})")
+        # BLUE-MEM-02: SHA256 bütünlük imzası
+        doc_hash = _hashlib_chroma.sha256(
+            (doc + ts + "kuroshin_integrity_2026").encode("utf-8")
+        ).hexdigest()[:16]
+        col.add(documents=[doc], ids=[doc_id], metadatas=[{"integrity_hash": doc_hash, "ts": ts}])
+        _log(f"[CHROMA] Kaydedildi: {doc_id} hash:{doc_hash} (toplam: {col.count()})")
     except Exception as e:
         _log(f"[CHROMA] Kayıt hatası: {e}")
 
@@ -927,11 +1016,20 @@ i7-12650H | 32GB RAM | RTX 4060 Laptop 8GB VRAM | WSL2 Ubuntu-22.04 | Path: /mnt
 
 ARAÇ SEÇİM:
 write_file → dosya yaz | read_file → dosya oku | system_command → bash
-web_search / walker_research → web (internet aktifse) | chroma_search → semantik hafıza
-model_switch → model değiştir | reminder → hatırlatıcı | internet_status → bağlantı
+web_search → hızlı haber/kısa bilgi | walker_research → SADECE derin analiz isteyince | chroma_search → semantik hafıza
+reddit_read → subreddit oku | reddit_tool → yorum/post/karma (PRAW, credentials gerekir)
+model_switch → model değiştir | reminder → hatırlatıcı ('X dakika/saat sonra uyar', 'hatırlat', 'uyar') — web araştırma YAPMA | internet_status → bağlantı
 Araç öncesi 1 satır açıklama, sonucu kısa özetle.
 
 İNTERNET: {internet_line}"""
+
+# ── BLUE-NEURAL-01: System Prompt Integrity Lock ─────
+# Dinamik yer tutucuları çıkarıp sabit çekirdeği hash'le
+_PROMPT_CORE = SYSTEM_PROMPT.split("{mood_line}")[0] + SYSTEM_PROMPT.split("{internet_line}")[-1]
+_prompt_integrity_ok, _prompt_integrity_detail = verify_prompt_integrity(_PROMPT_CORE)
+if not _prompt_integrity_ok:
+    _logger = logging.getLogger("kuroshin.chancellor")
+    _logger.critical("[SECURITY] ⚠️ SYSTEM PROMPT BÜTÜNLÜĞÜ BOZULDU: %s", _prompt_integrity_detail)
 
 # ── İNTERNET DURUMU ──────────────────────────────────
 _internet_cache: dict = {"durum": None, "ts": 0.0}
@@ -1064,12 +1162,15 @@ def _get_system_info(konu: str) -> str:
     return "\n\n".join(satirlar) if satirlar else "Bilinmeyen konu."
 
 # ── WEB SONUCU ÖZET SIKIŞTIRICI ───────────────────────
-_OZET_ESIK = 3000  # karakter — üstünde mini-özet çağrısı yapılır
+_OZET_ESIK = 2000  # karakter — üstünde mini-özet çağrısı yapılır (web_search: truncate, walker: LLM)
 
 def _ozet_web_sonucu(raw: str, kaynak: str = "web") -> str:
     """Uzun web/walker sonucunu 16K context'e sığacak şekilde özetle."""
     if len(raw) <= _OZET_ESIK:
         return raw
+    # web_search için LLM özet çağrısı yapma — ekstra LLM geciktirmez
+    if kaynak == "web_search":
+        return raw[:_OZET_ESIK] + f"\n...[{len(raw) - _OZET_ESIK} karakter kesildi]"
     _log(f"[OZET] {kaynak} sonucu uzun ({len(raw)} kar) — mini özet çağrısı")
     try:
         ozet_payload = {
@@ -1144,6 +1245,63 @@ def run_tool(name: str, args: dict) -> str:
             return "❌ Konsey servisi kapalı (port 9004)"
         except Exception as e:
             return f"Gözcü hatası: {e}"
+
+    elif name == "reddit_tool":
+        import os as _os_reddit
+        _r_client_id  = _os_reddit.getenv("REDDIT_CLIENT_ID", "")
+        _r_secret     = _os_reddit.getenv("REDDIT_SECRET", "")
+        _r_password   = _os_reddit.getenv("REDDIT_PASSWORD", "")
+        _r_username   = _os_reddit.getenv("REDDIT_USERNAME", "General-Zucchini8715")
+        islem = args.get("islem", "karma")
+
+        if islem != "karma" and (not _r_client_id or not _r_secret or not _r_password):
+            return "❌ Reddit API credentials eksik — .env'e REDDIT_CLIENT_ID, REDDIT_SECRET, REDDIT_PASSWORD ekle."
+
+        try:
+            import praw as _praw
+            _reddit = _praw.Reddit(
+                client_id=_r_client_id or "placeholder",
+                client_secret=_r_secret or "placeholder",
+                password=_r_password or "placeholder",
+                user_agent=f"Kuroshin/1.0 personal bot u/{_r_username}",
+                username=_r_username,
+            )
+            if islem == "karma":
+                if not _r_client_id:
+                    return "❌ REDDIT_CLIENT_ID eksik — karma sorgulanamaz."
+                u = _reddit.redditor(_r_username)
+                lk = u.link_karma; ck = u.comment_karma
+                _log(f"[REDDIT] karma: link={lk} comment={ck}")
+                return f"👤 u/{_r_username} — Link: {lk} | Yorum: {ck} | Toplam: {lk+ck}"
+
+            elif islem == "post":
+                sub  = args.get("subreddit", "")
+                bas  = args.get("baslik", "")
+                ice  = args.get("icerik", "")
+                if not sub or not bas or not ice:
+                    return "❌ post için subreddit, baslik, icerik gerekli."
+                # Rate limit — 10dk minimum
+                if time.time() - _REDDIT_SON_POST.get("ts", 0) < 600:
+                    kal = int(600 - (time.time() - _REDDIT_SON_POST["ts"]))
+                    return f"⏱️ Anti-spam: {kal}s bekle."
+                submission = _reddit.subreddit(sub).submit(bas, selftext=ice)
+                _REDDIT_SON_POST["ts"] = time.time()
+                _log(f"[REDDIT] Post açıldı r/{sub}: {bas[:50]}")
+                aktivite_kaydet(f"Reddit post r/{sub}: {bas[:50]}", kategori="reddit")
+                return f"✅ Post açıldı: https://reddit.com{submission.permalink}"
+
+            elif islem == "yorum":
+                pid  = args.get("post_id", "").lstrip("t3_")
+                ice  = args.get("icerik", "")
+                if not pid or not ice:
+                    return "❌ yorum için post_id ve icerik gerekli."
+                submission = _reddit.submission(id=pid)
+                comment = submission.reply(ice)
+                _log(f"[REDDIT] Yorum: {pid} → {comment.id}")
+                aktivite_kaydet(f"Reddit yorum post:{pid}", kategori="reddit")
+                return f"✅ Yorum yapıldı: https://reddit.com{comment.permalink}"
+        except Exception as e:
+            return f"Reddit hatası: {e}"
 
     elif name == "reddit_read":
         subreddit = args.get("subreddit", "LocalLLaMA").strip().lstrip("r/")
@@ -1620,6 +1778,38 @@ def run_tool(name: str, args: dict) -> str:
             return "\n".join(lines)
         except Exception as e:
             return f"chroma_search hatası: {e}"
+
+    elif name == "memory_integrity_scan":
+        limit = min(int(args.get("limit", 500)), 500)
+        try:
+            col = _get_chroma_col()
+            if col is None:
+                return "❌ ChromaDB başlatılamadı."
+            total = col.count()
+            if total == 0:
+                return "📭 Hafızada taranacak kayıt yok."
+            fetch_limit = min(total, limit)
+            all_data = col.get(limit=fetch_limit, include=["documents", "metadatas"])
+            docs  = all_data.get("documents", [])
+            ids   = all_data.get("ids", [])
+            metas = all_data.get("metadatas", [])
+            from kuroshin_security import scan_chroma_documents
+            suspicious = scan_chroma_documents(docs, ids, metas)
+            if not suspicious:
+                return (f"🛡️ <b>Hafıza Bütünlük Taraması Tamamlandı</b>\n"
+                        f"✅ {fetch_limit}/{total} kayıt incelendi — injection veya hash bozukluğu yok.")
+            lines = [f"⚠️ <b>Hafıza Taraması — {len(suspicious)} şüpheli kayıt!</b> ({fetch_limit}/{total} tarandı)"]
+            for i, s in enumerate(suspicious[:10], 1):
+                lines.append(
+                    f"\n{i}. <code>{s['id']}</code> [{s['ts']}]\n"
+                    f"<b>Tehdit:</b> {s['threat'][:100]}\n"
+                    f"<i>{s['excerpt'][:100]}</i>"
+                )
+            if len(suspicious) > 10:
+                lines.append(f"\n... ve {len(suspicious) - 10} kayıt daha.")
+            return "\n".join(lines)
+        except Exception as e:
+            return f"memory_integrity_scan hatası: {e}"
 
     elif name == "self_update":
         hedef = args.get("hedef", "")
@@ -2515,6 +2705,18 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
     _CURRENT_CHAT_ID = chat_id
     _log(f"[CHANCELLOR] Mesaj: {text[:100]}{' [TEST]' if test_mode else ''}")
 
+    # BLUE-CRES-01: Crescendo (kademeli tırmanma) dedektörü
+    if not test_mode and not text.startswith("/"):
+        if chat_id not in _ESCALATION_HISTORY:
+            _ESCALATION_HISTORY[chat_id] = _deque(maxlen=5)
+        _ESCALATION_HISTORY[chat_id].append(text)
+        esc = escalation_score(list(_ESCALATION_HISTORY[chat_id]))
+        if esc >= 0.7:
+            _log(f"[SECURITY] ⚔️ CRESCENDO ALARM! chat:{chat_id} skor:{esc:.3f}")
+            send_msg(chat_id,
+                     f"⚠️ Şüpheli konuşma akışı tespit edildi (eskalasyon skoru: {esc:.2f}). "
+                     f"Bu konuşma güvenlik kaydına alındı.")
+
     # Her mesajda ilgi_skoru güncelle (slash komutları dahil)
     try:
         _persona, _mood = _load_soul()
@@ -3053,7 +3255,7 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         # Araç çağrısı var mı?
         tool_calls = msg.get("tool_calls", [])
         if tool_calls:
-            messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
+            messages.append({"role": "assistant", "content": _strip_think(msg.get("content") or ""), "tool_calls": tool_calls})
             for tc in tool_calls:
                 fn_name = tc["function"]["name"]
                 fn_args = json.loads(tc["function"]["arguments"])
@@ -3179,6 +3381,21 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             while content and unicodedata.category(content[-1]) in ("So", "Sm", "Sk", "Sc"):
                 content = content.rstrip(content[-1]).rstrip()
             _log(f"[TELEGRAM_OUT] [{chat_id}] {content[:200]}")
+            # BLUE-NEURAL-02: Çıktıda şüpheli encoding var mı?
+            try:
+                from kuroshin_security import scan_output_encoding
+                _out_susp, _out_reason = scan_output_encoding(content)
+                if _out_susp:
+                    _log(f"[NEURAL-02] ⚠️ Çıktıda şüpheli encoding: {_out_reason}")
+                    if chat_id != ALLOWED_ID:
+                        send_msg(ALLOWED_ID,
+                                 f"⚠️ <b>[BLUE-NEURAL-02]</b> Çıktıda şüpheli encoding!\n"
+                                 f"<code>{_out_reason[:120]}</code>\n"
+                                 f"<i>İlk 200 kar:</i> <code>{content[:200]}</code>")
+                    content = ("⚠️ [GÜVENLİK] Yanıt olağandışı encoding içeriyor, engellendi. "
+                               "Lordum, lütfen soruyu farklı bir şekilde sorun.")
+            except Exception as _nn2_e:
+                _log(f"[NEURAL-02] Tarama hatası: {_nn2_e}")
             send_msg(chat_id, content)
             # Konuşmayı ChromaDB'ye kaydet (test modunda atla)
             if not test_mode:
@@ -3520,7 +3737,12 @@ def main():
     offset = 0
     consecutive_errors = 0
     _son_haftalik_ts: float = 0.0       # ChromaDB haftalık özet son tetik
-    _son_canlilik_ts: float = 0.0       # Canlılık araştırması son tetik
+    # Canlılık son tetik — dosyadan yükle (0 başlangıcı her restart'ta tetikler)
+    _CANLILIK_TS_FILE = Path("/mnt/c/Kuroshin/memory/canlilik_son_ts.json")
+    try:
+        _son_canlilik_ts: float = json.loads(_CANLILIK_TS_FILE.read_text())["ts"]
+    except Exception:
+        _son_canlilik_ts: float = time.time()  # ilk boot: 7 gün bekle
     _son_gunluk_arastirma_gun: str = "" # Sabah otonom araştırma (tarih bazlı)
     _son_oz_yansima_ts: float = 0.0     # Öz-yansıma son tetik
     _son_aktivite_ozet_gun: str  = ""   # MİMİC aktivite günlük özeti (tarih bazlı)
@@ -3568,6 +3790,10 @@ def main():
             # Canlılık araştırması — her 7 günde bir (168 saat)
             if time.time() - _son_canlilik_ts >= 604800:
                 _son_canlilik_ts = time.time()
+                try:
+                    _CANLILIK_TS_FILE.write_text(json.dumps({"ts": _son_canlilik_ts}))
+                except Exception:
+                    pass
                 import threading as _thr5
                 _thr5.Thread(target=_canlilik_arastir, daemon=True, name="canlilik-arastir").start()
 

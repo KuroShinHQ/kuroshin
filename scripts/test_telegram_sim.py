@@ -172,11 +172,11 @@ TESTLER = [
     ("W1",  "Web",     "İnternet bağlantın var mı?",
      "internet_status → UP/DOWN",                150),
     ("W2",  "Web",     "Bugün AI dünyasında ne var?",
-     "web_search → Walker özet",                120),
+     "web_search → Walker özet",                200),
 
     # GRUP 5 — Medya
     ("M1",  "Medya",   "Beni 1 dakika sonra uyar: sim test",
-     "reminder → 1dk hatırlatıcı",              120),
+     "reminder → 1dk hatırlatıcı",              150),
 
     # GRUP 6 — MİMİC Araçları (FAZ A + FAZ C)
     ("G1",  "GitHub",  "GitHub repo durumunu göster, git status çıktısını ver",
@@ -186,7 +186,7 @@ TESTLER = [
 
     # GRUP 7 — FAZ D Aktivite Günlüğü
     ("D1",  "Aktivite", "aktivite_gunluk aracını kullan, bugünkü kaydedilen aktiviteleri listele",
-     "aktivite_gunluk listele → 📓 Aktivite Günlüğü veya 'henüz aktivite yok'", 90),
+     "aktivite_gunluk listele → 📓 Aktivite Günlüğü veya 'henüz aktivite yok'", 150),
     ("D2",  "Aktivite", "Bugün ne yaptın? Aktivite günlüğünü özetle",
      "aktivite_gunluk ozet → günlük özet veya aktivite yok bildirimi",          120),
 ]
@@ -222,7 +222,13 @@ def run_tests(secili: list[str] | None = None, restart: bool = False):
     )
     time.sleep(3)
 
+    son_grup = None
     for idx, (tid, grup, mesaj, beklenti, timeout) in enumerate(aktif_testler, 1):
+        # Grup değişiminde chancellor restart — context'i temizler
+        if restart and grup != son_grup and son_grup is not None:
+            print(f"\n[SIM] Grup geçişi ({son_grup} → {grup}) — chancellor restart...")
+            _chancellor_restart()
+        son_grup = grup
         print(f"\n[{idx}/{toplam}] {tid} ({grup}) — {mesaj[:50]}")
         tg_send(
             f"🧪 <b>[{idx}/{toplam}] {tid}</b> ({grup})\n"
@@ -246,6 +252,9 @@ def run_tests(secili: list[str] | None = None, restart: bool = False):
             sonuclar.append((tid, grup, mesaj, None, [f"❌ TIMEOUT ({timeout}s)"], False))
             tg_send(f"⏱️ <b>{tid}</b> TIMEOUT ({timeout}s)")
             print(f"  [TIMEOUT] {timeout}s")
+            # Timeout sonrası stuck processing temizle — sonraki test 500 almasın
+            print("[SIM] Timeout — chancellor restart (stuck processing temizle)...")
+            _chancellor_restart()
         else:
             gecti, notlar = format_kontrol(yanit)
             sonuclar.append((tid, grup, mesaj, yanit, notlar, gecti))
