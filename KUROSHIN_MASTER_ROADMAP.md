@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.9.0
-**Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — **FULL POWER MODE AKTIF** — Chancellor + Orchestrator entegre, Dalga 5 verify 38/38 🔱
+# KUROSHIN OS — MASTER ROADMAP v11.10.0
+**Son Güncelleme:** 31 Mayıs 2026
+**Durum:** 🟢 STABİL — **FULL POWER + HW GUARD AKTIF** — Pre-action VRAM/temp kontrolü, Dalga 5 verify 46/46 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,42 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.10.0 — 31 Mayıs 2026 — DALGA 5.6: HARDWARE GUARDIAN AKTIF KORUMA
+
+**Lord direktifi:** "Donanımı koru, komut verildiğinde tam güç ama PC'yi öldürme."
+
+**Çıkış noktası:** `vram_guardian.py` daemon var (30s polling, SIGSTOP/SIGCONT ile LitServe/LiteLLM/Chroma suspend) ama **pre-action API yok** — agent ağır iş yapmadan önce check edemiyor.
+
+**Yeni modül `scripts/kuroshin_hw_guard.py` (read-only API, daemon'a dokunmaz):**
+- `get_hw_status() -> dict`: NVML metric (VRAM, temp, throttle reason)
+- `safe_for_heavy(reserve_mb=500) -> (bool, reason)`: pre-action karar
+- `short_status_line() -> str`: emoji-bezeli özet (🟢/🟡/🔴 VRAM + temp)
+- `record_throttle_event(context)`: JSONL audit log `logs/hw_throttle_events.jsonl`
+- Eşikler vram_guardian ile **aynı**: VRAM 7500/7800 MB, temp 85/90°C
+- **NVML Thermal Throttle reason** tespiti (HW/SW thermal slowdown bit-mask)
+
+**Chancellor entegrasyonu (full_power_query pre-check):**
+- Tool çalışmadan önce `safe_for_heavy()` çağrılır
+- Engellenirse: `⚠️ Donanım zorlanıyor — full power ertelendi. Sebep: ... 30s sonra dene.`
+- İzin verilirse: yanıt'a HW status line eklenir (`🟢 VRAM 4857/8188MB (59.3%) | 🟢 61°C`)
+- Log tag: `[FULL_POWER BLOCKED]` (event log'a da yazılır)
+
+**Live verify (`scripts/_verify_dalga5_6_hw_guard.py`): 6/6 = %100**
+- T1 status retrievable ✓
+- T2 status_line format ✓
+- T3 safe normal (ok) ✓
+- T4 negative test (overload reserve → false) ✓
+- T5 event log writable ✓
+- T6 chancellor entegrasyonu ✓
+
+**Anlık ölçüm:** VRAM 4857/8188 MB (59.3%) — 🟢, Temp 57°C — 🟢, Throttle yok.
+
+**Iron Inquisitor `test_suite_dalga5.json`:**
+- 5.1: 6 + 5.2: 10 + 5.3: 8 + 5.4: 9 + 5.5: 5 + 5.6: 8 = **46 test**
+- **46/46 PASS %100**
+
+**Dalga 5.7 Vision İPTAL (31 May 2026):** Qwen3-VL-30B 17GB > 8GB; vardiyalı 4B model swap = 30-60s overhead. ROI düşük. Lord: "gercekci durmuyor".
 
 ### v11.9.0 — 30 Mayıs 2026 — DALGA 5.5: CHANCELLOR FULL POWER MODE
 

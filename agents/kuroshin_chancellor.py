@@ -2343,6 +2343,7 @@ def run_tool(name: str, args: dict) -> str:
 
     elif name == "full_power_query":
         # DALGA 5.5: LangGraph orchestrator entegrasyonu.
+        # DALGA 5.6: Pre-action HW guard kontrolu (VRAM/temp/throttle).
         # Hybrid RAG + Episodic Memory + Synthesizer paralel calismasi icin
         # bagimsiz modul (kuroshin_orchestrator) cagrilir. Chancellor ana akisi
         # bozulmaz — orchestrator hata verirse fallback mesaj donulur.
@@ -2354,8 +2355,26 @@ def run_tool(name: str, args: dict) -> str:
             _scripts_path = "/mnt/c/Kuroshin/scripts"
             if _scripts_path not in _sys.path:
                 _sys.path.insert(0, _scripts_path)
+
+            # DALGA 5.6: Pre-action HW guard
+            hw_status_line = "(HW guard yok)"
+            try:
+                from kuroshin_hw_guard import safe_for_heavy, short_status_line, record_throttle_event
+                hw_ok, hw_reason = safe_for_heavy()
+                hw_status_line = short_status_line()
+                if not hw_ok:
+                    record_throttle_event("full_power_query_blocked", {"query": query[:120]})
+                    _log(f"[FULL_POWER BLOCKED] {hw_reason} | {hw_status_line}")
+                    return (
+                        f"⚠️ Donanım zorlanıyor — full power ertelendi.\n"
+                        f"Sebep: {hw_reason}\n{hw_status_line}\n"
+                        f"30s sonra tekrar dene veya normal yanıt iste."
+                    )
+            except ImportError:
+                pass
+
             from kuroshin_orchestrator import run as _orch_run
-            _log(f"[FULL_POWER] query='{query[:80]}'")
+            _log(f"[FULL_POWER] query='{query[:80]}' | hw={hw_status_line}")
             result = _orch_run(query)
             answer = (result.get("final_answer") or "").strip()
             metrics = result.get("metrics", {}) or {}
@@ -2366,7 +2385,8 @@ def run_tool(name: str, args: dict) -> str:
             if not answer:
                 return "⚠️ Full power: orchestrator boş yanıt döndü."
             return (
-                f"⚡ <b>Full Power</b> ({total_ms}ms · rag={rag_n} · ep={ep_n})\n\n{answer}"
+                f"⚡ <b>Full Power</b> ({total_ms}ms · rag={rag_n} · ep={ep_n})\n"
+                f"<i>{hw_status_line}</i>\n\n{answer}"
             )
         except Exception as e:
             _log(f"[FULL_POWER ERR] {e}")

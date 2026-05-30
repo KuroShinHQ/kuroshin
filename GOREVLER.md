@@ -57,11 +57,19 @@
 - Yanıt formatı: `⚡ Full Power (Xms · rag=N · ep=M)\n\n<text>`
 - Risk koruması: orchestrator hata verirse safe fallback, chancellor ana akış bozulmaz
 
-### 5.6 Hardware Guardian Aktif Koruma ⏳ Sıra geldi
-- Mevcut `vram_guardian.py` öğren + extend
-- `pre_action_check()`: VRAM %85, temp 80°C eşik kontrolleri
-- Chancellor full_power_query öncesi guardian çağrısı
-- Throttle/overheat → Lord'a uyarı + queue
+### 5.6 Hardware Guardian Aktif Koruma ✅ TAMAMLANDI (31 May 2026)
+**Kanıt zinciri:**
+- `scripts/kuroshin_hw_guard.py` — read-only API modülü (vram_guardian daemon'a dokunmaz)
+  - `safe_for_heavy(reserve_mb=500)`: pre-action karar (VRAM/temp/throttle)
+  - `get_hw_status()`: NVML metric (Thermal Throttle reason bit-mask dahil)
+  - `short_status_line()`: emoji-bezeli özet 🟢/🟡/🔴
+  - `record_throttle_event()`: JSONL audit log
+- Chancellor `full_power_query` pre-check entegre:
+  - Engellenirse: "⚠️ Donanım zorlanıyor — 30s sonra dene"
+  - İzin verilirse: yanıt'a HW status eklenir
+- Live verify (`scripts/_verify_dalga5_6_hw_guard.py`): 6/6 = %100
+- Anlık ölçüm: VRAM 4857/8188 MB (%59.3) 🟢, Temp 57°C 🟢
+- Iron Inquisitor: 8/8 PASS (test_suite_dalga5.json toplam: 46/46)
 
 ### ❌ 5.7 Vision (Qwen3-VL) İPTAL — gerçekçi değil
 **Sebep:**

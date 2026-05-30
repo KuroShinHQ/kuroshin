@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.9.0 — 30 Mayıs 2026
+**Sürüm:** v11.10.0 — 31 Mayıs 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -123,14 +123,16 @@ Detay: `memory/feedback_lord_kurallari.md` (Claude memory sistemi)
 
 ---
 
-## 🏆 Son durum (v11.9.0 — 30 May 2026)
+## 🏆 Son durum (v11.10.0 — 31 May 2026)
 
 - **DALGA 5.1 ✅** Context 16K → **256K (16x kazanım)**
 - **DALGA 5.2 ✅** Hybrid RAG (BM25+Dense+RRF+CrossEncoder)
 - **DALGA 5.3 ✅** Episodic Memory (3 katman, JSON mode)
 - **DALGA 5.4 ✅** LangGraph Orchestrator (baseline %0 → multi-agent %100, +100 pp, %30 hızlı)
-- **DALGA 5.5 ✅** Chancellor **Full Power Mode** — `full_power_query` tool entegre, Lord komutu orchestrator'ı tetikler, live 3/3
-- **Iron Inquisitor:** 48/48 verify_v11 + **38/38 dalga5** + 73/73 security + 103/104 canlı tier_core (toplam 271 test)
+- **DALGA 5.5 ✅** Chancellor **Full Power Mode** — `full_power_query` tool entegre
+- **DALGA 5.6 ✅** Hardware Guardian — pre-action VRAM/temp/throttle koruması; her yanıta HW status line
+- **DALGA 5.7 ❌** Vision İPTAL (8GB VRAM yetmez, swap overhead)
+- **Iron Inquisitor:** 48/48 verify_v11 + **46/46 dalga5** + 73/73 security + 103/104 canlı tier_core (toplam 279 test)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif
