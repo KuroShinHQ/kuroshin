@@ -1,6 +1,46 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 29 Mayıs 2026
-**Süreç:** 🚀 **OTONOMİ-MAX** — DALGA 1+2+3+4 ✅ + **VERIFY SUITE 48/48 %100** (otomatik kanıt); DALGA 5 İPTAL (manuel test yok)
+**Son Güncelleme:** 30 Mayıs 2026
+**Süreç:** 🚀 **OTONOMİ-MAX** — DALGA 1+2+3+4 ✅ + **VERIFY 48/48** + **DALGA 5.1 ✅ Context 16K → 256K (16x)**; 5.2-5.5 sıra bekliyor
+
+---
+
+## ⚡ DALGA 5 — KAPASİTE PATLAMASI (30 May 2026 — Web research destekli)
+
+**Lord direktifi:** "Modeli kapasitesini artır, web araştırmasıyla globalden güçlendir, her başarılı adımda MD güncelle."
+
+### 5.1 Context 16K → 256K ✅ TAMAMLANDI
+**Kanıt:** GGUF `qwen35moe.context_length=262144`; needle@76K → "73729" PASS; Regression 48/48; VRAM 4.8/8 GB; Hız 17-22 tok/s korundu.
+**Dosyalar:** `memory/active_model.json`, `scripts/_inspect_gguf.py`, `scripts/_test_long_ctx_retrieval.sh`
+**Rapor:** `KUROSHIN_MASTER_ROADMAP.md` v11.5.0 başlığı
+
+### 5.2 Hybrid RAG ⏳ Sıra geldi
+- ChromaDB üstüne: **BM25 + Dense + RRF (k=60) + cross-encoder rerank**
+- Hedef: precision@10 ≥ %95 (20 doktrin sorgusu)
+- Maliyet: +500 MB embed (bge-reranker-v2-m3), +200ms latency
+- Web kanıtı: [Hybrid Search 2026](https://www.digitalapplied.com/blog/hybrid-search-bm25-vector-reranking-reference-2026), [Cross-Encoder Guide](https://localaimaster.com/blog/reranking-cross-encoders-guide)
+
+### 5.3 Mem0 Episodik Bellek ⏳
+- LoCoMo 92.5 (lider), p95 -%91, token -%90 vs naive context
+- 3 katman: episodic + semantic + procedural
+- Self-hosted OSS, ChromaDB ile entegre
+- Web kanıtı: [Mem0 benchmark](https://mem0.ai/blog/benchmarked-openai-memory-vs-langmem-vs-memgpt-vs-mem0-for-long-term-memory-here-s-how-they-stacked-up), [Memory Frameworks 2026](https://atlan.com/know/best-ai-agent-memory-frameworks-2026/)
+
+### 5.4 LangGraph Multi-Agent ⏸ Karar noktası
+- v0.4 (Nisan 2026), durable execution, LangSmith observability
+- Chancellor → orkestratör + Inquisitor + RAG-Agent paralel
+- Wall-clock ≥ %50 azalma hedefi (3 paralel görev)
+
+### 5.5 Qwen3-VL Vision ⏸ Opsiyonel
+- Qwen3-VL-30B-A3B (aynı MoE ailesi)
+- VRAM çakışması var (~5-8 GB ek)
+- Ekran/diyagram analizi için
+
+### ❌ Speculative Decoding ÖLDÜ (web kanıtı)
+- Qwen3.6-A3B MoE'de net-negatif (-3 ila -12% throughput) — RTX 3090 benchmark, PR #19493 sonrası
+- Sebep: A3B zaten 3B aktif → draft-verify overhead kazancı yiyor
+- Web: [thc1006 benchmark](https://github.com/thc1006/qwen3.6-speculative-decoding-rtx3090)
+
+---
 
 > **Bu dosya:** Aktif, dinamik TODO. Tamamlananlar `docs/YAPILACAK_GOREVLER.md` arşivine taşınır.
 > **Core MD'ler:** [`KUROSHIN_MASTER_ROADMAP.md`](KUROSHIN_MASTER_ROADMAP.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md) · `GOREVLER.md` (bu)

@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.4.0
+# KUROSHIN OS — MASTER ROADMAP v11.5.0
 **Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **VERIFY SUITE 48/48 %100 — Dalga 1-4 otomatik kanıt** 🔱
+**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 16K → 256K (16x), Verify 48/48 + Needle@76K PASS** 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -8,6 +8,47 @@
 > - `docs/OTONOM_AJAN_PROTOKOLU.md` — FAZ 1-6 + FAZ 7-13 tasarım (TAMAMLANDI / referans)
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
+> - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.5.0 — 30 Mayıs 2026 — DALGA 5.1: CONTEXT 16K → 256K (16x KAPASİTE PATLAMASI)
+
+**Lord direktifi:** "Kuroshin kapasitesini artır, web araştırmasıyla globalden güçlendir." → Web research + GGUF kanıt + otonom uygulama + needle-in-haystack verify.
+
+**KANIT TOPLAMA (FAZ 0 — Discovery):**
+- GGUF metadata (`scripts/_inspect_gguf.py`): `qwen35moe.context_length = 262144` (NATIVE 256K)
+- Mimari: 40 layers, head_count=16, **head_count_kv=2 (GQA)**, head_dim=128, embedding=2048
+- KV cache hesabı (Q4_0 ile): ~12 KB/token → 256K = **~3 GB VRAM**
+
+**FAZ 1 — Pre-flight (donanım uygunluğu):**
+- GPU: RTX 4060 Laptop 8 GB (~7.6 GB boş başlangıçta)
+- RAM: 27 GB toplam, 23 GB boş
+- Disk WSL: 876 GB boş
+
+**FAZ 2 — Uygulama:**
+- `memory/active_model.json`: `context_size: 16384 → 262144`
+- Backup: `memory/active_model.json.bak_v11.4`
+- `scripts/start_llama.sh` otomatik okur, `-c 262144 -ctk q4_0 -ctv q4_0 -fa on` ile başlattı (70s boot)
+
+**FAZ 3 — KANIT VERIFY (5 metrik):**
+1. ✅ `/props` endpoint: `n_ctx = 262144`
+2. ✅ VRAM: 4.8 GB / 8 GB (3.2 GB rezerv — sığıyor)
+3. ✅ Needle-in-haystack: **76,898 prompt token** içinde gizli "73729" → PASS
+4. ✅ Regression: `inquisitor_v5 test_suite_verify_v11.json` **48/48 PASS %100** (Dalga 1-4 kanıtları korundu)
+5. ✅ Hız: prompt 163 tok/s, generation 17-22 tok/s (önceki seviye)
+
+**Yan etkiler / öğrenim:**
+- Generation hızı 22.8 → 17.2 tok/s (76K context ile) — büyük KV cache nedeniyle, beklenen
+- VRAM rezervi 256K context'te bile rahat (3.2 GB)
+- Disk müsait olduğu için Q4 KV cache kullanıldı; daha yüksek kalite için ileride Q8 denenebilir (KV ~6 GB olur, hala sığar)
+
+**Kanıt scripts:** `scripts/_inspect_gguf.py`, `scripts/_test_ctx_256k.sh`, `scripts/_test_long_ctx_retrieval.sh`
+
+**Dalga 5 yol haritası (kalanlar):**
+- 5.2 Hybrid RAG (BM25 + Dense + RRF + cross-encoder rerank)
+- 5.3 Mem0 episodik bellek (LoCoMo 92.5, p95 -%91)
+- 5.4 LangGraph multi-agent (karar noktası)
+- 5.5 Qwen3-VL vision (opsiyonel)
+- ❌ Speculative decoding ÖLDÜ — Qwen3.6-A3B MoE'de net-negatif kanıtlandı (RTX 3090 benchmark)
 
 ### v11.4.0 — 30 Mayıs 2026 — IRON INQUISITOR GENİŞLEME + DALGA 1-4 OTOMATİK KANIT
 
