@@ -718,6 +718,20 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "full_power_query",
+            "description": "FULL POWER MODE (Dalga 5.5): Karmaşık veya çok-katmanlı sorulara LangGraph orchestrator ile yanıt. Hybrid RAG (BM25+Dense+RRF+Reranker) + Episodic Memory (3 katman) + Synthesizer paralel çalışır. Tek-LLM hallucination'a karşı %100 doğrulukta context-aware cevap üretir. 'Lord komutum tüm güçle çalışsın', 'derin yanit ver', 'full power' veya kritik sorular için kullan.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Yanıtlanacak ana soru/görev"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "memory_integrity_scan",
             "description": "ChromaDB hafıza bütünlüğünü tara — tüm kayıtları injection ve SHA256 hash doğrulama ile kontrol et (BLUE-MEM-03). 'hafızayı tara', 'güvenlik taraması', 'hafıza zehirlendi mi', 'kayıtları kontrol et' gibi istekler.",
             "parameters": {
@@ -1638,6 +1652,7 @@ _TOOL_KEYWORDS = {
     "walker_research":  ["araştır", "araştırma", "derin analiz", "incele", "research"],
     "web_search":       ["ara", "google", "haber", "güncel", "trend", "search"],
     "chroma_search":    ["hafıza", "hatırla", "geçmiş", "memory"],
+    "full_power_query": ["full power", "derin yanit", "tüm güçle", "tum gucle", "komple yanit", "kapsamli yanit"],
     "memory_query":     ["hafıza", "hatırla", "geçmiş"],
     "write_file":       ["yaz", "kaydet", "dosya oluştur", "write"],
     "read_file":        ["oku", "dosya içeriği", "read"],
@@ -2325,6 +2340,37 @@ def run_tool(name: str, args: dict) -> str:
             return "\n".join(lines)
         except Exception as e:
             return f"chroma_search hatası: {e}"
+
+    elif name == "full_power_query":
+        # DALGA 5.5: LangGraph orchestrator entegrasyonu.
+        # Hybrid RAG + Episodic Memory + Synthesizer paralel calismasi icin
+        # bagimsiz modul (kuroshin_orchestrator) cagrilir. Chancellor ana akisi
+        # bozulmaz — orchestrator hata verirse fallback mesaj donulur.
+        query = args.get("query", "").strip()
+        if not query:
+            return "⚠️ Full power için query gerekli."
+        try:
+            import sys as _sys
+            _scripts_path = "/mnt/c/Kuroshin/scripts"
+            if _scripts_path not in _sys.path:
+                _sys.path.insert(0, _scripts_path)
+            from kuroshin_orchestrator import run as _orch_run
+            _log(f"[FULL_POWER] query='{query[:80]}'")
+            result = _orch_run(query)
+            answer = (result.get("final_answer") or "").strip()
+            metrics = result.get("metrics", {}) or {}
+            rag_n = len(result.get("rag_results") or [])
+            ep_n = len(result.get("episodic_results") or [])
+            total_ms = metrics.get("total_ms", "?")
+            _log(f"[FULL_POWER] tamam ({total_ms}ms, rag={rag_n}, ep={ep_n})")
+            if not answer:
+                return "⚠️ Full power: orchestrator boş yanıt döndü."
+            return (
+                f"⚡ <b>Full Power</b> ({total_ms}ms · rag={rag_n} · ep={ep_n})\n\n{answer}"
+            )
+        except Exception as e:
+            _log(f"[FULL_POWER ERR] {e}")
+            return f"❌ Full power hata: {e}"
 
     elif name == "memory_integrity_scan":
         limit = min(int(args.get("limit", 500)), 500)

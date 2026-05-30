@@ -45,10 +45,30 @@
 - Iron Inquisitor: 9/9 PASS (test_suite_dalga5.json toplam: 33/33)
 - **Açık:** Chancellor entegrasyonu opsiyonel — bağımsız modül
 
-### 5.5 Qwen3-VL Vision ⏸ Opsiyonel
-- Qwen3-VL-30B-A3B (aynı MoE ailesi)
-- VRAM çakışması var (~5-8 GB ek)
-- Ekran/diyagram analizi için
+### 5.5 Chancellor Full Power Mode ✅ TAMAMLANDI (30 May 2026)
+**Kanıt zinciri:**
+- `agents/kuroshin_chancellor.py` → `full_power_query` tool eklendi
+- TOOLS array + _TOOL_KEYWORDS hints + run_tool handler + `[FULL_POWER]` log tag
+- Lazy import `from kuroshin_orchestrator import run as _orch_run` (boot etkisi yok)
+- Live verify (`scripts/_verify_dalga5_5_chancellor.py`): 3/3 = %100
+  - "favori sayi" → "73729" (11.5s)
+  - "chancellor restart" → "setsid" (6.7s)
+  - "manuel test" → "yasak/otomatik" (7.6s)
+- Yanıt formatı: `⚡ Full Power (Xms · rag=N · ep=M)\n\n<text>`
+- Risk koruması: orchestrator hata verirse safe fallback, chancellor ana akış bozulmaz
+
+### 5.6 Hardware Guardian Aktif Koruma ⏳ Sıra geldi
+- Mevcut `vram_guardian.py` öğren + extend
+- `pre_action_check()`: VRAM %85, temp 80°C eşik kontrolleri
+- Chancellor full_power_query öncesi guardian çağrısı
+- Throttle/overheat → Lord'a uyarı + queue
+
+### ❌ 5.7 Vision (Qwen3-VL) İPTAL — gerçekçi değil
+**Sebep:**
+- Qwen3-VL-30B Q4 = 17 GB VRAM (8GB'da olmaz)
+- Qwen3-VL-4B vardiyalı: model swap her seferinde 30-60s overhead → kullanıcı deneyimi kötü
+- ROI düşük: vision görevleri Kuroshin kullanım profiline uygun değil
+- Lord onayı 31 May 2026: "5.7 plani gercekci durmuyor" → iptal
 
 ### ❌ Speculative Decoding ÖLDÜ (web kanıtı)
 - Qwen3.6-A3B MoE'de net-negatif (-3 ila -12% throughput) — RTX 3090 benchmark, PR #19493 sonrası

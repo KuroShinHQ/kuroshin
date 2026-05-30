@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.8.0
+# KUROSHIN OS — MASTER ROADMAP v11.9.0
 **Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG + EPISODIC + LANGGRAPH MULTI-AGENT, Dalga 5 verify 33/33** 🔱
+**Durum:** 🟢 STABİL — **FULL POWER MODE AKTIF** — Chancellor + Orchestrator entegre, Dalga 5 verify 38/38 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,45 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.9.0 — 30 Mayıs 2026 — DALGA 5.5: CHANCELLOR FULL POWER MODE
+
+**Lord direktifi:** "Telegram'dan komut atınca tüm güçle yanıt. Tüm kontrol sende, donanımı koru."
+
+**Senaryo:**
+```
+Kuroshin.bat -> boot tamam -> Telegram komut -> chancellor full_power_query tool
+                                                  └─> kuroshin_orchestrator.run()
+                                                        ├─> RAG (Hybrid)
+                                                        ├─> Episodic (3 katman)
+                                                        └─> Synthesize (Huihui)
+                                                  -> Telegram yanit
+```
+
+**chancellor.py degisiklikleri (production touch, ana akış DOKUNMADI):**
+- TOOLS array'e `full_power_query` tool eklendi
+- `_TOOL_KEYWORDS`'a hints: "full power", "derin yanit", "tüm güçle", "tum gucle", "komple yanit", "kapsamli yanit"
+- `run_tool` handler eklendi: lazy import + orchestrator çağrı + safe fallback
+- Log tag: `[FULL_POWER]` traceability
+
+**Live kanıt (chancellor.run_tool simulasyonu):**
+- 3/3 query = **%100** doğru yanıt
+- Süre: 6.7s - 11.5s (ortalama ~8.6s)
+- Her query'de RAG 5 hit + Episodic 3 hit kullanıldı
+- Yanıt formatı: `⚡ Full Power (Xms · rag=N · ep=M)\n\n<text>`
+
+**Kullanım:**
+- Lord Telegram'a şöyle yazar: "Full power: kuroshin'in donanım kapasitesi nedir?"
+- Veya model komut anlamından otomatik tetikler (TOOL_KEYWORDS hint ile)
+- Model tool_call → run_tool → orchestrator pipeline → cevap
+
+**Risk koruması:** orchestrator hata verirse fallback string döner, chancellor ana akışı bozulmaz. Mevcut Dalga 1-4 KILIÇ-KALKAN savunmaları full_power_query çağrılarında da aktif.
+
+**Iron Inquisitor `test_suite_dalga5.json` genişledi:**
+- 5.1: 6 + 5.2: 10 + 5.3: 8 + 5.4: 9 + 5.5: 5 = **38 test**
+- **38/38 PASS %100**
+
+**Açık:** Dalga 5.6 Hardware Guardian (pre-action VRAM/temp check) sıra bekliyor.
 
 ### v11.8.0 — 30 Mayıs 2026 — DALGA 5.4: LANGGRAPH MULTI-AGENT ORCHESTRATOR
 

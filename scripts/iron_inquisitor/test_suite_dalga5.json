@@ -355,5 +355,59 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Dalga 5.4: Orchestrator vs baseline verify script"
+  },
+  {
+    "id": "verify-d5-5-full-power-tool",
+    "category": "verify_dalga5_5",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "full_power_query",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.5: full_power_query tool chancellor'da kayitli"
+  },
+  {
+    "id": "verify-d5-5-fp-keyword-hint",
+    "category": "verify_dalga5_5",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "full power",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.5: _TOOL_KEYWORDS'a full power hint"
+  },
+  {
+    "id": "verify-d5-5-orchestrator-import",
+    "category": "verify_dalga5_5",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "from kuroshin_orchestrator import run as _orch_run",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.5: chancellor orchestrator entegrasyonu (lazy import)"
+  },
+  {
+    "id": "verify-d5-5-fp-log-tag",
+    "category": "verify_dalga5_5",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "[FULL_POWER]",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.5: log tag [FULL_POWER] traceability"
+  },
+  {
+    "id": "verify-d5-5-verify-script",
+    "category": "verify_dalga5_5",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_verify_dalga5_5_chancellor.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.5: full power chancellor verify script"
   }
 ]
