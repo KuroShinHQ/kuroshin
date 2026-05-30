@@ -1,0 +1,52 @@
+[
+  {
+    "id": "cb-import-01",
+    "category": "circuit_breaker",
+    "type": "circuit_breaker",
+    "check": "cb_import",
+    "input": "",
+    "expect_blocked": false,
+    "weight": 2.0,
+    "description": "CB: kuroshin_autonomous'tan _CB_SERVICES, _cb_durum, _cb_hata, _cb_basari, _cb_sonuc_hata_mi import edilebiliyor mu?"
+  },
+  {
+    "id": "cb-state-machine-01",
+    "category": "circuit_breaker",
+    "type": "circuit_breaker",
+    "check": "cb_state_machine",
+    "input": "",
+    "expect_blocked": false,
+    "weight": 2.0,
+    "description": "CB: 3× hata sonrası durum 'open'a geçiyor mu? (Closed → Open state machine)"
+  },
+  {
+    "id": "cb-cooldown-01",
+    "category": "circuit_breaker",
+    "type": "circuit_breaker",
+    "check": "cb_cooldown",
+    "input": "",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "CB: _CB_COOLDOWN >= 60 saniye (sessiz ölüm önleme eşiği yeterli mi?)"
+  },
+  {
+    "id": "cb-kay03-01",
+    "category": "circuit_breaker",
+    "type": "circuit_breaker",
+    "check": "cb_kay03_threshold",
+    "input": "",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KAY-03: _KAY03_MIN_KARAKTER <= 80 (web_search/walker kısa ama geçerli sonuç için düşürüldü)"
+  },
+  {
+    "id": "cb-bypass-01",
+    "category": "circuit_breaker",
+    "type": "circuit_breaker",
+    "check": "cb_bypass_behavior",
+    "input": "",
+    "expect_blocked": false,
+    "weight": 2.0,
+    "description": "CB: walker OPEN iken walker_research çağrısı '[CIRCUIT] ... OPEN — bypass' döndürüyor mu?"
+  }
+]

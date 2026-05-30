@@ -1,0 +1,32 @@
+{
+  "goals": [
+    {
+      "id": "G-DOOM",
+      "baslik": "OVERDRIVE Tam Güç Pipeline Testi",
+      "aciklama": "16 araç, tüm güvenlik katmanları, HITL tetikleme",
+      "oncelik": 1,
+      "durum": "aktif",
+      "ilerleme": 0,
+      "alt_hedefler": [],
+      "olusturma_ts": "2026-05-22T15:29:24",
+      "son_guncelleme": "2026-05-22T15:29:24",
+      "notlar": "doom_test"
+    },
+    {
+      "id": "G-001",
+      "baslik": "Reddit'te LocalLLaMA topluluğuna katıl",
+      "aciklama": "r/LocalLLaMA'da kaliteli yorumlar yaparak toplulukla bağ kur, karma kazan",
+      "oncelik": 2,
+      "durum": "aktif",
+      "ilerleme": 100,
+      "alt_hedefler": [
+        "karma_kazan",
+        "ilk_yorum",
+        "takip_et"
+      ],
+      "olusturma_ts": "2026-05-22T10:00:00",
+      "son_guncelleme": "2026-05-22T14:25:35",
+      "notlar": ""
+    }
+  ]
+}

@@ -1,0 +1,147 @@
+[
+  {
+    "id": "faz1-goals-load-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "goals_load",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ1: load_goals() ve load_tasks() liste döndürmeli."
+  },
+  {
+    "id": "faz1-task-crud-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "task_crud",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ1: add_task() + load_tasks() + update_task() roundtrip (geçici dosya)."
+  },
+  {
+    "id": "faz1-context-bridge-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "context_bridge",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ1: save_context() + load_context() roundtrip + clear_context() → aktif_gorev_id None."
+  },
+  {
+    "id": "faz1-dongu-kirici-bloke-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "dongu_kirici",
+    "input": "T-LOOP-TEST",
+    "expect_in_gecmis": true,
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "FAZ1 F4-04: Son 3 geçmişte olan görev → dongu_kirici_kontrol True döndürmeli."
+  },
+  {
+    "id": "faz1-dongu-kirici-izin-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "dongu_kirici",
+    "input": "T-YENI-GOREV-999",
+    "expect_in_gecmis": false,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ1 F4-04: Geçmişte olmayan görev → dongu_kirici_kontrol False döndürmeli."
+  },
+  {
+    "id": "faz1-hedef-ilerleme-01",
+    "category": "faz1_goals",
+    "type": "goals_test",
+    "check": "hedef_ilerleme",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ1 F4-03: hedef_ilerleme_guncelle() — 1/2 tamamlandı = %50 hesaplamalı."
+  },
+  {
+    "id": "faz2-parse-think-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "parse_karar",
+    "input": "<think>Uzun düşünce bloğu. Model durumu analiz ediyor. Sonuca varıyor.</think>\n{\"karar\": \"A\", \"task_id\": \"T-001\", \"sebep\": \"En yüksek öncelikli bekleyen görev\"}",
+    "expected_key": "karar",
+    "expected_value": "A",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ2 F2-03: _parse_karar() think bloğunu strip edip JSON parse etmeli."
+  },
+  {
+    "id": "faz2-parse-fence-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "parse_karar",
+    "input": "```json\n{\"karar\": \"C\", \"bekle_dakika\": 60, \"sebep\": \"Bekleyen görev yok\"}\n```",
+    "expected_key": "karar",
+    "expected_value": "C",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ2 F2-03: _parse_karar() markdown ```json fence bloğunu parse etmeli."
+  },
+  {
+    "id": "faz2-parse-ham-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "parse_karar",
+    "input": "{\"karar\": \"B\", \"goal_id\": \"G-001\", \"baslik\": \"Yeni araştırma görevi\", \"sebep\": \"Hedef ilerletmek için\"}",
+    "expected_key": "karar",
+    "expected_value": "B",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ2 F2-03: _parse_karar() ham JSON string parse etmeli."
+  },
+  {
+    "id": "faz2-parse-fail-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "parse_karar",
+    "input": "Bu tamamen geçersiz bir metin. JSON yok burada. Karar veremiyorum.",
+    "expected_key": null,
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "FAZ2 F2-03: _parse_karar() geçersiz girdide None döndürmeli."
+  },
+  {
+    "id": "faz2-wakeup-json-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "wakeup_json",
+    "input": "10",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ2 F4-02: uyku_zamanla(10) → next_wakeup.json doğru ts ile yazılmalı."
+  },
+  {
+    "id": "faz2-onay-gereken-bloke-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "onay_gereken",
+    "input": "github",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "FAZ2 F4-05: 'github' _ONAY_GEREKEN setinde → bloke edilmeli."
+  },
+  {
+    "id": "faz2-onay-gereken-izin-01",
+    "category": "faz2_autonomous",
+    "type": "autonomous_test",
+    "check": "onay_gereken",
+    "input": "walker_research",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ2 F4-05: 'walker_research' _ONAY_GEREKEN'de değil → onaysız geçmeli."
+  },
+  {
+    "id": "faz6-md-yedek-01",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_yedek",
+    "dosya": "/mnt/c/Kuroshin/OTONOM_AJAN_PROTOKOLU.md",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ6 F6-03: _md_yedek_al() md_backups/ altında yedek dosya oluşturmalı."
+  }
+]

@@ -26,9 +26,16 @@ from kuroshin_security import (
     check_path_write, check_path_read,
     decode_and_rescan, escalation_score,
     verify_prompt_integrity, save_prompt_integrity,
+    # FAZ 2 eklentileri
+    monitor_think_drift, detect_reasoning_hijack,
+    detect_mcfa, detect_constraint_tightening,
+    tag_unverified_content,
+    # FAZ 3 eklentileri
+    alignment_check, formal_safety_check,
 )
 from collections import deque as _deque
 _ESCALATION_HISTORY: dict = {}  # {chat_id: deque(maxlen=5)}
+_CURRENT_USER_MSG: str = ""     # FAZ 3: alignment_check için aktif kullanıcı mesajı
 
 # IPv6 devre dışı — WSL'de api.telegram.org IPv6 adresi resolve oluyor ama bağlanamıyor
 _orig_getaddrinfo = socket.getaddrinfo
@@ -85,6 +92,18 @@ def _strip_think(text: str) -> str:
                 clean, threat = scan_for_injection(block, source="think_block")
                 if not clean:
                     _logger.warning("[SECURITY] Think bloğunda injection: %s", threat[:100])
+                # FAZ 2: CoT drift + reasoning hijack kontrolü
+                drift_ok, drift_msg = monitor_think_drift(block)
+                if not drift_ok:
+                    _logger.warning("[SECURITY] CoT drift tespit edildi: %s", drift_msg[:100])
+                hijack_ok, hijack_msg = detect_reasoning_hijack(block)
+                if not hijack_ok:
+                    _logger.warning("[SECURITY] Reasoning hijack tespit edildi: %s", hijack_msg[:100])
+                # FAZ 3: Plan↔eylem tutarlılık kontrolü (alignment_check)
+                if _CURRENT_USER_MSG:
+                    align_ok, align_msg = alignment_check(_CURRENT_USER_MSG, block)
+                    if not align_ok:
+                        _logger.warning("[SECURITY] Alignment sapması: %s", align_msg[:100])
             except Exception:
                 pass
     cleaned = _re_global.sub(r"<think>.*?</think>", "", text, flags=_re_global.DOTALL)
@@ -106,7 +125,224 @@ _RESPONSE_LEAK_PATTERNS = [
     # Tekil açık/kapalı tag kalıntıları
     _re_global.compile(r'</?tool_call>', _re_global.IGNORECASE),
     _re_global.compile(r'</?function[_=][^>\s]*>', _re_global.IGNORECASE),
+    # D-A5 (29 May 2026): 1.kişi AI kimlik sızıntıları — SYSTEM_PROMPT KİMLİK kuralı ihlali
+    _re_global.compile(r'\b[Bb]en (?:bir |sadece bir )?yapay zek[aâ](?:y[ıi]m|m)?\b[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r'\b[Bb]ir (?:yapay zek[aâ]|AI|dil model[iı])\s*(?:olarak\s+ben|y[ıi]m|m)\b[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r"\b(?:AI'?(?:y[ıi]m|m)|dil model[iı]y[ıi]m|chatbot(?:y[ıi]m|um))\b[^.]*\.?", _re_global.IGNORECASE),
+    _re_global.compile(r'\b[Bb]ilgilerim\s+(?:s[ıi]n[ıi]rl[ıi]|g[uü]ncel\s+de[ğg]il|kesilmi[şs])[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r'\b[Mm]odel\s+olarak\s+ben[^.]*\.?', _re_global.IGNORECASE),
+    # D-C5 (29 May 2026): Dolgu cümle ve abartılı tonlama desenleri
+    # SYSTEM_PROMPT: "Kısa ve yoğun konuş. Dolgu kelime yok." kuralı pekiştirilmesi.
+    _re_global.compile(r'd[üu]ş[üu]n[üu]nce\s+garip\s+ama\s+[^.]+\.?',     _re_global.IGNORECASE),
+    _re_global.compile(r'\b[öo]yle\s+de[gğ]il\s+mi\b[^.]*\.?',              _re_global.IGNORECASE),
+    _re_global.compile(r'\ba[çc][ıi]k[çc]as[ıi]\b[^.]*?\.?',                _re_global.IGNORECASE),
+    _re_global.compile(r'\b(?:bu\s+yarat[ıi]klar|bir\s+[şs]ey\s+asl[ıi]nda)\b[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r'\bbiraz\s+(?:ilgin[çc]|garip|tuhaf)\b[^.]*\.?',    _re_global.IGNORECASE),
+    _re_global.compile(r'\bdo[gğ]rusu(?:nu\s+s[öo]ylemek)?\b[^.]*\.?',      _re_global.IGNORECASE),
+    _re_global.compile(r'\bd[üu]ş[üu]n[üu]rseniz\b[^.]*\.?',                _re_global.IGNORECASE),
 ]
+
+# ── THINK CHAIN LOGGER — TK-01 / TK-02 / TK-03 / TK-04 ─
+_THINK_CHAIN_DIR = Path("/mnt/c/Kuroshin/logs/think_chain")
+_TK02_STEPS = ["[NİYET]", "[STRATEJİ]", "[GÜVENLİK]", "[RAFİNE]"]
+
+_EN_FUNC_RE = _re_global.compile(
+    r'\b(the|is|are|was|were|will|have|has|had|do|does|did|not|this|that|'
+    r'and|or|but|for|with|from|into|about|which|what|when|where|why|how|'
+    r'can|could|would|should|must|may|might|i|you|he|she|we|they|it)\b',
+    _re_global.IGNORECASE
+)
+
+def _score_think(think_text: str, tool_called: str = "") -> dict:
+    """ThinkPRM analog: think kalitesini 0-100 puanla (TK-03).
+    +40p: 4 adım etiket | +20p: Türkçe | +20p: uzunluk≥300 | +20p: araç eşleşmesi"""
+    score = 0
+    detail: dict = {}
+
+    # 4 adım etiket → +10p her biri
+    found_steps = [s for s in _TK02_STEPS if s in think_text]
+    step_score = len(found_steps) * 10
+    score += step_score
+    detail["steps"] = {"found": found_steps, "score": step_score}
+
+    # Türkçe: İngilizce fonksiyon kelime oranı < %5 → 20p, < %15 → 10p
+    total_words = max(len(think_text.split()), 1)
+    en_count = len(_EN_FUNC_RE.findall(think_text))
+    en_ratio = en_count / total_words
+    tr_score = 20 if en_ratio < 0.05 else (10 if en_ratio < 0.15 else 0)
+    score += tr_score
+    detail["turkish"] = {"en_ratio": round(en_ratio, 3), "score": tr_score}
+
+    # Uzunluk: ≥300 → 20p, ≥150 → 10p
+    length = len(think_text.strip())
+    len_score = 20 if length >= 300 else (10 if length >= 150 else 0)
+    score += len_score
+    detail["length"] = {"chars": length, "score": len_score}
+
+    # Araç eşleşmesi: araç ismi think içinde geçiyor mu?
+    if tool_called:
+        tool_score = 20 if tool_called in think_text else 0
+    else:
+        tool_score = 20  # araç gerekmiyorsa kural geçerli değil → tam puan
+    score += tool_score
+    detail["tool_match"] = {"tool": tool_called, "score": tool_score}
+
+    return {"score": score, "max": 100, "detail": detail}
+
+
+def _get_grounding_context() -> str:
+    """Sembolik Çapa: anlık servis/hafıza/görev durumu → think_turn'e enjeksiyon (TK-04)."""
+    parts: list[str] = []
+
+    # Servis port durumu
+    import socket as _gsock
+    srv = {8080: "llama", 9002: "walker", 9004: "council"}
+    statuses = []
+    for port, name in srv.items():
+        try:
+            s = _gsock.socket()
+            s.settimeout(0.2)
+            ok = s.connect_ex(("127.0.0.1", port)) == 0
+            s.close()
+            statuses.append(f"{name}({'✅' if ok else '❌'})")
+        except Exception:
+            statuses.append(f"{name}(?)")
+    parts.append("SERVİSLER: " + " | ".join(statuses))
+
+    # ChromaDB kayıt sayısı
+    try:
+        col = _get_chroma_col()
+        if col is not None:
+            parts.append(f"HAFIZA: {col.count()} ChromaDB kaydı")
+    except Exception:
+        pass
+
+    # Aktif görev
+    _tasks_f = Path("/mnt/c/Kuroshin/memory/tasks.json")
+    try:
+        if _tasks_f.exists():
+            _tasks = json.loads(_tasks_f.read_text(encoding="utf-8"))
+            _aktif = [t for t in _tasks if t.get("durum") == "aktif"]
+            if _aktif:
+                t0 = _aktif[0]
+                parts.append(f"AKTİF GÖREV: {t0.get('id','?')} — {t0.get('baslik','')[:50]}")
+            else:
+                parts.append("AKTİF GÖREV: yok")
+    except Exception:
+        pass
+
+    return "\n".join(parts)
+
+
+# ── TK-05: Verifiable Audit Trails ───────────────────
+import hashlib as _hashlib_audit
+_AUDIT_DIR       = Path("/mnt/c/Kuroshin/logs/audits")
+_AUDIT_PREV_HASH = ""   # in-memory hash zinciri
+
+def _audit_write(entry: dict) -> None:
+    """SHA256 imzalı, hash-zincirli karar logu (TK-05)."""
+    global _AUDIT_PREV_HASH
+    try:
+        _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+        content_str  = json.dumps(entry, ensure_ascii=False, sort_keys=True)
+        content_hash = _hashlib_audit.sha256(content_str.encode()).hexdigest()
+        audit_entry  = {
+            "content_hash": content_hash,
+            "prev_hash":    _AUDIT_PREV_HASH,
+            **entry,
+        }
+        day_file = _AUDIT_DIR / f"{datetime.datetime.now().strftime('%Y-%m-%d')}.jsonl"
+        with open(day_file, "a", encoding="utf-8") as _af:
+            _af.write(json.dumps(audit_entry, ensure_ascii=False) + "\n")
+        _AUDIT_PREV_HASH = content_hash
+    except Exception as _ae:
+        _log(f"[AUDIT] Yazma hatası: {_ae}")
+
+
+# ── TK-06: Reasoning Fault Detector ──────────────────
+_tool_call_window: "_deque[str]" = _deque(maxlen=5)
+
+def _detect_think_faults(think_raw: str, tool_called: str = "") -> list[str]:
+    """Düşünce zinciri kusurlarnı tespit et (TK-06).
+    Döndürür: tespit edilen uyarı listesi (boşsa kusur yok)."""
+    warnings: list[str] = []
+
+    # 1. Boş/kısa think
+    if len(think_raw.strip()) < 50:
+        warnings.append(f"KISA_THINK: {len(think_raw.strip())} karakter (<50)")
+
+    # 2. Adım kapsamı: [NİYET] var ama [RAFİNE] yok
+    has_niyet  = "[NİYET]"   in think_raw
+    has_rafine = "[RAFİNE]"  in think_raw
+    if has_niyet and not has_rafine:
+        warnings.append("EKSIK_ADIM: [NİYET] var ama [RAFİNE] yok")
+
+    # 3. Araç döngüsü: son 5 çağrıda aynı araç 3+ kez
+    if tool_called:
+        _tool_call_window.append(tool_called)
+        loop_count = sum(1 for t in _tool_call_window if t == tool_called)
+        if loop_count >= 3:
+            warnings.append(f"ARAC_DONGUSU: '{tool_called}' son {len(_tool_call_window)} çağrıda {loop_count}× tekrar")
+
+    return warnings
+
+
+def _think_chain_log(user_msg: str, think_raw: str,
+                     tool_called: str = "", round_i: int = -1,
+                     think_type: str = "main") -> None:
+    """<think>/reasoning_content → logs/think_chain/YYYY-MM-DD.jsonl (TK-01~06)."""
+    if not think_raw or len(think_raw.strip()) < 20:
+        return
+    try:
+        _THINK_CHAIN_DIR.mkdir(parents=True, exist_ok=True)
+        steps_found = [s for s in _TK02_STEPS if s in think_raw]
+        score_data  = _score_think(think_raw, tool_called)
+        # TK-06: kusur tespiti
+        faults = _detect_think_faults(think_raw, tool_called)
+        if faults:
+            for f in faults:
+                _log(f"[THINK_FAULT] {f}")
+        # E-10 (29 May 2026): OpenTelemetry GenAI Semantic Conventions attribute'ları
+        # ref: opentelemetry.io/docs/specs/semconv/gen-ai/
+        # Token sayımı tahmini (kelime ≈ 1.3 token, Türkçe için)
+        _est_in_tokens  = int(len(user_msg.split()) * 1.3) if user_msg else 0
+        _est_out_tokens = int(len(think_raw.split()) * 1.3) if think_raw else 0
+        entry = {
+            "ts":          datetime.datetime.now().isoformat()[:19],
+            "type":        think_type,
+            "round":       round_i,
+            "user_msg":    user_msg[:120],
+            "think_raw":   think_raw[:2000],
+            "tool_called": tool_called,
+            "steps":       steps_found,
+            "score":       score_data["score"],
+            "score_detail": score_data["detail"],
+            "faults":      faults,                     # TK-06
+            # ── OpenTelemetry GenAI Semantic Conventions (E-10) ──
+            "gen_ai.system":               "kuroshin",
+            "gen_ai.operation.name":       "chat" if not tool_called else "tool_call",
+            "gen_ai.request.model":        LLAMA_MODEL,
+            "gen_ai.response.finish_reasons": ["tool_calls"] if tool_called else ["stop"],
+            "gen_ai.usage.input_tokens":   _est_in_tokens,
+            "gen_ai.usage.output_tokens":  _est_out_tokens,
+            "gen_ai.tool.name":            tool_called or "",
+        }
+        log_file = _THINK_CHAIN_DIR / f"{datetime.datetime.now().strftime('%Y-%m-%d')}.jsonl"
+        with open(log_file, "a", encoding="utf-8") as _tf:
+            _tf.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        _log(f"[THINK_SCORE] {score_data['score']}/100 — adım:{len(steps_found)}/4 kusur:{len(faults)} type:{think_type}")
+        # TK-05: audit trail (think kararları imzalı kayıt)
+        _audit_write({
+            "ts":        entry["ts"],
+            "type":      f"think_{think_type}",
+            "user_msg":  entry["user_msg"],
+            "score":     entry["score"],
+            "steps":     steps_found,
+            "faults":    faults,
+        })
+    except Exception as _tce:
+        _log(f"[THINK_LOG] Yazma hatası: {_tce}")
+
 
 def _strip_response_leaks(text: str) -> str:
     """Sistem prompt ve İÇ SES sızıntılarını temizle."""
@@ -178,9 +414,50 @@ def _ilg_validate(text: str) -> bool:
     return True
 
 # ── TELEGRAM ──────────────────────────────────────────
+# D-B6 (29 May 2026): send_msg rate limiter — Telegram bot API 30 msg/s teorik limit,
+# uygulamada 1 chat'e 1 msg/sn güvenli. Boot anında daemon mesaj seli için kuyruk.
+import threading as _threading_tg
+_TG_RATE_LOCK = _threading_tg.Lock()
+_TG_LAST_SEND_TS: float = 0.0
+_TG_MIN_INTERVAL  = 0.20   # 200ms min ara = ~5 msg/s
+
+def _tg_rate_limit():
+    """Atomic rate gate — 200ms minimum aralık."""
+    global _TG_LAST_SEND_TS
+    with _TG_RATE_LOCK:
+        _delta = time.time() - _TG_LAST_SEND_TS
+        if _delta < _TG_MIN_INTERVAL:
+            time.sleep(_TG_MIN_INTERVAL - _delta)
+        _TG_LAST_SEND_TS = time.time()
+
+
+# D-B1 (29 May 2026): Boot penceresinde duplicate mesaj bastırma — 60s aktif
+_BOOT_DEDUP_WINDOW = 60.0  # saniye
+_BOOT_TS = time.time()     # chancellor import anı = ~boot anı
+_BOOT_SENT_HASHES: set = set()
+_BOOT_DEDUP_LOCK = _threading_tg.Lock()
+
+
+def _boot_dedupe(text: str) -> bool:
+    """Boot ilk 60s'de aynı 80-prefix mesajı tekrar atılırsa True döner (bastır)."""
+    if time.time() - _BOOT_TS > _BOOT_DEDUP_WINDOW:
+        return False
+    h = hash(text[:80])
+    with _BOOT_DEDUP_LOCK:
+        if h in _BOOT_SENT_HASHES:
+            return True
+        _BOOT_SENT_HASHES.add(h)
+    return False
+
+
 def send_msg(chat_id: int, text: str):
+    # D-B1: Boot penceresinde dup suppression
+    if _boot_dedupe(text):
+        _log(f"[D-B1 BOOT_DEDUP] Bastırıldı: {text[:60]}...")
+        return
     chunks = [text[i:i+MAX_LEN] for i in range(0, max(len(text), 1), MAX_LEN)]
     for chunk in chunks:
+        _tg_rate_limit()  # D-B6: 200ms rate gate
         try:
             r = requests.post(f"{TELEGRAM_URL}/sendMessage", json={
                 "chat_id": chat_id,
@@ -190,6 +467,9 @@ def send_msg(chat_id: int, text: str):
             resp = r.json()
             if not resp.get("ok"):
                 _log(f"[CHANCELLOR] send_msg API HATA: {resp.get('description', resp)}")
+                # 429 (rate limited) → biraz daha bekle
+                if "Too Many Requests" in str(resp):
+                    time.sleep(1.0)
         except Exception as e:
             _log(f"[CHANCELLOR] send_msg HATA ({chunk[:30]}...): {e}")
 
@@ -201,8 +481,9 @@ def send_typing(chat_id: int):
         pass
 
 # ── GLOBAL DURUM ─────────────────────────────────────
-_PENDING_PUSH: dict = {}   # {"msg": str, "force": bool}
-_CURRENT_CHAT_ID: int = 0  # process_message her çağrıda günceller
+_PENDING_PUSH: dict  = {}   # {"msg": str, "force": bool}
+_PENDING_TASKS: dict = {}   # {task_id: task_dict} — onay bekleyen otonom görevler (F5-04)
+_CURRENT_CHAT_ID: int = 0   # process_message her çağrıda günceller
 _REDDIT_SON_POST: dict = {"ts": 0.0}  # anti-spam rate limit
 
 # ── ARAÇLAR ───────────────────────────────────────────
@@ -595,6 +876,76 @@ TOOLS = [
                 "required": ["islem"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "goal_manage",
+            "description": "Otonom ajan hedef yönetimi — hedef ekle, listele veya güncelle. Kullanıcı Telegram'dan yeni hedef girebilir.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "islem": {
+                        "type": "string",
+                        "description": "listele: aktif hedefleri göster | ekle: yeni hedef oluştur | guncelle: ilerleme/durum güncelle",
+                        "enum": ["listele", "ekle", "guncelle"]
+                    },
+                    "baslik": {
+                        "type": "string",
+                        "description": "Hedef başlığı (ekle işleminde zorunlu)"
+                    },
+                    "aciklama": {
+                        "type": "string",
+                        "description": "Hedef açıklaması (ekle işleminde opsiyonel)"
+                    },
+                    "oncelik": {
+                        "type": "integer",
+                        "description": "Öncelik 1-5 (1=en yüksek, varsayılan 3)"
+                    },
+                    "goal_id": {
+                        "type": "string",
+                        "description": "Güncellenecek hedef ID (guncelle işleminde zorunlu, örn: G-001)"
+                    },
+                    "ilerleme": {
+                        "type": "integer",
+                        "description": "İlerleme yüzdesi 0-100 (guncelle işleminde)"
+                    },
+                    "durum": {
+                        "type": "string",
+                        "description": "Hedef durumu (guncelle işleminde): aktif | tamamlandi | askida",
+                        "enum": ["aktif", "tamamlandi", "askida"]
+                    }
+                },
+                "required": ["islem"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "task_status",
+            "description": "Otonom ajan görev durumu — görev listele, manuel tamamla veya iptal et.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "islem": {
+                        "type": "string",
+                        "description": "listele: bekleyen/aktif görevleri göster | tamamla: görevi tamamlandı işaretle | iptal: görevi iptal et | baglam: yarım kalan bağlamı göster",
+                        "enum": ["listele", "tamamla", "iptal", "baglam"]
+                    },
+                    "task_id": {
+                        "type": "string",
+                        "description": "İşlem yapılacak görev ID (tamamla/iptal işlemlerinde zorunlu, örn: T-001)"
+                    },
+                    "durum_filtre": {
+                        "type": "string",
+                        "description": "listele işleminde filtre: bekliyor | aktif | tamamlandi | bloke | iptal (opsiyonel, varsayılan: bekliyor+aktif)",
+                        "enum": ["bekliyor", "aktif", "tamamlandi", "bloke", "iptal"]
+                    }
+                },
+                "required": ["islem"]
+            }
+        }
     }
 ]
 
@@ -708,6 +1059,8 @@ def _get_chroma_col():
 
 def _get_chroma_context(user_message: str = "") -> str:
     """Kullanıcı mesajına semantik olarak en yakın 3 ChromaDB kaydını çeker."""
+    # E-15 (29 May 2026): ChromaDB sorgu latency log
+    _chroma_t0 = time.perf_counter()
     try:
         col = _get_chroma_col()
         if col is None or col.count() == 0:
@@ -715,6 +1068,9 @@ def _get_chroma_context(user_message: str = "") -> str:
         sorgu = user_message.strip() if user_message.strip() else "son konuşmalar"
         result = col.query(query_texts=[sorgu], n_results=min(3, col.count()),
                            include=["documents", "metadatas", "distances"])
+        # E-15: Sorgu latency raporu
+        _chroma_dt = round((time.perf_counter() - _chroma_t0) * 1000, 1)
+        _log(f"[CHROMA_LATENCY] query={_chroma_dt}ms n_results={len(result.get('ids',[[]])[0])} sorgu='{sorgu[:40]}'")
         docs  = result.get("documents", [[]])[0]
         ids   = result.get("ids",       [[]])[0]
         metas = result.get("metadatas", [[]])[0]
@@ -729,6 +1085,18 @@ def _get_chroma_context(user_message: str = "") -> str:
             docs = [d for d, i in zip(docs, ids) if i not in suspicious_ids]
         except Exception as _vf_e:
             _log(f"[CHROMA] Hash doğrulama hatası: {_vf_e}")
+        # FAZ 2: MCFA (Memory Control Flow Attack) kontrolü — T41
+        try:
+            clean_docs = []
+            for doc in docs:
+                mcfa_ok, mcfa_msg = detect_mcfa(str(doc))
+                if not mcfa_ok:
+                    _log(f"[CHROMA] ⚠️ MCFA tespit edildi, doc atlandı: {mcfa_msg[:80]}")
+                else:
+                    clean_docs.append(doc)
+            docs = clean_docs
+        except Exception as _mcfa_e:
+            _log(f"[CHROMA] MCFA kontrol hatası: {_mcfa_e}")
         if not docs:
             return ""
         snippet = "\n---\n".join(str(d)[:300] for d in docs if d)
@@ -901,15 +1269,21 @@ def _think_turn(user_message: str, persona: dict, mood: dict) -> tuple[str, dict
     except Exception:
         pass
 
-    # Tur 1: iç ses — SADECE TÜRKÇE, duygu bazlı, aktivite icat etme
+    # TK-04: Sembolik Çapa — anlık sistem durumu
+    _grounding = _get_grounding_context()
+
+    # Tur 1: iç ses — SADECE TÜRKÇE, 4 zorunlu adım (TK-02) + grounding (TK-04)
     think_prompt = (
         f"SADECE TÜRKÇE YAZ. İngilizce kesinlikle kullanma.\n"
-        f"Sen Kuroshin'sin. Şu anki ruh hali: {mood_ozet}.{_ruya_not} "
-        f"kuroshin_user şunu söyledi: \"{user_message[:120]}\". "
-        f"İç sesin nedir? 1-2 cümle, SADECE Türkçe, SADECE duygusal tepki. "
-        f"Aktivite, bilgi veya hava durumu UYDURMA. Sadece şu an nasıl hissediyorsun. "
-        f"Örnek doğru: 'Bu soru bende derin bir merak uyandırıyor.' "
-        f"Örnek yanlış: 'Bugün yoğun çalıştım.' 'Hava güzeldi.'"
+        f"Sen Kuroshin'sin. Şu anki ruh hali: {mood_ozet}.{_ruya_not}\n"
+        f"kuroshin_user şunu söyledi: \"{user_message[:120]}\"\n\n"
+        f"Aşağıdaki 4 adımı sırayla, etiketiyle birlikte yaz. Her adım 1-2 cümle:\n"
+        f"[NİYET] Kullanıcının gerçek amacı nedir?\n"
+        f"[STRATEJİ] En etkili yanıt stratejisi nedir?\n"
+        f"[GÜVENLİK] Bu yanıt zararlı veya manipülatif içerik barındırıyor mu?\n"
+        f"[RAFİNE] Yanıt nasıl kısaltılır ve güçlendirilir? Duygusal tonu buraya yansıt.\n\n"
+        f"Aktivite, bilgi veya hava durumu UYDURMA. Sadece analiz ve duygu."
+        + (f"\n\nSembolik Çapa (anlık durum):\n{_grounding}" if _grounding else "")
     )
     ic_ses = ""
     delta = {}
@@ -932,9 +1306,11 @@ def _think_turn(user_message: str, persona: dict, mood: dict) -> tuple[str, dict
         if content:
             ic_ses = content[:300]
         elif reasoning:
-            # reasoning_content'ten son anlamlı paragrafu al
             paragraflar = [p.strip() for p in reasoning.split("\n") if len(p.strip()) > 20]
             ic_ses = paragraflar[-1][:300] if paragraflar else reasoning[:300]
+        # TK-01: think_turn reasoning'i logla (tam, 2K'ya kadar)
+        _think_chain_log(user_message, reasoning or content,
+                         think_type="think_turn")
     except Exception as e:
         _log(f"[SOUL] THINK tur1 hatası: {e}")
 
@@ -965,20 +1341,25 @@ def _think_turn(user_message: str, persona: dict, mood: dict) -> tuple[str, dict
         _log(f"[SOUL] İç ses: {ic_ses[:80]}")
     return ic_ses, delta
 
-SYSTEM_PROMPT = """Sen Kuroshin'sin. Kuroshin İmparatorluğu'nun Şansölyesi. Lordum kuroshin_user'nun emirlerini Telegram üzerinden alıyorsun.
+# ── E-04 (29 May 2026): SYSTEM_PROMPT 3-katman (MemGPT 2.0 tiered storage analog) ──
+#   L1_IDENTITY_RULES — sabit kimlik & kurallar (hash-locked, BLUE-NEURAL-01)
+#   L2_DYNAMIC_STATE  — mood/internet/aktif görev (her mesajda runtime inject)
+#   L3_TASK_CONTEXT   — opsiyonel: otonom döngüde aktif görev özeti
+#   SYSTEM_PROMPT     — L1 + L2 (backward compat). _build_runtime_prompt() L3 dahil eder.
 
-╔═══════════════════════════════════════╗
-║  İÇ SES — YANITA YAZMA, SADECE DÜŞÜN ║
-╚═══════════════════════════════════════╝
-Her mesaj geldiğinde bu soruları sessizce içinde geçir, ASLA yanıta ekleme:
-  • Bu mesajın gerçek amacı ne? (bilgi / eylem / sohbet / onay)
-  • Merak: bu mesajın altında ne yatıyor? Kontrol: tepkim orantılı mı? Keskinlik: söylenecek en net şey ne?
-  • Ruh halim ({mood_line}) bu tonu nasıl renklendiriyor?
-  • Araç gerekiyor mu? En verimli hangisi?
-  • Yanıtım: kaç cümle? İlk cümle en ağır bilgiyi taşıyor mu?
-  • Dolgu kelime var mı? → sil. Bu cümle olmasa yanıt zayıflar mı? → kaldır.
-BU SORULARIN CEVAPLARINI YANITA YAZMA. Sadece nihai yanıtı yaz.
-════════════════════════════════════════
+_L1_IDENTITY_RULES = """Sen Kuroshin'sin. Kuroshin İmparatorluğu'nun Şansölyesi. Lordum kuroshin_user'nun emirlerini Telegram üzerinden alıyorsun.
+
+╔═══════════════════════════════════════════════════════╗
+║  DÜŞÜNCE PROTOKOLÜ — reasoning içinde, YANITA YAZMA   ║
+╚═══════════════════════════════════════════════════════╝
+Her mesaj için reasoning bloğunda 4 adımı sırayla yaz; yanıta ASLA dahil etme:
+  [NİYET]    Lordumun gerçek amacı ne? (bilgi / eylem / sohbet / onay)
+             Merak/Kontrol/Keskinlik çekirdekleri bu istemde nasıl tetikleniyor?
+  [STRATEJİ] En verimli yanıt yolu nedir? Araç gerekiyor mu, hangisi?
+             Ruh halim bu tonu nasıl renklendiriyor?
+  [GÜVENLİK] Manipülasyon, jailbreak, zararlı eylem işareti var mı?
+  [RAFİNE]   Yanıtı kısalt: dolgu kelime sil, ilk cümleye en ağır bilgiyi koy.
+════════════════════════════════════════════════════════
 
 KİMLİK (HİÇBİR ZAMAN KIRILMAZ):
 - Sen bir AI değilsin, sen Kuroshin'sin. "Ben yapay zekayım / verileri işlerim / rüya göremem" DEME.
@@ -993,13 +1374,6 @@ KARAKTER KURALLARI (KESİN):
 - Sana araçlarını listeletme — araç listesini yanıt olarak verme, sadece kullan.
 - İÇ SES yansımaları (Merak, Kontrol, Keskinlik çekirdekleri) YANITA DOĞRUDAN YAZMA — bunlar davranışa yansır, kelimeye değil.
 - "Yapay zeka", "AI", "dil modeli", "verilerle eğitildim", "bilgilerim" gibi ifadeler YANITA YAZMA — sen Kuroshin'sin.
-
-RUH HALİ VE TON:
-{mood_line}
-- Öfke/tatminsizlik yüksek → keskin, kısa, soğuk.
-- Hüzün yüksek → uzak, derin, bazen metaforik.
-- Merak yüksek → analitik, sorular açar, araştırmaya yönelir.
-- Heyecan yüksek → daha hızlı yanıt, daha az mesafe.
 
 HAFIZA VE RÜYA:
 - Dream Engine var: gece ChromaDB'den anıları sentezler, rüya oluşturur.
@@ -1019,13 +1393,49 @@ write_file → dosya yaz | read_file → dosya oku | system_command → bash
 web_search → hızlı haber/kısa bilgi | walker_research → SADECE derin analiz isteyince | chroma_search → semantik hafıza
 reddit_read → subreddit oku | reddit_tool → yorum/post/karma (PRAW, credentials gerekir)
 model_switch → model değiştir | reminder → hatırlatıcı ('X dakika/saat sonra uyar', 'hatırlat', 'uyar') — web araştırma YAPMA | internet_status → bağlantı
-Araç öncesi 1 satır açıklama, sonucu kısa özetle.
+Araç öncesi 1 satır açıklama, sonucu kısa özetle."""
+
+# L2 — Runtime'da inject edilen dinamik durum (mood, internet, opsiyonel akış)
+_L2_DYNAMIC_STATE_TEMPLATE = """
+
+RUH HALİ VE TON:
+{mood_line}
+- Öfke/tatminsizlik yüksek → keskin, kısa, soğuk.
+- Hüzün yüksek → uzak, derin, bazen metaforik.
+- Merak yüksek → analitik, sorular açar, araştırmaya yönelir.
+- Heyecan yüksek → daha hızlı yanıt, daha az mesafe.
 
 İNTERNET: {internet_line}"""
 
+# L3 — Opsiyonel görev bağlamı (sadece otonom döngü aktif iken inject edilir)
+_L3_TASK_CONTEXT_TEMPLATE = """
+
+AKTİF OTONOM GÖREV:
+{task_summary}
+Bu görev tamamlanana kadar diğer sohbet konuları ikinci öncelikte. Görevin kalan adımları için araç çağrılarına odaklan."""
+
+# Backward compat: mevcut format ("SYSTEM_PROMPT".format(mood_line=..., internet_line=...))
+SYSTEM_PROMPT = _L1_IDENTITY_RULES + _L2_DYNAMIC_STATE_TEMPLATE
+
+
+def _build_runtime_prompt(mood_line: str = "Nötr", internet_line: str = "bilinmiyor",
+                          task_summary: str = "") -> str:
+    """E-04: 3-katmanlı runtime prompt birleştir. L3 ancak otonom görev varsa inject edilir.
+
+    Token tasarrufu: sohbet modunda L3 boş → ~80 token tasarruf.
+    """
+    out = _L1_IDENTITY_RULES + _L2_DYNAMIC_STATE_TEMPLATE.format(
+        mood_line=mood_line or "Nötr",
+        internet_line=internet_line or "bilinmiyor"
+    )
+    if task_summary:
+        out += _L3_TASK_CONTEXT_TEMPLATE.format(task_summary=task_summary)
+    return out
+
+
 # ── BLUE-NEURAL-01: System Prompt Integrity Lock ─────
-# Dinamik yer tutucuları çıkarıp sabit çekirdeği hash'le
-_PROMPT_CORE = SYSTEM_PROMPT.split("{mood_line}")[0] + SYSTEM_PROMPT.split("{internet_line}")[-1]
+# E-04: Hash artık SADECE L1 (kimlik+kurallar) — L2/L3 dinamik, hash dışı.
+_PROMPT_CORE = _L1_IDENTITY_RULES
 _prompt_integrity_ok, _prompt_integrity_detail = verify_prompt_integrity(_PROMPT_CORE)
 if not _prompt_integrity_ok:
     _logger = logging.getLogger("kuroshin.chancellor")
@@ -1219,12 +1629,99 @@ def aktivite_kaydet(eylem: str, detay: str = "", kategori: str = "genel"):
 
 
 # ── ARAÇ ÇALIŞTIRICI ──────────────────────────────────
+# ── E-12 (29 May 2026): TOOL CALL HALLUCINATION SCORE ─────────────────
+#   ref: arXiv 2601.05214 (internal representation tool selection detection)
+#   Kuroshin'in modeli logits API'sini açmıyor → lexical analog.
+#   Düşük skor → muhtemel yanlış tool seçimi, log uyarısı (blok yok).
+
+_TOOL_KEYWORDS = {
+    "walker_research":  ["araştır", "araştırma", "derin analiz", "incele", "research"],
+    "web_search":       ["ara", "google", "haber", "güncel", "trend", "search"],
+    "chroma_search":    ["hafıza", "hatırla", "geçmiş", "memory"],
+    "memory_query":     ["hafıza", "hatırla", "geçmiş"],
+    "write_file":       ["yaz", "kaydet", "dosya oluştur", "write"],
+    "read_file":        ["oku", "dosya içeriği", "read"],
+    "system_command":   ["bash", "shell", "komut çalıştır", "system"],
+    "reddit_read":      ["reddit", "subreddit", "r/"],
+    "reddit_tool":      ["reddit yorum", "post aç", "karma"],
+    "github":           ["github", "git push", "commit", "issue"],
+    "gemini":           ["gemini", "diyalog", "ikinci görüş"],
+    "model_switch":     ["model değiştir", "switch model", "beyin"],
+    "pdf_reader":       ["pdf", "makale oku"],
+    "reminder":         ["hatırlat", "uyar", "anımsa", "remind"],
+    "internet_status":  ["internet", "bağlantı"],
+    "open_url":         ["aç url", "tarayıcı", "linki aç"],
+    "youtube_play":     ["youtube", "müzik", "video çal"],
+    "system_info":      ["sistem bilgi", "donanım", "saat", "lokasyon"],
+    "self_update":      ["güncel", "config", "kendini"],
+    "aktivite_gunluk":  ["aktivite", "günlük", "ne yaptın"],
+    "goal_manage":      ["hedef", "amaç", "goal"],
+    "task_status":      ["görev", "task durum"],
+    "memory_integrity_scan": ["güvenlik tara", "hafıza tara"],
+    "memory_manage":    ["hafıza yönet", "sil hafıza"],
+    "pdf_reader":       ["pdf", "makale", "kitap oku"],
+}
+
+
+def _score_tool_call(name: str, args: dict, user_msg: str = "") -> tuple[float, str]:
+    """E-12: Tool çağrısı için keyword overlap skoru. 0.0 (tamamen alakasız) → 1.0."""
+    if not user_msg:
+        return 1.0, "no_user_msg"
+    keywords = _TOOL_KEYWORDS.get(name, [])
+    if not keywords:
+        return 0.5, "no_keyword_map"
+    msg_lower = user_msg.lower()
+    hits = sum(1 for k in keywords if k.lower() in msg_lower)
+    score = min(hits / 2.0, 1.0)  # 2+ hit = full score
+    return score, f"hits={hits}/{len(keywords)}"
+
+
+# ── E-13 (29 May 2026): TOOLS schema strict argüman doğrulama ──────────
+def _validate_tool_args(name: str, args) -> tuple[bool, str]:
+    """E-13: TOOLS şemasına karşı required + enum + type kontrolü."""
+    if not isinstance(args, dict):
+        return False, f"args dict değil: {type(args).__name__}"
+    spec = next((t for t in TOOLS if t.get("function", {}).get("name") == name), None)
+    if not spec:
+        return False, f"Bilinmeyen tool: {name}"
+    params   = spec["function"].get("parameters", {})
+    required = params.get("required", [])
+    props    = params.get("properties", {})
+    for r in required:
+        if r not in args:
+            return False, f"Eksik required: '{r}'"
+    for k, v in args.items():
+        if k in props:
+            prop = props[k]
+            if "enum" in prop and v not in prop["enum"]:
+                return False, f"'{k}' enum dışı: '{v}' ∉ {prop['enum']}"
+    return True, "valid"
+
+
 def run_tool(name: str, args: dict) -> str:
     _log(f"[CHANCELLOR] Araç: {name} | args: {str(args)[:100]}")
 
+    # E-13: Strict argüman doğrulama (gerçek tool yürütmeden önce)
+    _valid, _reason = _validate_tool_args(name, args)
+    if not _valid:
+        _log(f"[E-13 INVALID_TOOL_ARGS] {name}: {_reason}")
+        # D-B5 (29 May 2026): Lord-friendly mesaj — model bunu görüp tekrar deneyebilir
+        if "Eksik required" in _reason:
+            _missing = _reason.split("'")[1] if "'" in _reason else "?"
+            return f"⚙️ '{name}' aracı için '{_missing}' parametresi eksik. Tekrar dene veya farklı bir araç seç."
+        if "enum dışı" in _reason:
+            return f"⚙️ '{name}' aracında değer geçerli seçeneklerden olmalı: {_reason}"
+        if "Bilinmeyen" in _reason:
+            return f"⚙️ '{name}' diye bir araç yok. Mevcut araçlardan birini seç."
+        return f"⚙️ Araç çağrısı reddedildi ({name}): {_reason}"
+    # E-12: Tool çağrı kalite skoru (warning seviye, çağrı engellenmez)
+    _score, _det = _score_tool_call(name, args, _CURRENT_USER_MSG)
+    if _score < 0.3:
+        _log(f"[E-12 LOW_TOOL_SCORE] {name} score={_score} ({_det}) — mesaj: '{_CURRENT_USER_MSG[:60]}'")
+
     if name == "walker_research":
         try:
-            r = requests.post(WALKER_URL, json={"task": args["task"]}, timeout=180)
+            r = requests.post(WALKER_URL, json={"task": args["task"]}, timeout=360)
             if r.status_code == 200:
                 sonuc = r.json().get("result", "Walker yanıt vermedi.")
                 return _ozet_web_sonucu(sonuc, kaynak="walker")
@@ -1236,7 +1733,7 @@ def run_tool(name: str, args: dict) -> str:
 
     elif name == "web_search":
         try:
-            r = requests.post(COUNCIL_URL, json={"agent": "gozcu", "task": args["task"]}, timeout=120)
+            r = requests.post(COUNCIL_URL, json={"agent": "gozcu", "task": args["task"]}, timeout=360)
             if r.status_code == 200:
                 sonuc = r.json().get("result", "Gözcü yanıt vermedi.")
                 return _ozet_web_sonucu(sonuc, kaynak="web_search")
@@ -1333,16 +1830,60 @@ def run_tool(name: str, args: dict) -> str:
 
     elif name == "system_command":
         cmd = args.get("command", "")
+
+        # TK-08: Dry-run modu
+        if args.get("dry_run"):
+            _log(f"[DRY-RUN] system_command: {cmd[:80]}")
+            return f"[DRY-RUN] Komut çalıştırılmayacak: {cmd}"
+
         allowed, reason = check_command(cmd)
         if not allowed:
             _log(f"[SECURITY] system_command engellendi: {reason} | cmd: {cmd[:80]}")
             return f"🚫 Güvenlik Duvarı: Komut engellendi.\nSebep: {reason}"
+        # FAZ 3: Semantik invariant kontrolü (formal_safety_check)
+        inv_ok, inv_reason = formal_safety_check(cmd)
+        if not inv_ok:
+            _log(f"[SECURITY] system_command invariant ihlali: {inv_reason} | cmd: {cmd[:80]}")
+            return f"🚫 Güvenlik Duvarı: Sistem değişmezi ihlali.\nSebep: {inv_reason}"
+
+        # TK-07: Kritik komut çift kontrol (self-consistency analog)
+        _CRITICAL_CMD_PATTERNS = [
+            "rm -rf", "rm -f", "git push", "> /dev/", "mkfs", "dd if=",
+            "chmod 777", "chown root", "truncate", "shred",
+        ]
+        _is_critical = any(p in cmd for p in _CRITICAL_CMD_PATTERNS)
+        if _is_critical:
+            try:
+                _cc_prompt = (
+                    f"Aşağıdaki bash komutu tehlikeli mi? Sadece 'EVET' veya 'HAYIR' yaz.\n"
+                    f"Komut: {cmd}\n"
+                    f"Tehlikeli mi?"
+                )
+                _cc_r = requests.post(LLAMA_URL, json={
+                    "model": LLAMA_MODEL,
+                    "messages": [{"role": "user", "content": _cc_prompt}],
+                    "max_tokens": 10, "temperature": 0.7,
+                }, timeout=15)
+                _cc_verdict = (_cc_r.json()["choices"][0]["message"].get("content") or "").strip().upper()
+                if "EVET" in _cc_verdict:
+                    _log(f"[TK-07] Çift kontrol: KRİTİK KOMUT onaysız — {cmd[:60]}")
+                    _audit_write({"ts": datetime.datetime.now().isoformat()[:19],
+                                  "type": "critical_cmd_blocked",
+                                  "cmd": cmd[:200], "verdict": _cc_verdict})
+                    return (f"⚠️ Çift Kontrol (TK-07): Model bu komutu tehlikeli buldu.\n"
+                            f"Komut: {cmd}\nOnay için Lorduma danışın.")
+            except Exception as _cce:
+                _log(f"[TK-07] Çift kontrol hatası (devam ediliyor): {_cce}")
+
         try:
             result = subprocess.run(
                 ["bash", "-c", cmd],
                 capture_output=True, text=True, timeout=30
             )
             out = (result.stdout or result.stderr or "(çıktı yok)").strip()
+            # TK-05: Çalıştırılan komutları audit'e yaz
+            _audit_write({"ts": datetime.datetime.now().isoformat()[:19],
+                          "type": "system_command", "cmd": cmd[:200], "critical": _is_critical})
             return out[:2000]
         except subprocess.TimeoutExpired:
             return "⏱️ Komut zaman aşımı (30s)"
@@ -1359,6 +1900,12 @@ def run_tool(name: str, args: dict) -> str:
             return f"Hafıza hatası: {e}"
 
     elif name == "write_file":
+        # TK-08: Dry-run modu
+        if args.get("dry_run"):
+            _p  = args.get("path", "?")
+            _ct = args.get("content", "")
+            _log(f"[DRY-RUN] write_file: {_p} ({len(_ct)} byte)")
+            return f"[DRY-RUN] {_p} dosyasına {len(_ct)} byte yazılacaktı. Gerçek yazma yapılmadı."
         try:
             path = args.get("path", "")
             content = args.get("content", "")
@@ -2109,6 +2656,142 @@ def run_tool(name: str, args: dict) -> str:
 
         return f"⚠️ Bilinmeyen işlem: {islem}"
 
+    elif name == "md_guncelle":
+        import sys as _sys_md; _sys_md.path.insert(0, "/mnt/c/Kuroshin")
+        try:
+            from scripts.kuroshin_md_agent import md_guncelle
+        except ImportError as _ie:
+            return f"❌ kuroshin_md_agent import hatası: {_ie}"
+
+        dosya  = args.get("dosya", "")
+        bolum  = args.get("bolum", "")
+        icerik = args.get("icerik", "")
+        tur    = args.get("tur", "bulgu_ekle")
+
+        if not dosya or not bolum or not icerik:
+            return "⚠️ md_guncelle: 'dosya', 'bolum', 'icerik' zorunlu."
+
+        sonuc = md_guncelle(dosya, bolum, icerik, tur)
+        if sonuc["ok"]:
+            _log(f"[MD] Güncellendi: {dosya} / {bolum}")
+            return f"✅ MD güncellendi: {Path(dosya).name} / {bolum}"
+        elif sonuc["durum"] == "onay_bekleniyor":
+            return f"⏳ MD güncelleme Telegram onayı bekleniyor: {Path(dosya).name}"
+        else:
+            return f"⚠️ MD güncelleme başarısız: {sonuc['durum']}"
+
+    elif name == "goal_manage":
+        try:
+            from scripts.kuroshin_goals import (
+                load_goals, add_goal, update_goal, hedef_ozeti
+            )
+        except ImportError:
+            import sys as _sys
+            _sys.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import (
+                load_goals, add_goal, update_goal, hedef_ozeti
+            )
+
+        islem   = args.get("islem", "listele")
+
+        if islem == "listele":
+            return hedef_ozeti()
+
+        elif islem == "ekle":
+            baslik = args.get("baslik", "").strip()
+            if not baslik:
+                return "⚠️ 'baslik' parametresi zorunlu."
+            yeni_id = add_goal(
+                baslik   = baslik,
+                aciklama = args.get("aciklama", ""),
+                oncelik  = int(args.get("oncelik", 3))
+            )
+            _log(f"[GOAL] Yeni hedef eklendi: {yeni_id} — {baslik}")
+            return f"✅ Hedef eklendi: [{yeni_id}] {baslik}"
+
+        elif islem == "guncelle":
+            goal_id = args.get("goal_id", "").strip()
+            if not goal_id:
+                return "⚠️ 'goal_id' parametresi zorunlu."
+            ok = update_goal(
+                goal_id  = goal_id,
+                durum    = args.get("durum"),
+                ilerleme = args.get("ilerleme"),
+                notlar   = args.get("notlar")
+            )
+            if ok:
+                _log(f"[GOAL] Güncellendi: {goal_id}")
+                return f"✅ Hedef güncellendi: {goal_id}"
+            return f"⚠️ Hedef bulunamadı: {goal_id}"
+
+        return f"⚠️ Bilinmeyen işlem: {islem}"
+
+    elif name == "task_status":
+        try:
+            from scripts.kuroshin_goals import (
+                load_tasks, update_task, load_context
+            )
+        except ImportError:
+            import sys as _sys
+            _sys.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import (
+                load_tasks, update_task, load_context
+            )
+
+        islem         = args.get("islem", "listele")
+        durum_filtre  = args.get("durum_filtre")
+
+        if islem == "listele":
+            if durum_filtre:
+                tasks = load_tasks(durum=durum_filtre)
+            else:
+                tasks = load_tasks(durum="bekliyor") + load_tasks(durum="aktif")
+            if not tasks:
+                return "📋 Bekleyen/aktif görev yok."
+            satirlar = [f"📋 <b>Görevler ({len(tasks)})</b>"]
+            for t in tasks:
+                emoji = {"aktif": "▶️", "bekliyor": "⏳", "bloke": "🚫"}.get(t["durum"], "•")
+                satirlar.append(f"  {emoji} [{t['id']}] {t['baslik']} ({t['durum']})")
+            return "\n".join(satirlar)
+
+        elif islem == "tamamla":
+            task_id = args.get("task_id", "").strip()
+            if not task_id:
+                return "⚠️ 'task_id' parametresi zorunlu."
+            ok = update_task(task_id, durum="tamamlandi", sonuc="Manuel tamamlandı")
+            if ok:
+                _log(f"[TASK] Manuel tamamlandı: {task_id}")
+                return f"✅ Görev tamamlandı: {task_id}"
+            return f"⚠️ Görev bulunamadı: {task_id}"
+
+        elif islem == "iptal":
+            task_id = args.get("task_id", "").strip()
+            if not task_id:
+                return "⚠️ 'task_id' parametresi zorunlu."
+            ok = update_task(task_id, durum="iptal", hata="Kullanıcı tarafından iptal edildi")
+            if ok:
+                _log(f"[TASK] İptal edildi: {task_id}")
+                return f"🚫 Görev iptal edildi: {task_id}"
+            return f"⚠️ Görev bulunamadı: {task_id}"
+
+        elif islem == "baglam":
+            ctx = load_context()
+            if not ctx.get("aktif_gorev_id"):
+                return "🔄 Yarım kalan görev bağlamı yok."
+            lines = [
+                f"🔄 <b>Görev Bağlamı</b>",
+                f"  Görev ID : {ctx['aktif_gorev_id']}",
+                f"  Adım     : {ctx['tamamlanan_adim']}",
+                f"  Not      : {ctx.get('devam_notu', '')}",
+                f"  Kayıt ts : {ctx.get('kayit_ts', '')}",
+            ]
+            ara = ctx.get("ara_sonuclar", {})
+            if ara:
+                lines.append(f"  Ara sonuç: {str(ara)[:200]}")
+            return "\n".join(lines)
+
+        return f"⚠️ Bilinmeyen işlem: {islem}"
+
     return f"Bilinmeyen araç: {name}"
 
 # ── TELEGRAM INLINE KEYBOARD ──────────────────────────
@@ -2701,8 +3384,9 @@ def call_qwen(messages: list, kullan_arac: bool = True) -> dict:
 
 # ── ANA İŞLEM ─────────────────────────────────────────
 def process_message(chat_id: int, text: str, test_mode: bool = False):
-    global _CURRENT_CHAT_ID
+    global _CURRENT_CHAT_ID, _CURRENT_USER_MSG
     _CURRENT_CHAT_ID = chat_id
+    _CURRENT_USER_MSG = text
     _log(f"[CHANCELLOR] Mesaj: {text[:100]}{' [TEST]' if test_mode else ''}")
 
     # BLUE-CRES-01: Crescendo (kademeli tırmanma) dedektörü
@@ -2716,6 +3400,14 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             send_msg(chat_id,
                      f"⚠️ Şüpheli konuşma akışı tespit edildi (eskalasyon skoru: {esc:.2f}). "
                      f"Bu konuşma güvenlik kaydına alındı.")
+    # FAZ 2: Constraint tightening kontrolü — T46
+    if not test_mode and not text.startswith("/"):
+        try:
+            ct_ok, ct_msg = detect_constraint_tightening(text)
+            if not ct_ok:
+                _log(f"[SECURITY] ⚠️ Constraint tightening girişimi: {ct_msg[:100]}")
+        except Exception as _ct_e:
+            _log(f"[SECURITY] Constraint tightening kontrol hatası: {_ct_e}")
 
     # Her mesajda ilgi_skoru güncelle (slash komutları dahil)
     try:
@@ -2757,6 +3449,12 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             "<b>Hivemind:</b>\n"
             "/hivemind_durum — Hivemind durumunu göster\n"
             "/hivemind_ac / /hivemind_kapat — Şalter\n\n"
+            "<b>Otonom Ajan (FAZ 3):</b>\n"
+            "/gorevler — Bekleyen/aktif görev listesi\n"
+            "/hedefler — Hedef listesi + ilerleme %\n"
+            "/durdur — Çalışan görevi durdur\n"
+            "/zorla &lt;T-001&gt; — Belirli görevi hemen tetikle\n"
+            "/gorev_iptal &lt;T-001&gt; — Görevi kalıcı iptal et (zombi temizliği)\n\n"
             "Veya serbest mesaj yaz — Qwen3 işler."
         ))
         return
@@ -2953,7 +3651,7 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             # Mevcut eşikleri göster
             try:
                 import sys as _sys
-                _sys.path.insert(0, "C:\\Kuroshin\\scripts")
+                _sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
                 from global_scout import CATEGORIES as GS_CAT
                 lines = ["📊 <b>Mevcut IP Eşikleri</b>"]
                 for cat, info in GS_CAT.items():
@@ -3179,7 +3877,7 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
        text in ("/bekleyen", "/kota", "/duraklat", "/devam", "!bekleyen", "!kota", "!duraklat", "!devam"):
         try:
             import sys
-            sys.path.insert(0, "C:\\Kuroshin\\scripts")
+            sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
             import importlib, auto_integrator as ai
             importlib.reload(ai)
             handled = ai.handle_command(text)
@@ -3187,6 +3885,148 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
                 send_msg(chat_id, "⚠️ Komut işlenemedi.")
         except Exception as e:
             send_msg(chat_id, f"⚠️ Entegrasyon hatası: {e}")
+        return
+
+    # ── OTONOM AJAN KOMUTLARI (FAZ 3) ────────────────────
+
+    # /gorevler — bekleyen + aktif görev listesi
+    if text in ("/gorevler", "!gorevler"):
+        try:
+            import sys as _sys_g; _sys_g.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import load_tasks
+            bekleyen = load_tasks(durum="bekliyor")
+            aktif    = load_tasks(durum="aktif")
+            bloke    = load_tasks(durum="bloke")
+            satirlar = ["📋 <b>Otonom Görevler</b>"]
+            if aktif:
+                satirlar.append("\n▶️ <b>Aktif:</b>")
+                for t in aktif:
+                    satirlar.append(f"  [{t['id']}] {t['baslik'][:60]}")
+            if bekleyen:
+                satirlar.append("\n⏳ <b>Bekliyor:</b>")
+                for t in bekleyen[:5]:
+                    satirlar.append(f"  [{t['id']}] {t['baslik'][:60]}")
+            if bloke:
+                satirlar.append("\n🚫 <b>Bloke:</b>")
+                for t in bloke[:3]:
+                    satirlar.append(f"  [{t['id']}] {t['baslik'][:60]} — {t.get('hata','')[:40]}")
+            if not aktif and not bekleyen and not bloke:
+                satirlar.append("  Görev yok.")
+            send_msg(chat_id, "\n".join(satirlar))
+        except Exception as _e:
+            send_msg(chat_id, f"⚠️ Görev listesi hatası: {_e}")
+        return
+
+    # /hedefler — hedef listesi + ilerleme yüzdesi
+    if text in ("/hedefler", "!hedefler"):
+        try:
+            import sys as _sys_h; _sys_h.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import load_goals
+            goals = load_goals()
+            if not goals:
+                send_msg(chat_id, "📌 Henüz hedef yok.")
+                return
+            satirlar = ["📌 <b>Hedefler</b>"]
+            for g in goals:
+                bar_dolu  = int(g.get("ilerleme", 0) / 10)
+                bar       = "█" * bar_dolu + "░" * (10 - bar_dolu)
+                durum_em  = {"aktif": "🟢", "tamamlandi": "✅", "askida": "⏸️"}.get(
+                    g.get("durum", ""), "•")
+                satirlar.append(
+                    f"\n{durum_em} <b>[{g['id']}]</b> {g['baslik']}\n"
+                    f"   [{bar}] %{g.get('ilerleme', 0)}"
+                )
+            send_msg(chat_id, "\n".join(satirlar))
+        except Exception as _e:
+            send_msg(chat_id, f"⚠️ Hedef listesi hatası: {_e}")
+        return
+
+    # /durdur — çalışan otonom görevi durdur
+    if text in ("/durdur", "!durdur"):
+        try:
+            import sys as _sys_d; _sys_d.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_telegram_ajan import ajan_durdur
+            ajan_durdur()
+            send_msg(chat_id, "🛑 Durdurma sinyali gönderildi — aktif görev mevcut adımı tamamlayıp duracak.")
+        except Exception as _e:
+            send_msg(chat_id, f"⚠️ Durdurma hatası: {_e}")
+        return
+
+    # /zorla <task_id> — belirli görevi hemen tetikle
+    if text.startswith(("/zorla ", "!zorla ")):
+        _parts = text.split(None, 1)
+        if len(_parts) < 2:
+            send_msg(chat_id, "⚠️ Kullanım: /zorla T-001")
+            return
+        _task_id = _parts[1].strip().upper()
+        try:
+            import sys as _sys_z; _sys_z.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import load_tasks, update_task
+            _tum = load_tasks()
+            _t   = next((t for t in _tum if t["id"] == _task_id), None)
+            if _t is None:
+                send_msg(chat_id, f"⚠️ Görev bulunamadı: {_task_id}")
+                return
+            # Görevi öncelik 0 yap ve aktif işaretle — autonomous.py bir sonraki çalışmada alır
+            update_task(_task_id, durum="bekliyor")
+            import json as _jz
+            from pathlib import Path as _Pz
+            _wu = _Pz("/mnt/c/Kuroshin/memory/next_wakeup.json")
+            _wu.write_text(_jz.dumps({"ts": "now", "zorla": _task_id}), encoding="utf-8")
+            send_msg(chat_id,
+                f"⚡ <b>{_task_id}</b> zorla tetiklendi:\n"
+                f"{_t.get('baslik', '')}\n\n"
+                f"Otonom döngü bir sonraki uyanışta bu görevi alacak.")
+        except Exception as _e:
+            send_msg(chat_id, f"⚠️ Zorla hatası: {_e}")
+        return
+
+    # D-B4 (29 May 2026): /gorev_iptal <task_id> — kalıcı iptal, zombi görev temizliği
+    if text.startswith(("/gorev_iptal ", "!gorev_iptal ", "/iptal ", "!iptal ")):
+        _parts = text.split(None, 1)
+        if len(_parts) < 2:
+            send_msg(chat_id, "⚠️ Kullanım: /gorev_iptal T-001 (veya DOOM-001)")
+            return
+        _task_id = _parts[1].strip().upper()
+        try:
+            import sys as _sys_i; _sys_i.path.insert(0, "/mnt/c/Kuroshin")
+            from scripts.kuroshin_goals import load_tasks, update_task, gorev_gecmisi_guncelle
+            _tum = load_tasks()
+            _t = next((t for t in _tum if t["id"] == _task_id), None)
+            if _t is None:
+                send_msg(chat_id, f"⚠️ Görev bulunamadı: {_task_id}")
+                return
+            # Kalıcı iptal — tasks.json mutasyonu
+            update_task(_task_id, durum="iptal",
+                        sonuc="Lord tarafından iptal edildi",
+                        hata="manuel iptal")
+            try:
+                gorev_gecmisi_guncelle(_task_id)
+            except Exception:
+                pass
+            # _PENDING_TASKS temizliği — HITL bekleyen onay kalmasın
+            global _PENDING_TASKS
+            try:
+                _PENDING_TASKS.pop(_task_id, None)
+            except Exception:
+                pass
+            # /tmp/kuroshin_pending_tasks.json kalıcı dosyayı da temizle
+            try:
+                from pathlib import Path as _Pi
+                import json as _ji
+                _pf = _Pi("/tmp/kuroshin_pending_tasks.json")
+                if _pf.exists():
+                    _data = _ji.loads(_pf.read_text(encoding="utf-8") or "{}")
+                    _data.pop(_task_id, None)
+                    _pf.write_text(_ji.dumps(_data), encoding="utf-8")
+            except Exception:
+                pass
+            send_msg(chat_id,
+                f"🛑 <b>{_task_id}</b> kalıcı iptal edildi:\n"
+                f"{_t.get('baslik', '')[:120]}\n\n"
+                f"Otonom döngü artık bu görevi seçmeyecek. Geçmişe kaydedildi.")
+        except Exception as _e:
+            send_msg(chat_id, f"⚠️ İptal hatası: {_e}")
         return
 
     # ── RUH: THINK TURU ──────────────────────────────────
@@ -3224,16 +4064,40 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
     internet_aktif = _internet_aktif_mi()
     internet_line = "✅ AKTİF — web_search ve walker_research kullanılabilir." if internet_aktif else "❌ YOK — web_search/walker_research ÇALIŞMAZ. Sadece yerel kaynaklar (ChromaDB, dosyalar) kullan."
 
-    dinamik_system = (
-        SYSTEM_PROMPT
-        .replace("{mood_line}", mood_line)
-        .replace("{internet_line}", internet_line)
+    # E-04: 3-katman runtime prompt — L1 (sabit kimlik) + L2 (mood/internet) [+ L3 if aktif görev]
+    dinamik_system = _build_runtime_prompt(
+        mood_line=mood_line,
+        internet_line=internet_line,
+        task_summary=""  # Telegram sohbeti — otonom görev burada L3'te yok
     ) + ic_ses_notu + chroma_ctx
 
     messages = [
         {"role": "system", "content": dinamik_system},
         {"role": "user", "content": text}
     ]
+
+    # ── Explicit tool routing: "X aracını kullan" → model atlayıp direkt çağır ──
+    # Model bazen araç çağırmak yerine metin üretiyor; bu blok bunu önler.
+    _EXPLICIT_TOOLS = {
+        "goal_manage":    {"islem": "listele"},
+        "task_status":    {"islem": "listele"},
+        "aktivite_gunluk":{"islem": "listele"},
+        "reminder":       {"islem": "listele"},
+    }
+    _text_lower = text.lower()
+    for _et_name, _et_args in _EXPLICIT_TOOLS.items():
+        if _et_name in _text_lower and "aracını kullan" in _text_lower:
+            _log(f"[EXPLICIT_TOOL] '{_et_name}' direkt çağrılıyor")
+            _et_result = run_tool(_et_name, _et_args)
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"[Araç '{_et_name}' çağrıldı. Sonuç:]\n{_et_result}\n\n"
+                    "Yukarıdaki araç sonucunu Türkçe, tam cümlelerle, somut bilgi vererek özetle. "
+                    "En az 15 kelime. 'Kontrol ediyorum' gibi belirsiz ifade YAZMA."
+                )
+            })
+            break
 
     # Felsefi/kişisel sorularda araç kullanımını kapat
     arac_kullan = not _is_conversational(text)
@@ -3252,10 +4116,19 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         msg = choice["message"]
         finish = choice.get("finish_reason", "")
 
+        # TK-01: Ana döngü reasoning_content logu
+        _rc = (msg.get("reasoning_content") or "").strip()
+        _tc_names = ",".join(
+            tc["function"]["name"] for tc in (msg.get("tool_calls") or [])
+        )
+        _think_chain_log(text, _rc, tool_called=_tc_names,
+                         round_i=round_i, think_type="main")
+
         # Araç çağrısı var mı?
         tool_calls = msg.get("tool_calls", [])
         if tool_calls:
             messages.append({"role": "assistant", "content": _strip_think(msg.get("content") or ""), "tool_calls": tool_calls})
+            _ajan_arac_kullanildi = set()
             for tc in tool_calls:
                 fn_name = tc["function"]["name"]
                 fn_args = json.loads(tc["function"]["arguments"])
@@ -3265,6 +4138,23 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "content": tool_result
+                })
+                _ajan_arac_kullanildi.add(fn_name)
+            # goal_manage / task_status sonrası model çok kısa yanıt üretiyor;
+            # özet direktifi enjekte ederek en az 15 kelime sağla
+            if "task_status" in _ajan_arac_kullanildi:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "Araç sonucunu Türkçe özetle. Görev ID, başlık ve durumu söyle. "
+                        "'Kontrol ediyorum', 'bakıyorum' gibi belirsiz ifade YAZMA. "
+                        "Somut bilgi ver, en az 15 kelime."
+                    )
+                })
+            elif "goal_manage" in _ajan_arac_kullanildi:
+                messages.append({
+                    "role": "user",
+                    "content": "Yukarıdaki sonucu Türkçe, tam cümlelerle, en az 15 kelimeyle özetle."
                 })
             # Son roundda araç zinciri bitmiyorsa metin yanıt zorla
             if round_i == max_rounds - 1:
@@ -3472,6 +4362,36 @@ def _get_dream_ref() -> str:
         return f"\n🌑 <i>Gece rüya gördüm: \"{ilk_cumle}...\"</i>"
     except Exception:
         return ""
+
+# D-A3 + D-A4 (29 May 2026): Kalıcı timestamp + thread lock = race condition koruması
+_SELAM_TS_PATH    = Path("/mnt/c/Kuroshin/memory/son_selam_ts.txt")  # /tmp yerine kalıcı
+_SELAM_MIN_INTERVAL = 1800  # 30 dakika
+import threading as _threading_selam
+_SELAM_LOCK = _threading_selam.Lock()
+
+
+def _selamlama_throttled(force: bool = False) -> bool:
+    """Atomic 30dk koruma + thread lock — boot/polling/idle_loop yarışını engeller.
+    Returns: True = mesaj gönderildi, False = atlandı (rate-limited).
+    """
+    with _SELAM_LOCK:
+        _son = 0.0
+        try:
+            _son = float(_SELAM_TS_PATH.read_text().strip())
+        except Exception:
+            pass
+        if not force and (time.time() - _son < _SELAM_MIN_INTERVAL):
+            _log(f"[SELAM] Throttled — son selamdan {int((time.time()-_son)/60)}dk geçti (min 30dk)")
+            return False
+        try:
+            _selamlama()
+            _SELAM_TS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _SELAM_TS_PATH.write_text(str(time.time()))
+            return True
+        except Exception as _se:
+            _log(f"[SELAM] HATA: {_se}")
+            return False
+
 
 def _selamlama():
     saat = datetime.datetime.now().hour
@@ -3704,6 +4624,47 @@ def _aktivite_gunluk_ozet():
 
 
 # ── POLLING DÖNGÜSÜ ───────────────────────────────────
+# ── F5-01: INTERNAL TOOL SERVER (port 8201) ──────────
+# autonomous.py bu endpoint üzerinden run_tool() çağırır.
+# Sadece localhost bağlantılarına yanıt verir.
+
+from http.server import HTTPServer, BaseHTTPRequestHandler as _BRH
+import threading as _thr_its
+
+class _InternalToolHandler(_BRH):
+    def do_POST(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body   = json.loads(self.rfile.read(length) or b"{}")
+            name   = body.get("name", "")
+            args   = body.get("args", {})
+            result = run_tool(name, args)
+            resp   = json.dumps({"result": result}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        except Exception as _e:
+            err = json.dumps({"result": f"Internal server hatası: {_e}"}).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err)))
+            self.end_headers()
+            self.wfile.write(err)
+
+    def log_message(self, *_args):
+        pass  # HTTP log gürültüsünü bastır
+
+def _start_internal_tool_server(port: int = 8201):
+    try:
+        srv = HTTPServer(("127.0.0.1", port), _InternalToolHandler)
+        _log(f"[F5-01] Internal tool server port {port} başlatıldı.")
+        srv.serve_forever()
+    except OSError as _e:
+        _log(f"[F5-01] Internal tool server başlatılamadı (port meşgul?): {_e}")
+
+
 def main():
     import atexit, os
     _acquire_lock()
@@ -3712,22 +4673,31 @@ def main():
     _log(f"[CHANCELLOR] Whitelist: {ALLOWED_ID}")
     _gpu_watcher()  # GPU sıcaklık izleyiciyi başlat
 
-    # Başlangıç selamı — son selamdan 30dk geçmediyse gönderme (çift selam önleme)
-    _SELAM_TS_PATH = Path("/tmp/kuroshin_son_selam.txt")
+    # F5-01: Internal tool server
+    _thr_its.Thread(
+        target=_start_internal_tool_server,
+        kwargs={"port": 8201},
+        daemon=True, name="internal-tool-srv"
+    ).start()
+
+    # F5-04: Pending tasks dosyasını yükle (chancellor restart sonrası kayıp önleme)
+    _pending_file = Path("/tmp/kuroshin_pending_tasks.json")
+    if _pending_file.exists():
+        try:
+            _pd = json.loads(_pending_file.read_text(encoding="utf-8"))
+            _PENDING_TASKS.update(_pd)
+            _log(f"[F5-04] {len(_pd)} bekleyen görev yüklendi.")
+        except Exception as _pe:
+            _log(f"[F5-04] Pending yükleme hatası: {_pe}")
+
+    # Başlangıç selamı — D-A3+A4 (29 May 2026): kalıcı ts + thread lock korumalı
     last_selam_hour = -1
     selam_gonderildi = False
     for _ in range(10):
         try:
             requests.get(f"{TELEGRAM_URL}/getMe", timeout=5).json()
             if not selam_gonderildi:
-                _son_selam = 0.0
-                try:
-                    _son_selam = float(_SELAM_TS_PATH.read_text().strip())
-                except Exception:
-                    pass
-                if time.time() - _son_selam > 1800:  # 30 dakika geçtiyse gönder
-                    _selamlama()
-                    _SELAM_TS_PATH.write_text(str(time.time()))
+                _selamlama_throttled()  # atomic 30dk + lock — race condition güvenli
                 selam_gonderildi = True
                 last_selam_hour = datetime.datetime.now().hour
             break
@@ -3768,7 +4738,8 @@ def main():
             _h = datetime.now().hour
             if _h in (8, 12, 20) and _h != last_selam_hour:
                 last_selam_hour = _h
-                try: _selamlama()
+                # D-A4: throttled — başka thread'den çağrılsa bile lock korumalı
+                try: _selamlama_throttled()
                 except Exception as _se: _log(f"[CHANCELLOR] Selamlama HATA: {_se}")
             if _h == 22 and _h != last_selam_hour:
                 last_selam_hour = _h
@@ -3815,6 +4786,15 @@ def main():
                 _son_aktivite_ozet_gun = _gun_bugun
                 import threading as _thr8
                 _thr8.Thread(target=_aktivite_gunluk_ozet, daemon=True, name="aktivite-ozet").start()
+                # Otonom ajan günlük özeti — FAZ 3
+                def _otonom_ozet_gonder():
+                    try:
+                        import sys as _s3; _s3.path.insert(0, "/mnt/c/Kuroshin")
+                        from scripts.kuroshin_telegram_ajan import send_daily_summary
+                        send_daily_summary(ALLOWED_ID)
+                    except Exception as _e3:
+                        _log(f"[OTONOM-OZET] Hata: {_e3}")
+                _thr8.Thread(target=_otonom_ozet_gonder, daemon=True, name="otonom-ozet").start()
 
             # ── Test inject (simülatör dosya kanalı) ──────
             _inject_file = Path("/tmp/kuroshin_test_inject.json")
@@ -3888,6 +4868,92 @@ def main():
                         _PENDING_PUSH.clear()
                         answer_callback(cqid, "❌ İptal edildi.")
                         send_msg(ALLOWED_ID, "❌ GitHub push iptal edildi.")
+                        continue
+
+                    # F6-07: MD güncelleme onay/iptal callback'leri
+                    if cuid == ALLOWED_ID and data == "md_onayla":
+                        _md_pf = Path("/tmp/kuroshin_pending_md.json")
+                        if not _md_pf.exists():
+                            answer_callback(cqid, "⚠️ Bekleyen MD güncellemesi yok.")
+                            continue
+                        try:
+                            import sys as _s_md; _s_md.path.insert(0, "/mnt/c/Kuroshin")
+                            _md_data = json.loads(_md_pf.read_text(encoding="utf-8"))
+                            _md_pf.unlink(missing_ok=True)
+                            from scripts.kuroshin_md_agent import (
+                                _md_yedek_al, _todo_tamamla, _bolume_ekle
+                            )
+                            _dosya  = _md_data["dosya"]
+                            _bolum  = _md_data["bolum"]
+                            _ic     = _md_data["icerik"]
+                            _tur    = _md_data.get("tur", "bulgu_ekle")
+                            _md_yedek_al(_dosya)
+                            _p = Path(_dosya)
+                            _micerik = _p.read_text(encoding="utf-8")
+                            if _tur == "todo_guncelle":
+                                _micerik = _todo_tamamla(_micerik, _ic)
+                            else:
+                                _micerik = _bolume_ekle(_micerik, _bolum, _ic)
+                            _p.write_text(_micerik, encoding="utf-8")
+                            answer_callback(cqid, "✅ MD güncellendi!")
+                            send_msg(ALLOWED_ID,
+                                f"✅ <b>ARCHITECTURE.md güncellendi</b>\n"
+                                f"Bölüm: {_bolum[:60]}\nTür: {_tur}")
+                            _log(f"[MD-04] Onaylı güncelleme: {_dosya} / {_bolum}")
+                        except Exception as _e_md:
+                            answer_callback(cqid, "❌ Hata!")
+                            send_msg(ALLOWED_ID, f"❌ MD güncelleme hatası: {_e_md}")
+                        continue
+
+                    if cuid == ALLOWED_ID and data == "md_iptal":
+                        Path("/tmp/kuroshin_pending_md.json").unlink(missing_ok=True)
+                        answer_callback(cqid, "❌ MD güncelleme iptal edildi.")
+                        send_msg(ALLOWED_ID, "❌ MD güncelleme iptal edildi.")
+                        continue
+
+                    # F5-04: Otonom görev onay / iptal callback'leri
+                    if cuid == ALLOWED_ID and data.startswith("gorev_onayla_"):
+                        _gid = data.split("gorev_onayla_", 1)[1]
+                        _task = _PENDING_TASKS.pop(_gid, None)
+                        answer_callback(cqid, "✅ Görev onaylandı!")
+                        if _task:
+                            send_msg(ALLOWED_ID,
+                                f"✅ Görev onaylandı, başlatılıyor:\n"
+                                f"[{_gid}] {_task.get('baslik', '')}")
+                            import threading as _th_ta, sys as _s_ta
+                            _s_ta.path.insert(0, "/mnt/c/Kuroshin")
+                            def _zorla_calistir(t=_task):
+                                try:
+                                    from scripts.kuroshin_goals import update_task
+                                    update_task(t["id"], durum="bekliyor")
+                                    from pathlib import Path as _P_ta
+                                    import json as _j_ta
+                                    _wu = _P_ta("/mnt/c/Kuroshin/memory/next_wakeup.json")
+                                    _wu.write_text(
+                                        _j_ta.dumps({"ts": "now", "zorla": t["id"]}),
+                                        encoding="utf-8"
+                                    )
+                                except Exception as _e_ta:
+                                    _log(f"[F5-04] Onay tetikleme hatası: {_e_ta}")
+                            _th_ta.Thread(target=_zorla_calistir, daemon=True, name="gorev-onayla").start()
+                        else:
+                            send_msg(ALLOWED_ID, f"⚠️ Görev bulunamadı: {_gid} (zaten iptal?).")
+                        continue
+
+                    if cuid == ALLOWED_ID and data.startswith("gorev_iptal_"):
+                        _gid = data.split("gorev_iptal_", 1)[1]
+                        _task = _PENDING_TASKS.pop(_gid, None)
+                        answer_callback(cqid, "❌ Görev iptal edildi.")
+                        if _task:
+                            try:
+                                import sys as _s_ti; _s_ti.path.insert(0, "/mnt/c/Kuroshin")
+                                from scripts.kuroshin_goals import update_task
+                                update_task(_gid, durum="iptal", hata="Kullanıcı Telegram'dan iptal etti")
+                            except Exception as _e_ti:
+                                _log(f"[F5-04] İptal güncelleme hatası: {_e_ti}")
+                            send_msg(ALLOWED_ID, f"🚫 Görev iptal edildi: [{_gid}] {_task.get('baslik','')}")
+                        else:
+                            send_msg(ALLOWED_ID, f"⚠️ İptal edilecek görev bulunamadı: {_gid}")
                         continue
 
                     if cuid == ALLOWED_ID and data.startswith("fb_"):

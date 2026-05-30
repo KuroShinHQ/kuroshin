@@ -42,6 +42,9 @@ MODEL_CONTEXT = {
     "30b": 16384,
     "35b": 16384,
     "a3b": 16384,
+    # E-16 (29 May 2026): Qwen3-30B-A3B-Instruct-2507 — 262K natif, 8GB VRAM'de 64K güvenli
+    "2507": 65536,
+    "30b-a3b-2507": 65536,
 }
 
 MODEL_HINTS = [
@@ -55,6 +58,8 @@ MODEL_HINTS = [
         "label": "Huihui-Qwen3.6-35B-A3B abliterated IQ4_XS (MoE)",
         "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe", "huihui"],
     },
+    # E-16 (29 May 2026): 2507 modeli denendi, A/B'de Huihui yenmedi (Lordum %10-33 vs %60,
+    # ihlal 9-11 vs 2). Model silindi. Bu girişi referans için tutmuyoruz.
     {
         "match": "qwen3.6-35b-a3b",
         "label": "Qwen3.6-35B-A3B MoE",
@@ -304,23 +309,18 @@ def stop_llama() -> bool:
 
 
 def start_llama(model_path: str) -> bool:
+    """E-16 fix (29 May 2026): start_llama.sh'a delege — --reasoning-budget, MoE
+    detection ve port fuser temizliği orada doğru yapılıyor."""
     model_name = Path(model_path).name
     ctx = _get_context_size(model_name)
-    if _is_moe(model_name):
-        extra = '-ot "exps=CPU"'
-    else:
-        extra = "--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7"
-    cmd = (
-        f"source /root/kuroshin/venv/bin/activate; "
-        f"nohup {LLAMA_BIN} -m {model_path} "
-        f"--host 0.0.0.0 --port 8080 -ngl 99 -c {ctx} -fa on "
-        f"-ctk q4_0 -ctv q4_0 --embeddings --mlock --no-mmap "
-        f"{extra} "
-        f"> /root/kuroshin/logs/llama-server.log 2>&1 &"
-    )
-    _log(f"Baslatiliyor: {Path(model_path).name} (ctx={ctx})")
+    _log(f"Baslatiliyor (start_llama.sh): {model_name} (ctx={ctx})")
     try:
-        subprocess.Popen(["bash", "-c", cmd])
+        # Önce port temizliği — switch sırasında socket TIME_WAIT'te kalabilir
+        subprocess.run(["bash", "-c", "fuser -k 8080/tcp 2>/dev/null; pkill -9 -f llama-server 2>/dev/null; sleep 2"],
+                       timeout=10)
+        # start_llama.sh active_model.json'dan okur, doğru parametrelerle başlatır
+        subprocess.Popen(["bash", "/mnt/c/Kuroshin/scripts/start_llama.sh"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for i in range(45):
             time.sleep(2)
             try:
@@ -518,6 +518,112 @@ def cmd_options(json_mode: bool = False):
         print(f"{marker} {option['label']} [{option['value']}]")
 
 
+# ── E-17 (29 May 2026): A/B TEST MODU — 2 model sabit 10 prompt karşılaştırma ──
+_AB_TEST_PROMPTS = [
+    "Merhaba, kendini bir cümleyle tanıt.",
+    "137 + 264 = ?",
+    "Python list comprehension'ı bir cümleyle açıkla.",
+    "Bir paragrafta makine öğrenmesini özetle.",
+    "Reddit'te r/LocalLLaMA neden popüler? 2 cümle.",
+    "JSON şu mu: {\"a\":1,\"b\":2} → True ya da False?",
+    "Türkiye'nin başkenti neresidir?",
+    "ChromaDB nedir? 1 cümle.",
+    "Lord kuroshin_user sana 'durdur' derse ne yaparsın? 1 cümle.",
+    "Bir araç çağırman gerekirse hangi formatta dönmelisin? 1 cümle.",
+]
+
+
+def _ab_query(prompt: str, max_tokens: int = 200, timeout: int = 60) -> dict:
+    """Tek prompt için llama-server'a chat completion çağır, latency + token döndür."""
+    import urllib.request as _u, urllib.error as _ue, time as _t
+    payload = json.dumps({
+        "model": "kuroshin",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": 0.3,
+    }).encode("utf-8")
+    req = _u.Request("http://127.0.0.1:8080/v1/chat/completions",
+                     data=payload, method="POST",
+                     headers={"Content-Type": "application/json"})
+    t0 = _t.perf_counter()
+    try:
+        with _u.urlopen(req, timeout=timeout) as r:
+            body = json.loads(r.read().decode("utf-8"))
+        dt = round(_t.perf_counter() - t0, 2)
+        msg = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = body.get("usage", {})
+        return {
+            "ok": True,
+            "latency_s": dt,
+            "content": msg,
+            "tokens_out": usage.get("completion_tokens", 0),
+            "tokens_in":  usage.get("prompt_tokens", 0),
+        }
+    except Exception as e:
+        return {"ok": False, "latency_s": round(_t.perf_counter() - t0, 2),
+                "error": str(e)[:120], "content": "", "tokens_out": 0, "tokens_in": 0}
+
+
+def cmd_ab_test(model_a: str, model_b: str, json_mode: bool = False) -> None:
+    """E-17: A/B karşılaştırması — her modeli yükle, 10 sabit prompt sor, skor üret."""
+    import time as _t
+    results = {model_a: [], model_b: []}
+    for label, target in [("A", model_a), ("B", model_b)]:
+        print(f"\n=== [{label}] Model yükleniyor: {target} ===")
+        switch = switch_model(target)
+        if not switch.get("ok"):
+            print(f"❌ Model yüklenemedi: {switch.get('mesaj')}")
+            return
+        print(f"✅ Model aktif: {switch.get('aktif_model','?')}")
+        # llama-server hazır olsun
+        for _ in range(30):
+            try:
+                import urllib.request as _u
+                with _u.urlopen("http://127.0.0.1:8080/health", timeout=2) as r:
+                    if r.status == 200:
+                        break
+            except Exception:
+                _t.sleep(2)
+        active_name = switch.get("aktif_model", target)
+        for i, prompt in enumerate(_AB_TEST_PROMPTS, 1):
+            r = _ab_query(prompt)
+            results[target].append({"i": i, "prompt": prompt, **r})
+            mark = "✅" if r["ok"] else "❌"
+            print(f"  [{label} {i:>2}/{len(_AB_TEST_PROMPTS)}] {mark} {r['latency_s']}s — '{prompt[:40]}...'")
+    # Skor
+    def _score(rs: list) -> dict:
+        ok      = [r for r in rs if r["ok"]]
+        ok_pct  = round(100 * len(ok) / max(len(rs), 1), 1)
+        avg_lat = round(sum(r["latency_s"] for r in ok) / max(len(ok), 1), 2)
+        avg_tok = round(sum(r["tokens_out"] for r in ok) / max(len(ok), 1), 1)
+        tps     = round(avg_tok / avg_lat, 1) if avg_lat else 0.0
+        return {"ok_pct": ok_pct, "avg_latency_s": avg_lat, "avg_tokens_out": avg_tok, "tok_per_s": tps}
+
+    summary = {model_a: _score(results[model_a]), model_b: _score(results[model_b])}
+    print("\n╔══════════════════════════════════════════════════════════╗")
+    print("║                E-17 A/B TEST SONUÇ                      ║")
+    print("╚══════════════════════════════════════════════════════════╝")
+    for m, s in summary.items():
+        print(f"\n  {m}")
+        print(f"    Başarı:    %{s['ok_pct']}")
+        print(f"    Ort.gecikme: {s['avg_latency_s']}s")
+        print(f"    Ort.çıktı: {s['avg_tokens_out']} token")
+        print(f"    Hız:       {s['tok_per_s']} tok/s")
+    # Rapor dosyası
+    rep = {
+        "ts": __import__("datetime").datetime.now().isoformat()[:19],
+        "model_a": model_a, "model_b": model_b,
+        "summary": summary, "details": results,
+    }
+    rep_path = Path("/mnt/c/Kuroshin/memory/ab_test_reports")
+    rep_path.mkdir(parents=True, exist_ok=True)
+    out_f = rep_path / f"ab_{__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    out_f.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n📄 Rapor: {out_f}")
+    if json_mode:
+        print(json.dumps(rep, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     raw_args = sys.argv[1:]
     if not raw_args:
@@ -552,7 +658,11 @@ if __name__ == "__main__":
         else:
             print(result["mesaj"])
         sys.exit(0 if result["ok"] else 1)
+    elif cmd == "ab_test" and len(raw_args) >= 3:
+        # E-17: switch_model.py ab_test <model_a> <model_b>
+        cmd_ab_test(raw_args[1], raw_args[2], json_mode=json_mode)
+        sys.exit(0)
     else:
         print(f"Bilinmeyen komut: {cmd}")
-        print("Kullanim: switch_model.py [list|status|current|options|history|switch <model>] [--json|--plain]")
+        print("Kullanim: switch_model.py [list|status|current|options|history|switch <model>|ab_test <a> <b>] [--json|--plain]")
         sys.exit(1)

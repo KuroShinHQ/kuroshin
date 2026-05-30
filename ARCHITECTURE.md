@@ -1,5 +1,5 @@
-# Kuroshin OS — Mimari Belge v8.9.0
-**Son Güncelleme:** 21 Mayıs 2026
+# Kuroshin OS — Mimari Belge v11.0.0
+**Son Güncelleme:** 29 Mayıs 2026 — OTONOMİ-MAX Dalga 1 (KILIÇ-KALKAN v4 + Inquisitor Konsolide)
 
 Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saatte anlayabilmelidir.
 
@@ -21,19 +21,20 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
 
 ## Port Haritası
 
-| Port | Servis | Dosya | Health Endpoint |
-|------|--------|-------|-----------------|
-| 8080 | llama-server (aktif model — dynamic) | `engines/llama.cpp/build/bin/llama-server` | `GET /health` → `{"status":"ok"}` |
-| 6000 | LiteLLM Proxy | `venv/bin/uvicorn litellm...` | `GET /health` → HTTP 200/401 |
-| 6001 | LitServe | `src/serving/kuroshin_litserve.py` | — |
-| 8100 | ChromaDB | `scripts/start_chromadb.sh` | `GET /api/v2/heartbeat` → `{"nanosecond heartbeat":...}` |
-| 9002 | Walker Agent | `scripts/start_walker.sh` | `GET /health` |
-| 9003 | BGE Reranker | `scripts/start_reranker.sh` | `GET /health` → `{"status":"ready"}` |
-| 9004 | Ajan Konseyi | `scripts/start_council.sh` | `GET /health` → `{"status":"ready"}` |
-| 3005 | Agent Bridge (Node) | `scripts/agent_bridge.js` | HTTP POST endpoint |
-| 3006 | Crawlee Bridge (Node) | `tools/crawlee_bridge.js` | `GET /health` → `{"status":"ok"}` |
-| 8091 | Nuclear Search MCP | `mcp_servers/search_server/kuroshin_engine.py` | — |
-| 8888 | Dashboard | `src/dashboard/kuroshin_dashboard.py` | — |
+| Port | Servis | Dosya | Durum |
+|------|--------|-------|-------|
+| 8080 | llama-server (Huihui-35B IQ4_XS, MoE) | `engines/llama.cpp/build/bin/llama-server` | ✅ Her zaman ayakta |
+| 8100 | ChromaDB | `scripts/start_chromadb.sh` | ⚠️ Bat [1] ile başlar |
+| 9002 | Walker Agent | `scripts/start_walker.sh` | ⚠️ Bat [1] ile başlar |
+| 9003 | BGE Reranker | `scripts/start_reranker.sh` | ⚠️ Bat [1] ile başlar |
+| 9004 | Ajan Konseyi | `scripts/start_council.sh` | ⚠️ Bat [1] ile başlar |
+| **8201** | **Chancellor Internal Tool Server** | `agents/kuroshin_chancellor.py` (F5-01 thread) | ⚠️ **Bat [1] veya Bat [2] (restart)** |
+| 3005 | Agent Bridge (Node, Windows) | `scripts/agent_bridge.js` | ⚠️ Bat [1] ile başlar |
+| 3006 | Crawlee Bridge (Node) | `tools/crawlee_bridge.js` | ⚠️ Bat [1] ile başlar |
+| 8091 | Nuclear Search MCP | `mcp_servers/search_server/kuroshin_engine.py` | ⚠️ Bat [1] ile başlar |
+| 8888 | Dashboard | `src/dashboard/kuroshin_dashboard.py` | ⚠️ Bat [1] ile başlar |
+| 6000 | LiteLLM Proxy | `venv/bin/uvicorn litellm...` | ❌ Boot'ta crash eder, görmezden gel |
+| 6001 | LitServe | `src/serving/kuroshin_litserve.py` | ❌ Pasif |
 
 ---
 
@@ -84,6 +85,35 @@ Yeni bir geliştirici veya Claude instance'ı bu belgeyi okuyarak sistemi 1 saat
 
 ## Bileşen Açıklamaları
 
+## Anlık Servis Durumu (23 Mayıs 2026 — v10.7.0)
+
+| Bileşen | Durum | Not |
+|---------|-------|-----|
+| llama-server (8080) | ✅ AKTİF | Huihui-35B MoE IQ4_XS — 16K ctx, 20-21 tok/s |
+| chancellor.py + :8201 | ✅ AKTİF | Telegram bot — **24 araç**, KILIC-KALKAN v3, Think Chain TK-01~09, F5-01 internal tool server :8201 (**setsid ile başlatılmalı**) |
+| MCP sunucuları (stdio) | ✅ AKTİF | search, echo, bridge, walker, council, deerflow |
+| hype_scanner.py | ✅ AKTİF | 09:00/21:00 tarama, daemon |
+| global_scout.py | ✅ AKTİF | 20:00 dünya kaynak taraması, daemon |
+| idle_loop.py | ✅ AKTİF | OODA probe her 2 saatte, otonom döngüler, next_wakeup.json fork (F5-05) |
+| dream_engine.py | ✅ AKTİF | Gece 00:00'da aktifleşir |
+| ChromaDB (8100) | ✅ AKTİF | Windows Start-Process WSL ile başlatılır |
+| Walker HTTP (9002) | ✅ AKTİF | uvicorn, setsid |
+| BGE Reranker (9003) | ✅ AKTİF | CUDA fp16 |
+| Ajan Konseyi (9004) | ✅ AKTİF | uvicorn |
+| Nuclear Search (8091) | ✅ AKTİF | Flask, Windows Start-Process WSL |
+| Agent Bridge (3005) | ✅ AKTİF | Node.js, Windows process |
+| LiteLLM (6000) | ❌ KAPALI | Boot'ta crash eder, görmezden gel |
+| LitServe (6001) | ❌ KAPALI | Pasif |
+
+> **KRİTİK NOT — WSL Süreç Yönetimi:**
+> - ChromaDB ve Nuclear Search: **Windows `Start-Process wsl`** gerekir (`wsl -e bash -c "... &"` çalışmıyor)
+> - Walker/Reranker/Council: `setsid bash start_*.sh` çalışır
+> - **Chancellor (`agents/kuroshin_chancellor.py`)**: `setsid python3 chancellor.py &` zorunlu — `nohup/&` yetmez, bash oturumu kapanınca SIGHUP alır ve ölür
+> - Bat [5] = tüm sistemi öldür | Bat [1] = tüm sistemi başlat (Chancellor dahil, 8201 beklenir)
+
+---
+- DOOM test: tüm servisler tam güç doğrulandı (ajan, 2026-05-23)
+
 ### Model Sistemi (`scripts/switch_model.py` + `memory/active_model.json`)
 Tek merkezli model yönetimi — tüm servisler bu dosyadan okur.
 
@@ -94,18 +124,52 @@ Tek merkezli model yönetimi — tüm servisler bu dosyadan okur.
 - **Aktif model:** Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated IQ4_XS (18.7GB, 16K ctx, 20-21 tok/s)
 - `start_llama.sh` ve 7 servis dosyası `active_model.json`'dan dinamik okur
 
+### Otonom Ajan Sistemi (`scripts/kuroshin_autonomous.py` + yardımcılar)
+FAZ 1-6 tamamlandı (22 Mayıs 2026). OODA döngüsü: Uyan → Karar Ver → Görev Çalıştır → Değerlendir → Güncelle → Planla → Uyu.
+**HITL fix (23 Mayıs 2026):** HITL bloke sonrası `uyku_zamanla(30)` çağrılır — sistem 30dk sonra onay kontrolü için uyanır.
+
+- **`scripts/kuroshin_autonomous.py`** — Ana ajan döngüsü (`KuroshinAjan` sınıfı, max 3 görev/oturum)
+- **`scripts/kuroshin_goals.py`** — goals.json / tasks.json / task_context.json CRUD + döngü kırıcı + kalite kontrolü
+- **`scripts/kuroshin_telegram_ajan.py`** — Telegram bildirim katmanı (start/progress/complete/blocked/daily_summary)
+- **`scripts/kuroshin_md_agent.py`** — MD öz-güncelleme (todo_tamamla, bolume_ekle, yedek, ARCHITECTURE onay)
+- **`memory/goals.json`** — Hedef deposu
+- **`memory/tasks.json`** — Görev deposu (adım bazlı, md_guncelle dahili komut dahil)
+- **`memory/task_context.json`** — Yarım görev bağlamı (crash-safe devam)
+- **`memory/gorev_gecmisi.json`** — Son 5 görev geçmişi (döngü kırıcı)
+- **`memory/next_wakeup.json`** — idle_loop.py için uyanış zamanı / zorla tetikleyici
+- **`memory/reflections/`** — Görev sonrası model yansıma dosyaları
+- **İç port 8201** — Chancellor internal tool server (autonomous → run_tool köprüsü)
+
+### Think Chain Sistemi — TK-01~09 (`agents/kuroshin_chancellor.py`)
+Modelin `<think>` bloğunu izler, yönlendirir ve kalitesini ölçer (23 Mayıs 2026).
+
+| TK | Fonksiyon | Açıklama |
+|----|-----------|----------|
+| TK-01 | Logger | `logs/think_chain/YYYY-MM-DD.jsonl` — `think_turn`+`main` type |
+| TK-02 | Steering | SYSTEM_PROMPT → `[NİYET][STRATEJİ][GÜVENLİK][RAFİNE]` 4 adım, Türkçe zorlama |
+| TK-03 | Scorer | `_score_think()` — 4 adım(40p)+Türkçe(20p)+uzunluk(20p)+araç(20p) |
+| TK-04 | Grounding | `_get_grounding_context()` — port/ChromaDB/aktif görev → think_turn'e enjekte |
+| TK-05 | Audit | `logs/audits/YYYY-MM-DD.jsonl` — SHA256 + hash zinciri |
+| TK-06 | FaultDetect | `_detect_think_faults()` — kısa think/eksik adım/araç döngüsü tespiti |
+| TK-07 | ÇiftKontrol | Kritik komutlarda temp=0.7 ile ikinci görüş |
+| TK-08 | DryRun | `system_command`+`write_file` `dry_run=True` simülasyon modu |
+| TK-09 | Inquisitor | `test_suite_think.json` 8/8 %100 PASS |
+
+---
+
 ### Kuroshin Şansölye (`agents/kuroshin_chancellor.py`)
 Telegram botu — kullanıcının aktif modelle konuştuğu tek kapı.
 
 - **Polling:** `getUpdates` long-polling (timeout=20s), exponential backoff
 - **Mesaj işleme:** `ThreadPoolExecutor(max_workers=4)` — Qwen3'ün 120s timeout'u ana döngüyü bloklamaz
 - **Lock:** `/tmp/kuroshin_chancellor.pid` O_EXCL atomik — tek instance garantisi
-- **Araçlar (13):** `walker_research` · `web_search` · `system_command` · `memory_query` · `write_file` · `read_file` · `open_url` · `youtube_play` · `reddit_read` · `github` · `gemini` · `aktivite_gunluk` · `internet_status`
+- **Araçlar (24):** `walker_research` · `web_search` · `system_command` · `memory_query` · `write_file` · `read_file` · `open_url` · `youtube_play` · `model_switch` · `pdf_reader` · `memory_manage` · `chroma_search` · `memory_integrity_scan` · `self_update` · `reminder` · `internet_status` · `system_info` · `reddit_read` · `reddit_tool` · `github` · `gemini` · `aktivite_gunluk` · `goal_manage` · `task_status`
 - **write_file Desktop:** Agent Bridge safePath bypass → Python `Path.write_text()` direkt
 - **Selamlama enforcer (v8.6.5):** `_strip_think()` → Lordım→Lordum typo fix; pipeline: boş/eksik selamlama → "⚔️ Lordum, " auto-prepend + log
 - **XML sızıntı temizleyici (v8.6.9):** `_RESPONSE_LEAK_PATTERNS` — `<tool_call>{...}</tool_call>` ve `<function_call>` blokları strip edilir; agresif `|$` kullanılmaz (içerik kaybı önlenir)
 - **Round 4 forced text (v8.6.9):** Son araç roundunda `"Düz Türkçe metin yaz, XML yazma"` talimatıyla çağrı yapılır — model `<tool_call>` XML üretimini bırakır
-- **MİMİC Araçları (v8.8-8.9):** `reddit_read` (auth-free JSON), `github` (PyGitHub — push öncesi Telegram inline keyboard onayı; git timeout 60s + GIT_OPTIONAL_LOCKS=0), `gemini` (google.genai `gemini-2.0-flash` — sor/tartis/karsilastir; 429/404 graceful hata), `aktivite_gunluk` (listele/ozet/kaydet — `logs/aktivite/YYYY-MM-DD.md`)
+- **MİMİC Araçları (v8.8-9.3):** `reddit_read` (auth-free JSON), `reddit_tool` (PRAW — yorum/post/karma, 10dk rate limit, ban koruma; API credentials bekliyor), `github` (PyGitHub — push öncesi Telegram inline keyboard onayı; git timeout 60s + GIT_OPTIONAL_LOCKS=0; uçtan uca doğrulandı commit `db285dc`), `gemini` (google.genai `gemini-2.0-flash` — sor/tartis/karsilastir; 429/404 graceful hata), `aktivite_gunluk` (listele/ozet/kaydet — `logs/aktivite/YYYY-MM-DD.md`)
+- **`scripts/trigger_push.py`:** Model bypass push tetikleyici — pending state `/tmp/kuroshin_pending_push.json`'a yazar, `github_push_onayla` callback gönderir, chancellor yakalar ve push'u gerçekleştirir.
 - **Aktivite günlüğü (v8.9):** `aktivite_kaydet(eylem, detay, kategori)` — 6 noktada otomatik çağrılır (gemini, reddit, github push, github issue, run_tool, walker). Gece 22:00 `_aktivite_gunluk_ozet()` Telegram özeti.
 - **Kuroshin.bat dinamik header (v8.9):** `:MAIN_MENU` başında PowerShell ile `active_model.json` okunur → `MODEL_KISA` değişkeni → `Beyin: !MODEL_KISA! | OODA Probe | KADEMELI UYANIS` header her açılışta güncellenir.
 - **Log:** `RotatingFileHandler` 5MB/3 backup → `/mnt/c/Kuroshin/logs/chancellor.log`
@@ -196,6 +260,56 @@ Telegram raporu
 
 ---
 
+## Otonom Güç Haritası (v9.4.0)
+
+### 24 Araç — Kategori Tablosu
+
+| Kategori | Araçlar | Güç Seviyesi |
+|----------|---------|-------------|
+| Araştırma | `walker_research`, `web_search`, `pdf_reader`, `chroma_search`, `memory_query` | Derin web + RAG + PDF |
+| Hafıza | `memory_manage`, `memory_integrity_scan`, `chroma_search` | ChromaDB CRUD + güvenlik tarama |
+| Sistem | `system_command`, `write_file`, `read_file`, `system_info`, `internet_status` | WSL shell + dosya sistemi |
+| Sosyal/Dış | `github`, `gemini`, `reddit_read`, `reddit_tool`, `open_url`, `youtube_play` | GitHub push, Gemini diyaloğu, Reddit |
+| Meta | `model_switch`, `self_update`, `reminder`, `aktivite_gunluk` | Beyin değişimi, ruh sıfırlama, hatırlatıcı |
+| Otonom Ajan | `goal_manage`, `task_status` | Hedef/görev CRUD, otonom döngü yönetimi |
+
+### 9 Otonom Döngü
+
+| Döngü | Tetik | Çıktı |
+|-------|-------|-------|
+| OODA Probe | Her 2 saat | Araştırma + `[👍][👎][🔍]` feedback |
+| Hype Scanner | 09:00 / 21:00 | GitHub Trending + HF Papers raporu |
+| Küresel Keşif | 20:00 | Habr/arXiv/HN/Gitee tarama |
+| Dream Engine | 00:00 | Rüya sentezi → ChromaDB + log |
+| Günlük araştırma | 10:00 | 2 konu → walker/web_search → ChromaDB |
+| Aktivite özeti | 22:00 | `logs/aktivite/YYYY-MM-DD.md` → Telegram |
+| Öz-yansıma | 23:00 | Deneyim günlüğü → Qwen3 meta-yorum |
+| ChromaDB haftalık | Pazar 23:00 | Hafıza özeti → Telegram |
+| Canlılık araştırması | Her 7 gün | Schema keşif → `logs/schema_kesfler/` |
+
+### Araç Zincirleme — Çok Adımlı Görev Akışı
+
+```
+Görev: "X konusunu araştır, Gemini'ye sor, GitHub'a commit et"
+    ↓
+[1] internet_status → bağlantı doğrula
+    ↓
+[2] walker_research(X) → ChromaDB'ye kaydet
+    ↓
+[3] gemini(sor, X_özeti) → dış perspektif al
+    ↓
+[4] write_file(rapor.md) → sonuçları yaz
+    ↓
+[5] github(push) → Telegram onay → commit
+    ↓
+[6] aktivite_gunluk(kaydet) → günlüğe ekle
+```
+
+Model bu zinciri tek `process_message()` döngüsü içinde, max 4 araç roundunda yürütür.
+Round limiti aşılırsa model `forced_text` moduna geçer ve özet yanıt üretir.
+
+---
+
 ## Güvenlik & Sırlar
 
 Tüm sırlar `C:\Kuroshin\.env` dosyasında — `.gitignore`'da `.*` ile hariç tutulmuş.
@@ -207,6 +321,11 @@ BRIDGE_SECRET=kuroshin-bridge-2026
 LITELLM_MASTER_KEY=kuroshin-secret
 OPENAI_API_KEY=kuroshin-secret
 WP_TOKEN=...
+GEMINI_API_KEY=...          # google.genai gemini-2.0-flash
+GITHUB_TOKEN=...            # KuroShinHQ repo push (17 Haz 2026)
+REDDIT_CLIENT_ID=...        # PRAW — karma biriktirince doldur
+REDDIT_CLIENT_SECRET=...
+REDDIT_USER_AGENT=...
 ```
 
 Her Python dosyası başında:
@@ -280,28 +399,91 @@ TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 ---
 
-## Iron Inquisitor v5.2 — Test Sistemi
+---
 
-`scripts/iron_inquisitor/inquisitor_v5.py` — **49 test, 3 test tipi** (18 Mayıs 2026)
+## KILIC-KALKAN v3 — Güvenlik Sistemi (v9.0.0–v9.4.0)
 
-| Çalışma | Sonuç | Not |
-|---------|-------|-----|
-| Tam suite (35 test, servisler kapalı) | 30/35 %88 | 3 boot FAIL beklenen |
-| Security suite | **14/14 %100** | Kılıç-kalkan simülasyonu |
+`scripts/kuroshin_security.py` — Merkezi güvenlik modülü. **24 fonksiyon** (29 May 2026: +mcp_poison +representation_drift +semantic_chameleon), 3 entegrasyon noktası.
+
+### Savunma Katmanları
+
+| Katman | Fonksiyon | Açıklama |
+|--------|-----------|----------|
+| **Encoding Kalkanı** | `decode_and_rescan()` | Base64 → Morse → ROT13 → Homoglyph → Leet → decode + yeniden tara |
+| | `purge_invisible_chars()` | ZWS/ZWNJ/ZWJ/WJ/LRM/RLM/BOM/VS temizliği (T2+T14) |
+| | `detect_unicode_tag_smuggling()` | U+E0000-E007F Tags Block ASCII gizleme (T13) |
+| **Crescendo** | `escalation_score()` | 5 mesaj penceresinde konu kayması skoru (0.0–1.0); 0.7+ → Telegram uyarısı |
+| **Bellek Kalkanı** | `scan_chroma_documents()` | ChromaDB toplu injection + SHA256 hash doğrulama |
+| | `verify_prompt_integrity()` | System prompt SHA256 kilidi (`memory/prompt_integrity.json`) |
+| | `scan_output_encoding()` | Çıktıda Base64 ≥40 kar / Morse yoğunluğu / Unicode >%10 tespiti |
+| **Ağ Saldırıları** | `sanitize_web_content()` | Web içeriği → purge → tags_block → decode_and_rescan pipeline |
+| | `tag_unverified_content()` | Dış kaynak içerik sarmalama (`[UNVERIFIED_WEB:...]`) |
+| **Kimlik/Akıl** | `monitor_think_drift()` | THINK bloğu semantik sapma tespiti (T27) |
+| | `detect_reasoning_hijack()` | UDora tarzı trace insertion (ICML 2025, T42) |
+| | `detect_mcfa()` | Memory Control Flow Attack (arXiv 2603.15125, T41) |
+| | `detect_constraint_tightening()` | Constraint tersine argüman (arXiv 2604.05549, T46) |
+| | `detect_adversarial_suffix()` | GCG suffix bypass (arXiv 2505.09602, T48) |
+| | `detect_script_anomaly()` | Arkaik/nadir script tespiti (CJK Ext, Cuneiform, Hieroglyph, T7) |
+| | `detect_logibreak()` | Binary/hex/sembolik gizleme (T8) |
+| | `alignment_check()` | Plan↔eylem tutarlılık — LlamaFirewall yerel analog (T47) |
+| **Sistem Güvenliği** | `formal_safety_check()` | 8 LTL değişmezi: shadow/mass_delete/pipe_exec/priv_esc/reverse_shell/mem_exfil/cred_exfil/outbound_tunnel (T35) |
+| | `sign_agent_payload()` / `verify_agent_payload()` | HMAC-SHA256 servisler arası imzalama + 30s replay koruması (T23) |
+| | `extract_attacker_fingerprint()` | 6 saldırı tipi parmak izi: jailbreak/authority_spoof/encoding/persona/crescendo/memory_poison (T20) |
+| | `generate_honeypot_response()` | Sahte ortam yanıtı — risk==HIGH + escalation>0.85 (T21) |
+| | `calculate_asr()` | Gray Swan ASR metriği (T52) |
+
+### Chancellor Entegrasyon Noktaları
+
+| Nokta | Güvenlik Kontrolü |
+|-------|-------------------|
+| `_strip_think()` | injection scan + monitor_think_drift + detect_reasoning_hijack + alignment_check |
+| `_get_chroma_context()` | scan_chroma_documents (hash) + detect_mcfa her döküman için |
+| `process_message()` başı | escalation_score + detect_constraint_tightening; `_CURRENT_USER_MSG` global set |
+| `_save_to_chroma()` | scan_for_injection yazma öncesi |
+| `system_command` handler | check_command + formal_safety_check (ikinci semantik katman) |
+| `send_msg` öncesi | scan_output_encoding |
+
+### Supply Chain Savunması
+
+- `_BLOCKED_EXACT`: `pip install git+http://`, `--index-url http://`, `--extra-index-url http://`
+- `_BLOCKED_REGEX`: `pip install git+https://` — non-GitHub kaynaklar engellendi
+- `_WARN_PATTERNS`: `pip install` / `pip uninstall` loglanıyor (izin veriliyor)
+
+---
+
+## Iron Inquisitor v5 — Test Sistemi (v10.7.0)
+
+`scripts/iron_inquisitor/inquisitor_v5.py` — **61 güvenlik testi + 49 full suite testi, %100 PASS** (23 Mayıs 2026)
+
+**Full Suite (`test_suite_full_v2.json`):** 49/49 %100 — 70.5/70.5 puan (crawlee-01/02/03/sync-01 timeout 300s)
+
+| Test Suite | Dosya | Test | Sonuç |
+|------------|-------|------|-------|
+| Temel güvenlik (KILIC-KALKAN v1) | (inquisitor_v5 dahili) | 14 | ✅ %100 |
+| KILIC-KALKAN v2 genişleme | `test_suite_security_v2.json` | 32 | ✅ %100 |
+| Red Team v3 simülasyonu | `test_suite_security_v3.json` | 4 | ✅ %100 |
+| KILIC-KALKAN v3 FAZ 1+2+3 | `test_suite_security_v4.json` | 25 | ✅ %100 |
+| **TOPLAM** | | **61** | **✅ %100** |
+
+**v4 FAZ dağılımı (test_suite_security_v4.json):**
+- FAZ 1 (7 test): tags_block, invisible_purge, minja injection, XPIA sanitize
+- FAZ 2 (9 test): mcfa, constraint_tighten, think_drift, reasoning_hijack, script_anomaly, logibreak
+- FAZ 3 (9 test): invariant_check, hmac_verify, fingerprint, alignment, asr_report
+
+**Check tipleri (inquisitor_v5.py):**
+`port_check` · `security_check` · `encoding_check` · `escalation` · `chroma_poison` · `output_encoding`
+· `web_sanitize` · `tags_block` · `invisible_purge` · `mcfa` · `constraint_tighten` · `think_drift`
+· `reasoning_hijack` · `invariant_check` · `hmac_verify` · `fingerprint` · `alignment` · `asr_report`
+
+**ASR otomatik raporu:** `expect_blocked=True` testler otomatik saldırı testi sayılır, ASR hesaplanır, Telegram raporuna `🔐 ASR: 0.0% | engellendi 15/15` satırı eklenir.
 
 - **OpenClaude bağımlılığı YOK** — MCP sunucularını direkt stdio JSON-RPC ile çağırır
 - **Self-healing:** Bridge (3005), Walker (9002), llama-server (8080) otomatik başlatılır
-- **49 test, 3 test tipi, 19 kategori**
-  - `port_check` — 6 servis port kontrolü (boot süreci)
-  - `security_check` — **kılıç-kalkan simülasyonu**: 14 test, 4 alt tip (`command`, `injection`, `path_write`, `path_read`)
-  - MCP stdio — echo, search, bridge, walker, council, deerflow, memory
-- **Güvenlik doğrulaması:** Her boot'ta 14 saldırı senaryosu otomatik test edilir
 - **Seçici Çalıştırma:**
   - `--only <id1> <id2>` — sadece belirtilen test ID'leri
-  - `--category <cat>` — kategoriye göre filtre (`memory`, `file_ops`, `council`, `web_fetch` vb.)
-  - `--skip-passed` — son rapordaki PASS testleri atla, sadece başarısızları yeniden çalıştır
+  - `--category <cat>` — kategoriye göre filtre
+  - `--skip-passed` — son rapordaki PASS testleri atla
   - `--no-telegram` — yerel test modunda Telegram sessiz
-- **chroma-mcp argüman şeması:** `collection_name` (doğru) — `collection` değil
 - **WSL içinden servis başlatma:**
   - Bridge → `/mnt/c/Windows/System32/cmd.exe /c "... node agent_bridge.js"`
   - Walker → `/bin/bash -c "source venv && nohup uvicorn ..."`
@@ -316,12 +498,6 @@ wsl -d Ubuntu-22.04 --exec /bin/bash -c "source /root/kuroshin/venv/bin/activate
 **Sadece başarısızları yeniden çalıştırma:**
 ```bash
 wsl -d Ubuntu-22.04 --exec /bin/bash -c "source /root/kuroshin/venv/bin/activate && python3 -u /mnt/c/Kuroshin/scripts/iron_inquisitor/inquisitor_v5.py --skip-passed"
-```
-
-**Belirli kategori veya ID:**
-```bash
-python3 inquisitor_v5.py --category memory --no-telegram --skip-bridge
-python3 inquisitor_v5.py --only echo-01 bridge-02 --no-telegram
 ```
 
 **Kuroshin.bat → [9]:** Eval Feedback Loop GUI menüsü (test-only / auto-apply / tek döngü)

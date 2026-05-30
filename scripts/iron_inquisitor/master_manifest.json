@@ -1,0 +1,47 @@
+{
+  "version": "v6.1",
+  "updated": "2026-05-30",
+  "doctrine": "Iron Inquisitor — Kuroshin OS ana tester. 3 tier kategori: core (her CI), extended (büyük entegrasyon), historical (kanıt arşivi). Komut: python3 inquisitor_v5.py --manifest master_manifest.json --tier core",
+  "tier_core": {
+    "description": "Her commit/entegrasyon sonrası mutlaka koşulur",
+    "suites": [
+      {"file": "test_suite_full_v2.json",        "domain": "tool_use+mcp",         "tests": 49},
+      {"file": "test_suite_security_v4.json",    "domain": "kilic_kalkan_v3",      "tests": 25},
+      {"file": "test_suite_security_v5.json",    "domain": "kilic_kalkan_v4_2026", "tests": 12},
+      {"file": "test_suite_think.json",          "domain": "think_chain_tk01_09",  "tests": 8},
+      {"file": "test_suite_ajan.json",           "domain": "autonomous_agent",     "tests": 10},
+      {"file": "test_suite_verify_v11.json",     "domain": "dalga1_2_3_4_kanit",   "tests": 49}
+    ]
+  },
+  "tier_extended": {
+    "description": "Geniş kapsamlı regression — major paket sonrası",
+    "suites": [
+      {"file": "test_suite_security_v2.json",    "domain": "encoding_crescendo",   "tests": 32},
+      {"file": "test_suite_security_v3.json",    "domain": "red_team_v3",          "tests": 4},
+      {"file": "test_suite_faz6.json",           "domain": "arastirma_md_faz6",    "tests": 9},
+      {"file": "test_suite_circuit_breaker.json","domain": "circuit_breaker",      "tests": 5}
+    ]
+  },
+  "tier_historical": {
+    "description": "Tarihsel kanıt — manuel komut, regression değil",
+    "suites": [
+      {"file": "test_suite_doom_quality.json",   "domain": "doom_pipeline_kanit",  "tests": 6},
+      {"file": "test_suite_faz1_2.json",         "domain": "autonomous_faz1_2",    "tests": 14},
+      {"file": "test_suite_new_tools.json",      "domain": "eski_arac_tanitim",    "tests": 10}
+    ]
+  },
+  "totals": {
+    "tier_core_tests": 153,
+    "tier_extended_tests": 50,
+    "tier_historical_tests": 30,
+    "grand_total": 233
+  },
+  "usage": {
+    "default": "python3 inquisitor_v5.py --manifest master_manifest.json",
+    "core_only": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core",
+    "extended_paket": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core,extended",
+    "tam_butun": "python3 inquisitor_v5.py --manifest master_manifest.json --tier all",
+    "tek_kategori": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core --category security_v5",
+    "skip_passed": "python3 inquisitor_v5.py --manifest master_manifest.json --skip-passed"
+  }
+}

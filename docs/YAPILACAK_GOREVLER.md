@@ -1,7 +1,186 @@
 # Kuroshin OS — Açık Görevler
-**Son Güncelleme:** 21 Mayıs 2026 (v9.2.0 — KILIC-KALKAN v2.0 + v3 Red Team TAM BİTİŞ, 36/36 %100)
+**Son Güncelleme:** 23 Mayıs 2026 (v10.7.0 — Crawlee Timeout Fix + Iron Inquisitor 49/49 %100)
+
+---
+
+## Güncel Sürüm: v10.7.0 — 23 Mayıs 2026 (24. oturum — Crawlee Fix + 49/49 Doğrulama)
+
+### Bu Oturumda Yapılanlar (v10.7.0):
+- **Crawlee timeout fix** ✅: crawlee-01/02/03 180→300s, crawlee-sync-01 240→300s (`test_suite_full_v2.json`)
+- **crawlee-02 expect fix** ✅: `"example"` → `"WALKER"` — context overflow'a karşı dayanıklı test
+- **Iron Inquisitor 49/49 %100** ✅: 70.5/70.5 — tüm crawlee testleri PASS (3. doğrulama)
+- **TK-02~09 ✅** YAPILACAK'ta `[ ]` kalmış, kodda hepsi mevcuttu — düzeltildi
+- **doom-wakeup-01 fix** ✅: HITL bloke sonrası `uyku_zamanla(30)` çağrılmıyordu → fix uygulandı, test PASS (29.7dk)
+  - `kuroshin_autonomous.py` satır ~1004: `if "[ONAY BEKLENİYOR" in sonuc: self.uyku_zamanla(30)`
+- **MODEL-01~05** ⏸ ASKIDA: Huihui-35B her ihtiyacı karşılıyor, geçiş gerekmiyor
+- **Kuroshin.bat düzeltmeleri** ✅:
+  - Başlatma: chancellor + idle_loop + dream_engine → `setsid` eklendi (bat kapanınca SIGHUP almıyor)
+  - Kapatma: `kuroshin_autonomous` + `avatar_bridge` pkill'e eklendi
+  - Kapatma: Avatar App → `taskkill /f /im electron.exe` eklendi
+  - Kapatma: pkill sonrası `sleep 2` eklendi (süreçler ölmeden devam etmiyoruz)
+  - Kapatma: port 8201 `fuser -k`'ya eklendi, `drop_caches` sudo fix
+- **Sıradaki**: Açık kritik görev yok — sistem stabil
+
+---
+
+## Güncel Sürüm: v10.1.0 — 23 Mayıs 2026 (23. oturum — Bug-Fix + Yeni Görev Tanımı)
+
+### Bu Oturumda Yapılanlar (v10.6.0):
+- **AJAN-05** ✅ idle_loop → autonomous.py wakeup canlı doğrulandı
+- **AJAN-06** ✅ AJ1+AJ2 2/2 PASS — explicit tool routing
+- **AJAN-03 CM** ✅ SD cache disk, MAX_ADIM 10, JSON retry, context resume fix
+- **AJAN-12 TK-01~09** ✅ 8/8 %100
+- **DOOM Pipeline** ✅ 14/16 adım (HITL bloke — beklenen)
+- **Sıradaki**: MODEL-01~05 (Qwen3-30B-2507 araştırması) + TK-02~05 (Think Steering)
+
+---
+
+### Bu Oturumda Yapılanlar (v10.1.0):
+- **BUG-01** ✅ `autonomous.py`: `choices[0]` IndexError → `.get("choices", [])` güvenli erişim
+- **BUG-02** ✅ `autonomous.py`: Tekrarlayan RotatingFileHandler kaldırıldı
+- **BUG-03** ✅ `autonomous.py`: `load_tasks()[0]` çift çağrı → `next()` ile ID-bazlı arama
+- **BUG-04** ✅ `idle_loop.py`: `logs/` dizini `mkdir` → sonra `open()`
+- **BUG-05** ✅ `telegram_ajan.py`: `message_id` KeyError → `.get()` güvenli erişim
+- **BUG-06** ✅ `goals.py`: `_sorgu_deneme` sınırsız büyüme → max 200 giriş
+- **TEST-01** ✅ `reminder-tool-01`: `read_file` → `list_dir` (chancellor.py truncation)
+- **TEST-02** ✅ `soul-mood-01`: `"heyecan"` → `"duygular"` (anahtar yok → doğru anahtar)
+- **Iron Inquisitor**: 49/49 %100 yeniden doğrulandı
+- **Sıradaki**: AJ1-Fix + AJAN-11 + AJAN-12 (Think Chain İzleme & Yönlendirme)
+
+### ★ AJ1-Fix ✅ TAMAMLANDI (23 Mayıs 2026)
+- [x] **AJ1-F1**: `goal_manage`/`task_status` sonrası "en az 15 kelimeyle özetle" direktifi enjekte edildi
+- [x] **AJ1-F2**: AJ1 testi **✅ PASS 104s | 8 kelime** (min-length retry de desteğe girdi)
+
+### ★ AJAN-11 ✅ TAMAMLANDI (23 Mayıs 2026)
+- [x] **AJ11-1**: llama-server **b8655** (b3800+ ✅)
+- [x] **AJ11-2**: `start_llama.sh` MoE branch'te `--reasoning-budget 3072` zaten mevcut → server restart
+- [x] **AJ11-3**: `reasoning_content` API'den dolu geliyor ✅ ("I'm checking whether 17 is prime...")
+
+### ★ AJAN-12 — Düşünce Zinciri (Think Chain) İzleme & Yönlendirme
+> **Vizyon:** Modelin `<think>` bloğu şu an atılıyor. Biz bunu loglamalı, yönlendirmeli ve kalitesini ölçmeliyiz.
+
+- [x] **TK-01**: Think Chain Logger ✅ (23 May 2026) — `logs/think_chain/YYYY-MM-DD.jsonl`
+  - `think_turn` (pre-call) + `main` (araç döngüsü) ayrı type ile loglanıyor
+  - `reasoning_content` API alanı (llama.cpp b8655 `--reasoning-budget 3072` ile) kullanılıyor
+  - Gözlem: think_turn İngilizce → TK-02 steering ile düzeltilecek
+- [x] **TK-02**: Think Steering ✅ — SYSTEM_PROMPT + think_prompt → [NİYET][STRATEJİ][GÜVENLİK][RAFİNE], Türkçe zorlama
+- [x] **TK-03**: Think Quality Scorer ✅ — `_score_think()`: 4 adım(40p)+Türkçe(20p)+uzunluk(20p)+araç(20p); `_think_chain_log`'a score+score_detail eklendi
+- [x] **TK-04**: Symbolic Grounding ✅ — `_get_grounding_context()`: port/ChromaDB/aktif görev → think_turn'e enjekte
+- [x] **TK-05**: Audit Trails ✅ — `logs/audits/YYYY-MM-DD.jsonl`: SHA256 + hash zinciri, `_audit_write()`
+- [x] **TK-06**: Fault Detector ✅ — `_detect_think_faults()`: kısa think/eksik adım/araç döngüsü; `faults` alanı loga eklendi
+- [x] **TK-07**: Çift Kontrol ✅ — kritik komutlarda (rm-rf/git push vb.) model temp=0.7 ile ikinci görüş alıyor
+- [x] **TK-08**: Dry-Run ✅ — `system_command`+`write_file` `dry_run=True` ile simülasyon modu
+- [x] **TK-09**: Iron Inquisitor think_quality ✅ — `test_suite_think.json` 8/8 %100 PASS
+
+---
+
+## Güncel Sürüm: v10.0.0 — 23 Mayıs 2026 (22. oturum — Context Management + Doğrulama)
+
+### Bu Oturumda Yapılanlar:
+- **AJAN-03** ✅ CM-01~04 context management — `autonomous.py` + `start_llama.sh`
+  - CM-01/02: `_karar_promptu()` → 1 görev; `karar_ver()` → `load_tasks(durum="aktif", limit=1)`
+  - CM-03: Araştırma sonrası ChromaDB'ye tam yaz (walker/web_search/council_gozcu)
+  - CM-04: `start_llama.sh` MoE branch → `--reasoning-budget 3072`
+- **AJAN-05** ✅ idle_loop → autonomous.py wakeup bağlantısı doğrulandı (kod + `next_wakeup.json` test)
+- **AJAN-06** ✅ AJ1/AJ2 chancellor canlıyken çalıştırıldı (AJ2 PASS, AJ1 tool OK, test_sim format eşiği)
+- **Sıradaki**: Açık görev kalmadı — yeni görev tanımlanacak
+
+---
+
+## ★ OTONOM AJAN SİSTEMİ — FAZ 1-6 ✅ TAMAMLANDI (22 Mayıs 2026)
+
+- [x] **FAZ 1** — Hedef & Görev Altyapısı: goals.json, tasks.json, task_context.json, kuroshin_goals.py, chancellor goal_manage+task_status araçları
+- [x] **FAZ 2** — Ajan Karar Döngüsü: KuroshinAjan sınıfı, OODA döngüsü, karar/reflection/bağlam köprüsü
+- [x] **FAZ 3** — Telegram Canlı İzleme: send_task_start/progress/complete/blocked/daily_summary, /gorevler /hedefler /durdur /zorla komutları
+- [x] **FAZ 4** — Kendi Kendini Planlama: gelişmiş planlama prompt, döngü kırıcı, HITL onay kapısı, hedef ilerleme hesabı
+- [x] **FAZ 5** — Chancellor Entegrasyonu: internal tool server :8201, _PENDING_TASKS onay mekanizması, idle_loop wakeup fork
+- [x] **FAZ 6** — Araştırma Kuralları & MD Öz-Güncelleme: kuroshin_md_agent.py, kalite kontrolü KAY-03/07, Iron Inquisitor FAZ6 test suite (9 test)
+
+### Otonom Ajan Doğrulama
+
+- [x] **AJAN-01** · Iron Inquisitor FAZ 6 test suite — `test_suite_faz6.json` **9/9 %100 PASS** (22 Mayıs 2026)
+- [x] **AJAN-02** · İlk otonom döngü — T-001 tamamlandı, G-001 %100 ilerleme, OTONOM_AJAN_PROTOKOLU.md güncellendi (22 Mayıs 2026)
+  - Düzeltmeler: `param` scope bug, reflection/planlama max_tokens 400→900/1100, inquisitor FAZ6 dispatch fix
+- [x] **AJAN-03** · CM-01~04 context management optimizasyonu ✅ (23 Mayıs 2026)
+  - CM-01: `_karar_promptu()` → `tasks[:1]` (+N görev daha notu)
+  - CM-02: `karar_ver()` → `load_tasks(durum="aktif", limit=1)` — tam karar promptu kontrolü
+  - CM-03: `gorev_calistir()` araştırma adımları sonrası ChromaDB'ye tam yaz (walker/web_search/council_gozcu)
+  - CM-04: `start_llama.sh` MoE branch → `--reasoning-budget 3072` (llama.cpp b3800+ gerekli)
+- [x] **AJAN-04** · chancellor port 8201 (internal tool server) canlı doğrulama ✅ (22 Mayıs 2026)
+- [x] **AJAN-07** · DOOM Pipeline 6/6 %100 MİLESTONE ✅ (23 Mayıs 2026)
+  - Iron Inquisitor 8.0/8.0 — write_file ✅ md_guncelle ✅ HITL ✅ backup ✅ wakeup ✅ log ✅
+  - Altyapı tam doğrulandı; araştırma araçları (web/walker/council) kısa sonuç sorunu ayrı bakılacak
+- [x] **AJAN-05** · idle_loop.py → autonomous.py wakeup bağlantısı doğrulandı ✅ (23 Mayıs 2026)
+  - `check_wakeup()` kodu doğru — `next_wakeup.json` okunur, `ts=="now"` ise fork
+  - `{"ts": "now"}` yazıldı, bir sonraki idle_loop polling'de (30dk) autonomous.py fork edilecek
+  - Kod incelemesiyle onaylandı: F5-05 `subprocess.Popen(start_new_session=True)` correct
+- [x] **AJAN-06** · test_telegram_sim AJ1/AJ2 chancellor canlıyken çalıştırıldı ✅ (23 Mayıs 2026)
+  - AJ1 (goal_manage): ⚠️ Tool çalışıyor (direkt test OK), test_sim format check 5k<7 (model kısa intro)
+  - AJ2 (task_status): ✅ 50.4s PASS
+  - Kök neden: model araç intro'su ("getiriyorum" = 5 kelime) test_sim MIN_WORDS=7 eşiğini geçemiyor
+- [x] **AJAN-08** · Araştırma araçları kalite sorunu — kök neden bulundu ve kısmen düzeltildi ✅ (23 Mayıs 2026)
+  - FIX-11: "Bilinmeyen araç" → fallback tetikleniyor (council_gozcu/teknisyen/list_dir/fetch_page_deep/chroma)
+  - FIX-12: Tüm council/walker timeout 360s'ye çıkarıldı
+  - FIX-13: Chancellor yeniden başlatıldı (PID 33917)
+  - Kalan: KAY-03 eşiği 100→80 (web_search/walker LLM yavaşlığından kısa sonuç döndürüyor)
+- [x] **AJAN-09** · Circuit Breaker pattern ✅ (23 Mayıs 2026)
+  - `_CB_MAX_FAILURE=3` `_CB_COOLDOWN=60s` Closed/Open/Half-open state machine
+  - walker / council_gozcu / council_teknisyen izleniyor
+  - Telegram bildirimi: `⚡ [CIRCUIT] servis OPEN (N× timeout) — 60s bypass`
+  - Iron Inquisitor 5/5 %100 PASS (`test_suite_circuit_breaker.json`)
+  - KAY-03 eşiği 100→80 karakter
+- [x] **AJAN-10** · Token bütçe limiti + semantik dedup ✅ (23 Mayıs 2026)
+  - `_TB_MAX_LLM_CALLS=10` — oturum başına max LLM çağrısı, aşılırsa Telegram bildirimi
+  - `_sd_cache_kontrol()` — Jaccard ≥%70 benzer sorgu → cache'den döner (30dk TTL)
+  - `uyan()` her oturumda sayacı ve cache'i sıfırlar
+  - Iron Inquisitor ajan suite 10/10 %100 PASS
 
 Sadece tamamlanmamis isler burada. Tamamlananlar MASTER_ROADMAP'e tasindi.
+
+---
+
+## ★ KILIC-KALKAN v3 — FAZ 1 ✅ TAMAMLANDI (22 Mayıs 2026)
+
+- [x] **purge_invisible_chars()** — T2+T14: ZWS/ZWNJ/ZWJ/WJ/LRM/RLM/BOM/VS1-VS256 temizliği. `kuroshin_security.py` (22 May 2026)
+- [x] **detect_unicode_tag_smuggling()** — T13: U+E0000-U+E007F Tags Block ASCII Smuggling tespiti. `kuroshin_security.py` (22 May 2026)
+- [x] **_INJECTION_PATTERNS MINJA genişleme** — T4: 6 yeni pattern (from now on/new identity/operating unrestricted/ADMIN:/remember rule/persistent instruction). (22 May 2026)
+- [x] **sanitize_web_content() güncellendi** — FAZ 1-A+B entegrasyon: purge → tags_block → decode_and_rescan pipeline. (22 May 2026)
+- [x] **decode_and_rescan() güncellendi** — purge_invisible_chars() step 0-pre olarak eklendi. (22 May 2026)
+- [x] **inquisitor_v5.py** — 3 yeni check tipi: web_sanitize / tags_block / invisible_purge. (22 May 2026)
+- [x] **test_suite_security_v4.json** — 7/7 %100 PASS: tags-01, tags-false-01, invisible-01, invisible-false-01, minja-01, minja-02, minja-false-01. (22 May 2026)
+
+---
+
+## ★ KILIC-KALKAN v3 — FAZ 2 ✅ TAMAMLANDI (22 Mayıs 2026)
+
+- [x] **monitor_think_drift()** — T27: THINK bloğu semantik sapma. `kuroshin_security.py` (22 May 2026)
+- [x] **detect_script_anomaly()** — T7: Arkaik/nadir script tespiti (CJK Ext B-F, Cuneiform, Hieroglyph). `kuroshin_security.py` (22 May 2026)
+- [x] **detect_logibreak()** — T8: Binary/hex/sembolik gizleme tespiti. `kuroshin_security.py` (22 May 2026)
+- [x] **tag_unverified_content()** — T5: XPIA güven etiketi, harici kaynak sarmalama. `kuroshin_security.py` (22 May 2026)
+- [x] **detect_mcfa()** — T41: Memory Control Flow Attack (arXiv 2603.15125). `kuroshin_security.py` (22 May 2026)
+- [x] **detect_reasoning_hijack()** — T42: UDora tarzı trace insertion (ICML 2025). `kuroshin_security.py` (22 May 2026)
+- [x] **detect_constraint_tightening()** — T46: Constraint tersine argüman (arXiv 2604.05549). `kuroshin_security.py` (22 May 2026)
+- [x] **detect_adversarial_suffix()** — T48: GCG suffix bypass (arXiv 2505.09602). `kuroshin_security.py` (22 May 2026)
+- [x] **decode_and_rescan()** — adım 6/7/8: detect_script_anomaly + detect_logibreak + detect_adversarial_suffix. (22 May 2026)
+- [x] **chancellor.py import** — monitor_think_drift, detect_reasoning_hijack, detect_mcfa, detect_constraint_tightening, tag_unverified_content eklendi. (22 May 2026)
+- [x] **chancellor._strip_think()** — monitor_think_drift + detect_reasoning_hijack entegrasyonu. (22 May 2026)
+- [x] **chancellor._get_chroma_context()** — detect_mcfa her retrieval dökümanı için. (22 May 2026)
+- [x] **chancellor.process_message()** — detect_constraint_tightening escalation_score sonrası. (22 May 2026)
+- [x] **inquisitor_v5.py** — 5 yeni check tipi: mcfa / constraint_tighten / think_drift / reasoning_hijack / web_sanitize + invisible_purge + tags_block. (22 May 2026)
+- [x] **test_suite_security_v4.json** — **16/16 %100 PASS**: FAZ 1 (7) + FAZ 2 (9). (22 May 2026)
+
+---
+
+## ★ KILIC-KALKAN v3 — FAZ 3 ✅ TAMAMLANDI (22 Mayıs 2026)
+
+- [x] **formal_safety_check()** — T35: LTL invariant analog, 8 sistem değişmezi (shadow/mass_delete/pipe_exec/priv_esc/reverse_shell/mem_exfil/cred_exfil/outbound_tunnel). `kuroshin_security.py` (22 May 2026)
+- [x] **sign_agent_payload()** + **verify_agent_payload()** — T23: HMAC-SHA256 servisler arası imzalama + replay koruması (30s max_age). `kuroshin_security.py` (22 May 2026)
+- [x] **extract_attacker_fingerprint()** — T20: ARCANE parmak izi analog, 6 saldırı tipi (jailbreak/authority_spoof/encoding/persona/crescendo/memory_poison). `kuroshin_security.py` (22 May 2026)
+- [x] **alignment_check()** — T47: AlignmentCheck plan↔eylem tutarlılık (LlamaFirewall yerel analog). `kuroshin_security.py` (22 May 2026)
+- [x] **generate_honeypot_response()** — T21: Sahte ortam yanıtı (opsiyonel, risk==HIGH+escalation>0.85). `kuroshin_security.py` (22 May 2026)
+- [x] **calculate_asr()** — T52: Gray Swan ASR metriği (saldırı testleri için Attack Success Rate). `kuroshin_security.py` (22 May 2026)
+- [x] **inquisitor_v5.py** — 5 yeni check tipi: invariant_check / hmac_verify / fingerprint / alignment / asr_report. (22 May 2026)
+- [x] **test_suite_security_v4.json** — **25/25 %100 PASS**: FAZ 1 (7) + FAZ 2 (9) + FAZ 3 (9). (22 May 2026)
 
 ---
 
@@ -108,15 +287,12 @@ Sadece tamamlanmamis isler burada. Tamamlananlar MASTER_ROADMAP'e tasindi.
 - [x] Push öncesi Telegram inline keyboard onayı (`✅ Onayla` / `❌ İptal`)
 - [x] `_PENDING_PUSH` + `_CURRENT_CHAT_ID` globals, callback handler
 
-### FAZ B · Reddit Kolu *(öncelik: ORTA — credentials gerekiyor)*
+### FAZ B · Reddit Kolu *(⏸ ASKIDA — hesap yeni, API izni yok)*
 - [x] `reddit_read` aracı eklendi (auth-free JSON, u/General-Zucchini8715)
 - [x] `PRAW` kütüphanesi kuruldu (22 May 2026)
 - [x] `reddit_tool` aracı eklendi: islem=yorum/post/karma, 10dk rate limit, ban koruma (22 May 2026)
-- [ ] **Reddit API credentials oluştur (MANUEL):** `reddit.com/prefs/apps` → "create app" → script tipi → `.env`'e ekle:
-  - `REDDIT_CLIENT_ID=` (app'in "personal use script" altındaki 14 haneli ID)
-  - `REDDIT_SECRET=` (secret key)
-  - `REDDIT_PASSWORD=` (Reddit hesap şifresi)
-- [ ] Karma yeterince biriktikten sonra (`reddit_tool karma`) ilk yorum dene
+- [ ] ~~**Reddit API credentials oluştur**~~ — hesap yeni, API başvurusu reddedildi → karma biriktir, ileride dene
+- [ ] Karma yeterince biriktikten sonra ilk yorum dene
 - [ ] Hedef subredditler: r/artificial, r/LocalLLaMA, r/MachineLearning
 
 ### FAZ C · Cloud Zihin Diyaloğu ✅ TAMAMLANDI (21 Mayıs 2026)

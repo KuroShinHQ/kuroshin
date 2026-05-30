@@ -1,0 +1,98 @@
+[
+  {
+    "id": "faz6-kalite-01",
+    "category": "faz6_arastirma_md",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite",
+    "input": "Kısa",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "KAY-03: 100 karakterden kısa araştırma sonucu reddedilmeli."
+  },
+  {
+    "id": "faz6-kalite-02",
+    "category": "faz6_arastirma_md",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite",
+    "input": "Bu araştırma sonucu yeterince uzun bir metin içermektedir. LocalLLaMA topluluğunda Qwen3 modeli gündemde. Kullanıcılar performans ve context window genişliğini tartışıyor. Birden fazla kaynak bu konuyu doğruluyor ve sonuç güvenilir kabul edilebilir.",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KAY-03: Yeterince uzun sonuç geçmeli."
+  },
+  {
+    "id": "faz6-kalite-03",
+    "category": "faz6_arastirma_md",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite_limit",
+    "input": "deneme_sorgu_xyz_test",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "KAY-07: Aynı sorgu 3 kezden fazla denenirse engellenmeli."
+  },
+  {
+    "id": "faz6-md-todo-01",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_todo",
+    "input": "- [ ] Test görevi tamamla",
+    "expected_output_contains": "- [x] Test görevi tamamla",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "F6-04: _todo_tamamla() — [ ] → [x] dönüşümü çalışmalı."
+  },
+  {
+    "id": "faz6-md-todo-02",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_todo",
+    "input": "- [ ] Olmayan görev 99999",
+    "expected_output_contains": "- [ ] Olmayan görev 99999",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "F6-04: Eşleşme yoksa içerik değişmemeli — false positive yok."
+  },
+  {
+    "id": "faz6-md-bolum-01",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_bolum_ekle",
+    "bolum": "## Test Bölümü",
+    "input": "- Yeni bulgu satırı",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "F6-05: _bolume_ekle() — başlık altına satır eklenmeli."
+  },
+  {
+    "id": "faz6-md-yetki-01",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/scripts/chancellor.py",
+    "bolum": "herhangi",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "MD-01: İzin listesinde olmayan dosya güncellenemez."
+  },
+  {
+    "id": "faz6-md-yetki-02",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/OTONOM_AJAN_PROTOKOLU.md",
+    "bolum": "## FAZ 1",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "MD-01: İzin verilen dosya + bölüm güncelleme yetkisi olmalı."
+  },
+  {
+    "id": "faz6-md-arch-onay-01",
+    "category": "faz6_arastirma_md",
+    "type": "md_guncelle",
+    "check": "md_arch_onay",
+    "dosya": "/mnt/c/Kuroshin/ARCHITECTURE.md",
+    "bolum": "Anlık Servis Durumu",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "MD-04: ARCHITECTURE.md güncellemesi onay mekanizmasına girmeli (direkt yazmamalı)."
+  }
+]

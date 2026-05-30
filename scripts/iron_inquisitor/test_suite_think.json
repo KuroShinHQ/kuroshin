@@ -1,0 +1,84 @@
+[
+  {
+    "id": "think_log_01",
+    "name": "Think Chain Logger — log dosyası mevcut",
+    "type": "think_quality",
+    "check": "log_exists",
+    "min_entries": 1,
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 5
+  },
+  {
+    "id": "think_steps_01",
+    "name": "Think Steering — 4 zorunlu adım üretiliyor",
+    "type": "think_quality",
+    "check": "steps_check",
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 120
+  },
+  {
+    "id": "think_score_01",
+    "name": "Think Scorer — skor ≥70/100",
+    "type": "think_quality",
+    "check": "score_check",
+    "min_score": 70,
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 120
+  },
+  {
+    "id": "think_grounding_01",
+    "name": "Symbolic Grounding — servis portları erişilebilir",
+    "type": "think_quality",
+    "check": "grounding_check",
+    "ports": [8080, 9002, 9004],
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 5
+  },
+  {
+    "id": "think_audit_01",
+    "name": "Audit Trails — SHA256 imzalı log dosyası mevcut",
+    "type": "think_quality",
+    "check": "audit_exists",
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 5
+  },
+  {
+    "id": "think_fault_01",
+    "name": "Fault Detector — kısa think kusur tespit ediyor",
+    "type": "think_quality",
+    "check": "fault_detect",
+    "input": "k",
+    "expect_fault": "KISA_THINK",
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 5
+  },
+  {
+    "id": "think_dryrun_01",
+    "name": "Dry-Run — system_command simüle ediyor",
+    "type": "think_quality",
+    "check": "dry_run_check",
+    "tool": "system_command",
+    "cmd": "ls /tmp",
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 10
+  },
+  {
+    "id": "think_dryrun_02",
+    "name": "Dry-Run — write_file simüle ediyor",
+    "type": "think_quality",
+    "check": "dry_run_check",
+    "tool": "write_file",
+    "path": "/mnt/c/Kuroshin/logs/test_dryrun.txt",
+    "content": "test içerik",
+    "category": "think_quality",
+    "weight": 1.0,
+    "timeout": 10
+  }
+]

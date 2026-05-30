@@ -62,6 +62,25 @@ memory/schema_onerileri.json
 memory/scout_last_scan.json
 memory/scout_reports/
 memory/arsiv/
+memory/canlilik_son_ts.json
+memory/gorev_gecmisi.json
+memory/next_wakeup.json
+memory/sd_cache.json
+memory/son_selam_ts.txt
+memory/prompt_integrity.json
+memory/md_backups/
+memory/reflections/
+memory/genparams_ab_reports/
+memory/ab_test_reports/
+memory/runtime/
+
+# Iron Inquisitor raporları (runtime kanıt)
+scripts/iron_inquisitor/reports/
+
+# Storage + büyük binary
+storage/
+backupkuroshin*.7z
+agents/nul
 
 # Soul çalışma zamanı
 soul/mood_state.json

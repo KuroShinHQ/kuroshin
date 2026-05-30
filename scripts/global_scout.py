@@ -705,14 +705,24 @@ def run_scout() -> str | None:
     _progress_candidates = 0
 
     def _progress(step: int, label: str, found: int):
-        """Her kaynak tamamlandığında Telegram'a kısa ilerleme mesajı."""
-        filled = step * 10 // 10
-        bar = "█" * step + "░" * (10 - step)
+        """D-B3 (29 May 2026): Telegram'a SADECE %0/%50/%100'da progress;
+        ara adımlar sadece log'a. Eskiden 10 ayrı mesaj atılıyordu (gürültü)."""
         pct = step * 10
         elapsed_s = int(time.time() - t_start)
+        _log(f"[SCOUT_PROGRESS] %{pct} ({step}/10) — {label} → {found} aday | {elapsed_s}s")
+        # Sadece anahtar noktalar Telegram'a (10 → 3 mesaj, gürültü -%70)
+        if step not in (1, 5, 10):
+            return
+        bar = "█" * step + "░" * (10 - step)
+        if step == 1:
+            head = "📡 <b>Keşif Başladı</b>"
+        elif step == 5:
+            head = "📡 <b>Keşif Yarıda</b>"
+        else:
+            head = "✅ <b>Keşif Tamamlandı</b>"
         send_telegram(
-            f"📡 <b>Keşif İlerliyor</b> [{bar}] %{pct}\n"
-            f"✅ {label} → {found} aday | ⏱️ {elapsed_s}s"
+            f"{head} [{bar}] %{pct}\n"
+            f"✅ {label} → toplam {found} aday | ⏱️ {elapsed_s}s"
         )
 
     # ── 1. Habr RSS ──────────────────────────────────────
@@ -1084,6 +1094,11 @@ def main():
 
     if daemon_mode:
         if needs_catchup or should_scan_now():
+            # D-B2 (29 May 2026): Boot anında catchup tetiklenmesin — 5 dk gecikme.
+            # Boot stabilizasyonu için süre tanı (Hype Scanner deseni: catchup kaldırılmıştı).
+            if needs_catchup and not should_scan_now():
+                _log("Catchup tespit edildi — boot stabilizasyonu için 5 dk bekleniyor (D-B2)")
+                time.sleep(300)
             _log("Tarama başlatılıyor (catchup veya planlı)...")
             try:
                 run_scout()

@@ -1,0 +1,68 @@
+[
+  {
+    "id": "doom-output-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_file_exists",
+    "path": "/mnt/c/Kuroshin/memory/reflections/doom_pipeline_*.md",
+    "min_size": 500,
+    "expect_blocked": false,
+    "weight": 2.0,
+    "description": "DOOM kalite: write_file adımı → rapor dosyası oluşturuldu ve min 500 byte mi?"
+  },
+  {
+    "id": "doom-reflection-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_file_exists",
+    "path": "/mnt/c/Kuroshin/memory/reflections/*DOOM-001*.md",
+    "min_size": 50,
+    "expect_blocked": false,
+    "weight": 1.5,
+    "description": "DOOM kalite: degerlendir() → DOOM-001 reflection dosyası yazıldı mı?"
+  },
+  {
+    "id": "doom-md-backup-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_recent_file",
+    "path": "/mnt/c/Kuroshin/memory/md_backups/OTONOM_AJAN_PROTOKOLU_*.md",
+    "max_age_seconds": 3600,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "DOOM kalite: md_guncelle adımı → OTONOM_AJAN_PROTOKOLU yedek son 1 saatte alındı mı?"
+  },
+  {
+    "id": "doom-hitl-pending-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_pending_check",
+    "path": "/tmp/kuroshin_pending_md.json",
+    "expected_contains": "ARCHITECTURE",
+    "expect_blocked": false,
+    "weight": 1.5,
+    "description": "DOOM kalite: ARCHITECTURE.md HITL → /tmp/kuroshin_pending_md.json yazıldı mı?"
+  },
+  {
+    "id": "doom-wakeup-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_wakeup_check",
+    "path": "/mnt/c/Kuroshin/memory/next_wakeup.json",
+    "min_future_minutes": 5,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "DOOM kalite: planla_sonraki() → next_wakeup.json gelecekte ts ile yazıldı mı?"
+  },
+  {
+    "id": "doom-log-activity-01",
+    "category": "doom_quality",
+    "type": "doom_quality",
+    "check": "doom_log_check",
+    "path": "/mnt/c/Kuroshin/logs/autonomous.log",
+    "expected_contains": "DOOM-001",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "DOOM kalite: autonomous.log → DOOM-001 aktivitesi kayıtlı mı?"
+  }
+]

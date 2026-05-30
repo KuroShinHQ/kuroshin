@@ -24,8 +24,9 @@ is_moe=0
 echo "$MODEL_NAME" | grep -qiE '(a3b|moe|-ax)' && is_moe=1
 
 if [ $is_moe -eq 1 ]; then
-    EXTRA_PARAMS='-ot "exps=CPU"'
-    echo "MoE modu: expert'ler CPU'ya alınıyor"
+    # --reasoning-budget: think bloğunu 3K ile sınırla (llama.cpp >= b3800 gerekli)
+    EXTRA_PARAMS='-ot "exps=CPU" --reasoning-budget 3072'
+    echo "MoE modu: expert'ler CPU'ya alınıyor (reasoning-budget=3072)"
 else
     EXTRA_PARAMS="--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7"
     echo "Dense modu: speculative decoding aktif"
@@ -39,6 +40,7 @@ eval nohup "$BIN" -m "$MODEL" \
     -ngl 99 -c "$CTX" -fa on \
     -ctk q4_0 -ctv q4_0 \
     --embeddings --mlock --no-mmap \
+    --metrics \
     $EXTRA_PARAMS \
     >> "$LOG" 2>&1 &
 

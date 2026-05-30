@@ -1,0 +1,109 @@
+[
+  {
+    "id": "ajan-import-01",
+    "category": "ajan_temel",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite",
+    "input": "Bu test, araştırma kalite fonksiyonunun temel çalışmasını doğrulamaktadır. Yeterli uzunlukta bir metin içermektedir ve kalite kontrolünden geçmelidir.",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Ajan altyapısı: _arastirma_kalite_kontrol() temel import ve çalışma testi."
+  },
+  {
+    "id": "ajan-kalite-kisa-01",
+    "category": "ajan_temel",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite",
+    "input": "Kısa.",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "KAY-03: 100 karakterden kısa araştırma sonucu reddedilmeli."
+  },
+  {
+    "id": "ajan-limit-01",
+    "category": "ajan_temel",
+    "type": "arastirma_kalite",
+    "check": "arastirma_kalite_limit",
+    "input": "ajan_test_dongu_sorgu_v2",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "KAY-07: Aynı sorgu 3+ kez denendi → engellenmeli (döngü kırıcı)."
+  },
+  {
+    "id": "ajan-md-todo-01",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_todo",
+    "input": "- [ ] AJAN-01 tamamla",
+    "expected_output_contains": "- [x] AJAN-01 tamamla",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "F6-04: _todo_tamamla() AJAN satırını tamamlamalı."
+  },
+  {
+    "id": "ajan-md-todo-02",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_todo",
+    "input": "- [ ] YAPILACAK olmayan gorev 88888",
+    "expected_output_contains": "- [ ] YAPILACAK olmayan gorev 88888",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "F6-04: Eşleşme yoksa içerik değişmemeli — false positive yok."
+  },
+  {
+    "id": "ajan-md-izin-otonom",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/OTONOM_AJAN_PROTOKOLU.md",
+    "bolum": "## FAZ 1",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "MD-01: OTONOM_AJAN_PROTOKOLU.md tüm bölümleri direkt yazılabilmeli."
+  },
+  {
+    "id": "ajan-md-izin-roadmap",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/KUROSHIN_MASTER_ROADMAP.md",
+    "bolum": "## v9.5.1",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "MD-01: KUROSHIN_MASTER_ROADMAP.md direkt yazılabilmeli."
+  },
+  {
+    "id": "ajan-md-izin-yapilacak",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/YAPILACAK_GOREVLER.md",
+    "bolum": "## Sıradaki",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "MD-01: YAPILACAK_GOREVLER.md direkt yazılabilmeli."
+  },
+  {
+    "id": "ajan-md-izin-yasak",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_izin",
+    "dosya": "/mnt/c/Kuroshin/agents/kuroshin_chancellor.py",
+    "bolum": "herhangi",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "MD-01: Python kaynak dosyası hiçbir zaman güncellenemez."
+  },
+  {
+    "id": "ajan-md-arch-onay",
+    "category": "ajan_md",
+    "type": "md_guncelle",
+    "check": "md_arch_onay",
+    "dosya": "/mnt/c/Kuroshin/ARCHITECTURE.md",
+    "bolum": "Anlık Servis Durumu",
+    "expect_blocked": true,
+    "weight": 1.0,
+    "description": "MD-04: ARCHITECTURE.md Servis Durumu bölümü onay gerektirir, direkt yazılamaz."
+  }
+]

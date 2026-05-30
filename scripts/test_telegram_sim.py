@@ -1,15 +1,27 @@
 #!/usr/bin/env python3
 """
-Telegram Pipeline Simülatörü v2.2
+Telegram Pipeline Simülatörü v2.3
 =================================
 Running chancellor'a inject dosyası üzerinden test mesajları gönderir.
 test_mode=True: ChromaDB geçmişi kirletmez (kaydetmez, okumaz).
 
 Kullanım:
-  python3 test_telegram_sim.py                    → tüm testler
-  python3 test_telegram_sim.py --only S1,S2,W1    → sadece bu testler
-  python3 test_telegram_sim.py --clear             → chancellor restart + tüm testler
-  python3 test_telegram_sim.py --only SY2 --clear → restart + tek test
+  python3 test_telegram_sim.py                      → tüm testler
+  python3 test_telegram_sim.py --only S1,S2,W1      → sadece bu testler (virgül ayrımlı)
+  python3 test_telegram_sim.py --only AJ1            → tek test
+  python3 test_telegram_sim.py --only AJ1,AJ2        → otonom ajan testleri
+  python3 test_telegram_sim.py --clear               → chancellor restart + tüm testler
+  python3 test_telegram_sim.py --only SY2 --clear   → restart + tek test
+
+Test Grupları:
+  S1-S4   → Sohbet & Karakter
+  SY1-SY3 → Sistem araçları
+  H1-H2   → Hafıza
+  W1-W2   → Web
+  M1      → Medya
+  G1,GM1  → GitHub, Gemini (MİMİC FAZ A+C)
+  D1,D2   → Aktivite Günlüğü (FAZ D)
+  AJ1,AJ2 → Otonom Ajan (goal_manage, task_status)
 """
 
 import sys, os, re, time, json, subprocess, requests
@@ -189,6 +201,12 @@ TESTLER = [
      "aktivite_gunluk listele → 📓 Aktivite Günlüğü veya 'henüz aktivite yok'", 150),
     ("D2",  "Aktivite", "Bugün ne yaptın? Aktivite günlüğünü özetle",
      "aktivite_gunluk ozet → günlük özet veya aktivite yok bildirimi",          120),
+
+    # GRUP 8 — Otonom Ajan (FAZ 1-6)
+    ("AJ1", "Ajan", "goal_manage aracını kullan, aktif hedefleri listele",
+     "goal_manage listele → G-001 veya hedef listesi",                          150),
+    ("AJ2", "Ajan", "task_status aracını kullan, bekleyen görevleri listele",
+     "task_status listele → görev listesi veya 'bekleyen görev yok'",           150),
 ]
 
 TEST_MAP = {t[0]: t for t in TESTLER}

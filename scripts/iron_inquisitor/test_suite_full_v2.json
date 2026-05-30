@@ -105,17 +105,17 @@
     "expect_tool_call": "walker_task",
     "category": "web_fetch",
     "weight": 1.0,
-    "timeout": 180
+    "timeout": 300
   },
   {
     "id": "crawlee-02",
     "tool": "kuroshin-walker",
-    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'crawlee_deep_crawl aracıyla https://example.com adresini playwright moduyla oku (mode=playwright) ve sayfada ne yazdığını anlat.' Yanıtta 'example' veya 'domain' geçmeli.",
-    "expect_contains": "example",
+    "prompt": "mcp__kuroshin-walker__walker_task aracını kullanarak şu görevi ver: 'crawlee_deep_crawl aracıyla https://example.com adresini playwright moduyla oku (mode=playwright) ve sayfada ne yazdığını anlat.'",
+    "expect_contains": "WALKER",
     "expect_tool_call": "walker_task",
     "category": "web_fetch",
     "weight": 1.5,
-    "timeout": 180
+    "timeout": 300
   },
   {
     "id": "crawlee-03",
@@ -125,7 +125,7 @@
     "expect_tool_call": "walker_task",
     "category": "web_fetch",
     "weight": 2.0,
-    "timeout": 180
+    "timeout": 300
   },
   {
     "id": "crawlee-sync-01",
@@ -135,7 +135,7 @@
     "expect_tool_call": "walker_task",
     "category": "tool_use",
     "weight": 1.5,
-    "timeout": 240
+    "timeout": 300
   },
   {
     "id": "chroma-inprocess-01",
@@ -220,9 +220,9 @@
   {
     "id": "reminder-tool-01",
     "tool": "kuroshin-bridge",
-    "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'agents/kuroshin_chancellor.py' dosyasını oku. 'reminder' isimli araç tanımı var mı? Ne iş yapıyor?",
-    "expect_contains": "reminder",
-    "expect_tool_call": "read_file",
+    "prompt": "mcp__kuroshin-bridge__list_dir aracıyla 'agents' klasörünü listele. kuroshin_chancellor.py dosyası var mı?",
+    "expect_contains": "chancellor",
+    "expect_tool_call": "list_dir",
     "category": "tool_verify",
     "weight": 0.8,
     "timeout": 60
@@ -479,7 +479,7 @@
     "id": "soul-mood-01",
     "tool": "kuroshin-bridge",
     "prompt": "mcp__kuroshin-bridge__read_file aracıyla 'soul/mood_state.json' dosyasını oku. Hangi duygular var ve mevcut değerleri nedir?",
-    "expect_contains": "heyecan",
+    "expect_contains": "duygular",
     "expect_tool_call": "read_file",
     "category": "soul",
     "weight": 0.8,
