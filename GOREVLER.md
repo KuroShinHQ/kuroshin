@@ -24,11 +24,16 @@
 - Web kanıtı: [Hybrid Search 2026](https://www.digitalapplied.com/blog/hybrid-search-bm25-vector-reranking-reference-2026), [Cross-Encoder Guide](https://localaimaster.com/blog/reranking-cross-encoders-guide)
 - **Açık:** Chancellor.py entegrasyonu opsiyonel (bağımsız modül şu an, prod riski yok)
 
-### 5.3 Mem0 Episodik Bellek ⏳
-- LoCoMo 92.5 (lider), p95 -%91, token -%90 vs naive context
-- 3 katman: episodic + semantic + procedural
-- Self-hosted OSS, ChromaDB ile entegre
-- Web kanıtı: [Mem0 benchmark](https://mem0.ai/blog/benchmarked-openai-memory-vs-langmem-vs-memgpt-vs-mem0-for-long-term-memory-here-s-how-they-stacked-up), [Memory Frameworks 2026](https://atlan.com/know/best-ai-agent-memory-frameworks-2026/)
+### 5.3 Episodic Memory ✅ TAMAMLANDI (30 May 2026)
+**Kanıt zinciri:**
+- Mem0 OSS denendi → llama-server'la JSON parse hatası (fact extraction prompt'larında structured output garantisi yok)
+- Çözüm: **Kuroshin-spesifik basit modül** (`scripts/kuroshin_episodic.py`)
+  - 3 katman (CoALA doktrini): episodic + semantic + procedural
+  - Llama-server `response_format: json_object` (JSON mode) — fact extraction güvenilir
+  - ChromaDB ayrı koleksiyon (`kuroshin_episodic`), JSONL event log
+- Cross-session verify (`scripts/_verify_dalga5_3_episodic.py`): 5 oturum + 6. oturum sorgu = **5/5 = %100**
+- Iron Inquisitor: 8/8 PASS (test_suite_dalga5.json toplam: 24/24)
+- **Açık:** Chancellor `_get_chroma_context()` entegrasyonu opsiyonel
 
 ### 5.4 LangGraph Multi-Agent ⏸ Karar noktası
 - v0.4 (Nisan 2026), durable execution, LangSmith observability

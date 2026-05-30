@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.6.0 — 30 Mayıs 2026
+**Sürüm:** v11.7.0 — 30 Mayıs 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -123,11 +123,12 @@ Detay: `memory/feedback_lord_kurallari.md` (Claude memory sistemi)
 
 ---
 
-## 🏆 Son durum (v11.6.0 — 30 May 2026)
+## 🏆 Son durum (v11.7.0 — 30 May 2026)
 
 - **DALGA 5.1 ✅** Context 16K → **256K (16x kazanım)** — needle@76K PASS, regression 48/48 korundu
-- **DALGA 5.2 ✅** Hybrid RAG (BM25+Dense+RRF+CrossEncoder) — `scripts/kuroshin_rag.py`, Iron Inquisitor 16/16 %100, ortalama latency 852ms
-- **Iron Inquisitor:** 48/48 verify_v11 + 16/16 dalga5 + 73/73 security + 103/104 canlı tier_core (toplam 249 test)
+- **DALGA 5.2 ✅** Hybrid RAG (BM25+Dense+RRF+CrossEncoder) — `scripts/kuroshin_rag.py`, ortalama latency 852ms
+- **DALGA 5.3 ✅** Episodic Memory (3 katman: episodic/semantic/procedural) — `scripts/kuroshin_episodic.py`, cross-session 5/5 retrieval, llama-server JSON mode
+- **Iron Inquisitor:** 48/48 verify_v11 + **24/24 dalga5** + 73/73 security + 103/104 canlı tier_core (toplam 257 test)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif

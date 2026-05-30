@@ -171,5 +171,92 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Dalga 5.2: BGE Reranker port 9003 entegrasyonu"
+  },
+  {
+    "id": "verify-d5-3-episodic-module",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/kuroshin_episodic.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: Episodic memory modulu varligi"
+  },
+  {
+    "id": "verify-d5-3-episodic-class",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "class EpisodicMemory",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: EpisodicMemory sinifi"
+  },
+  {
+    "id": "verify-d5-3-json-mode",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "response_format",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: llama-server JSON mode (response_format) kullanimi"
+  },
+  {
+    "id": "verify-d5-3-three-types",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "episodic|semantic|procedural",
+    "is_regex": true,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: CoALA/Mem0 doktrini - episodic/semantic/procedural ayrimi"
+  },
+  {
+    "id": "verify-d5-3-record-episode",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "def record_episode",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: record_episode metodu"
+  },
+  {
+    "id": "verify-d5-3-extract-facts",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "def extract_facts",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: LLM fact extraction"
+  },
+  {
+    "id": "verify-d5-3-verify-script",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_verify_dalga5_3_episodic.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: 5-session cross-retrieval verify script"
+  },
+  {
+    "id": "verify-d5-3-jsonl-log",
+    "category": "verify_dalga5_3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_episodic.py",
+    "pattern": "episodic.jsonl",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3: Append-only JSONL event log"
   }
 ]

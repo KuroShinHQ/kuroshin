@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.6.0
+# KUROSHIN OS — MASTER ROADMAP v11.7.0
 **Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG (BM25+Dense+RRF+Rerank), Dalga 5 verify 16/16** 🔱
+**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG + EPISODIC MEMORY (3 katman), Dalga 5 verify 24/24** 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,42 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.7.0 — 30 Mayıs 2026 — DALGA 5.3: EPISODIC MEMORY (CoALA 3-katman, Llama-server JSON mode)
+
+**Lord direktifi:** "Globalden güçlendir, otonom devam et."
+
+**Web research bulgusu:** Mem0 OSS lider (LoCoMo 92.5) ama llama-server'la JSON parse hatası — fact extraction prompt'larında structured output zorlaması zayıf.
+
+**Çözüm: Kuroshin-spesifik basit modül yazıldı** (Mem0'ın doktrinini taklit eder ama llama-server'a özel optimize):
+- `scripts/kuroshin_episodic.py` — `EpisodicMemory` sınıfı
+  - 3 katman (CoALA / Mem0 doktrini): **episodic** (ne oldu) + **semantic** (ne biliyorum) + **procedural** (nasıl yapılır)
+  - LLM fact extraction: **llama-server `response_format: {"type": "json_object"}` (JSON mode)**
+  - Vector store: ChromaDB ayrı koleksiyon (`kuroshin_episodic`)
+  - Embedder: ChromaDB built-in (SentenceTransformers all-MiniLM-L6-v2 dahili)
+  - Append-only event log: `/root/kuroshin/memory/episodic.jsonl`
+  - 7 method: record_episode, extract_facts, search, reset, list, get_config, collection_count
+
+**Cross-session retrieval verify (5 oturum → 6. oturum):**
+- `scripts/_verify_dalga5_3_episodic.py`
+- 5 oturumdan 5 fact otomatik extract edildi
+- 6. oturum sorgu testi: **5/5 = %100** doğru retrieval
+  - "favori sayı" → 73729 ✓
+  - "kahve" → sütsüz ✓
+  - "chancellor restart" → setsid ✓
+  - "ne zaman context büyütüldü" → 256K/30 May ✓
+  - "manuel test kuralı" → manuel ✓
+
+**Iron Inquisitor `test_suite_dalga5.json` genişletildi:**
+- Dalga 5.1: 6 test + Dalga 5.2: 10 test + Dalga 5.3: 8 test
+- **24/24 PASS %100**
+
+**Mem0 neden direkt kullanılmadı (öğrenim):**
+- Mem0 v1.0.10 fact extraction LLM çağrılarında JSON zorlaması yetersiz → llama-server düz metin döndürünce parse hatası
+- Kuroshin-spesifik modül daha temiz: tek bağımlılık (chromadb), llama-server JSON mode optimal kullanım
+- Eğer gelecekte OpenAI/Anthropic API'ye geçilirse Mem0 v2.x denenebilir
+
+**Açık iş:** Chancellor.py'a EpisodicMemory entegrasyonu (`_get_chroma_context()`'i episodic.search() ile zenginleştirme) — opsiyonel.
 
 ### v11.6.0 — 30 Mayıs 2026 — DALGA 5.2: HYBRID RAG (BM25 + DENSE + RRF + CROSS-ENCODER)
 
