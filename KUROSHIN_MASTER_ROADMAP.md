@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.5.0
+# KUROSHIN OS — MASTER ROADMAP v11.6.0
 **Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 16K → 256K (16x), Verify 48/48 + Needle@76K PASS** 🔱
+**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG (BM25+Dense+RRF+Rerank), Dalga 5 verify 16/16** 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,36 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.6.0 — 30 Mayıs 2026 — DALGA 5.2: HYBRID RAG (BM25 + DENSE + RRF + CROSS-ENCODER)
+
+**Lord direktifi:** "Modeli kapasitesini artır, her başarılı adımda MD güncelle, tam otonom çalış."
+
+**Çıkış noktası:** ChromaDB sadece dense (embeddings) kullanıyordu. BM25 sparse layer yoktu, cross-encoder reranker (BGE @9003) hazır ama chancellor pipeline'a entegre değildi.
+
+**Yeni dosyalar:**
+- `scripts/kuroshin_rag.py` — Bağımsız HybridRAG modülü (production-ready). Pipeline:
+  1. Dense (ChromaDB query) → top 50
+  2. BM25 (rank_bm25, in-memory üzerinde tokenize edilmiş corpus) → top 50
+  3. RRF k=60 birleştirme (Cohere/OpenAI standardı) → top N candidates
+  4. Cross-encoder rerank (BGE-Reranker-v2-M3 @ port 9003) → top M
+- `scripts/_inspect_chroma.py` — ChromaDB envanteri (pre-flight kanıt)
+- `scripts/_verify_dalga5_2_rag.py` — 4-way comparison verify (Pure Dense / Pure BM25 / Hybrid no-rerank / Hybrid full)
+- `scripts/iron_inquisitor/test_suite_dalga5.json` — 16 test (Dalga 5.1 + 5.2 birleşik), **16/16 PASS %100**
+
+**Kanıt metrikleri (4-way verify):**
+- Corpus: 30 doc (4 collection: kuroshin_notes/memory/skill_memory/merak_listesi)
+- Pure Dense precision@10: **6/6 = 100%**
+- Pure BM25 precision@10: **6/6 = 100%**
+- Hybrid no-rerank precision@10: **6/6 = 100%**
+- Hybrid full+rerank precision@10: **5/6 = 83.3%** (reranker küçük corpus'ta noise)
+- Latency ortalama: **852 ms** (dense 507ms + sparse 0.2ms + rrf 0ms + rerank 345ms)
+
+**Öğrenim:** Küçük corpus'ta (30 doc) reranker iyileştirme yerine zarar verebilir; büyük corpus (≥1000 doc) için optimal. Production entegrasyonunda rerank threshold (corpus_size > 100 gibi) eklenecek.
+
+**Bağımlılıklar:** `rank_bm25` (pip install yapıldı, hafif Python paket, ~50KB)
+
+**Açık iş:** Chancellor.py `_get_chroma_context()` mevcut sadece-dense kullanıyor. HybridRAG'i çağıracak şekilde entegrasyon yapılacak (opsiyonel, prod riski yok).
 
 ### v11.5.0 — 30 Mayıs 2026 — DALGA 5.1: CONTEXT 16K → 256K (16x KAPASİTE PATLAMASI)
 

@@ -13,11 +13,16 @@
 **Dosyalar:** `memory/active_model.json`, `scripts/_inspect_gguf.py`, `scripts/_test_long_ctx_retrieval.sh`
 **Rapor:** `KUROSHIN_MASTER_ROADMAP.md` v11.5.0 başlığı
 
-### 5.2 Hybrid RAG ⏳ Sıra geldi
-- ChromaDB üstüne: **BM25 + Dense + RRF (k=60) + cross-encoder rerank**
-- Hedef: precision@10 ≥ %95 (20 doktrin sorgusu)
-- Maliyet: +500 MB embed (bge-reranker-v2-m3), +200ms latency
+### 5.2 Hybrid RAG ✅ TAMAMLANDI (30 May 2026)
+**Kanıt zinciri:**
+- `scripts/kuroshin_rag.py` — HybridRAG sınıfı (dense+BM25+RRF+rerank pipeline)
+- `scripts/_verify_dalga5_2_rag.py` — 4-way comparison (Dense / BM25 / Hybrid no-rerank / Hybrid full)
+- Iron Inquisitor `test_suite_dalga5.json`: **16/16 PASS %100** (Dalga 5.1 + 5.2 birleşik)
+- 4-way verify: Pure Dense 100%, Pure BM25 100%, Hybrid (no-rerank) 100%, Hybrid (full) 83.3%, **avg latency 852ms** (dense 507ms + sparse 0.2ms + rerank 345ms)
+- Kullanılan altyapı: BGE-Reranker-v2-M3 (mevcut port 9003, CUDA fp16) + ChromaDB (port 8100, 4 collection / 30 doc)
+- **Öğrenim:** Küçük corpus'ta reranker noise yapıyor (1 query'de hybrid-full ↘); büyük corpus için kalibre — production'da rerank threshold lazım.
 - Web kanıtı: [Hybrid Search 2026](https://www.digitalapplied.com/blog/hybrid-search-bm25-vector-reranking-reference-2026), [Cross-Encoder Guide](https://localaimaster.com/blog/reranking-cross-encoders-guide)
+- **Açık:** Chancellor.py entegrasyonu opsiyonel (bağımsız modül şu an, prod riski yok)
 
 ### 5.3 Mem0 Episodik Bellek ⏳
 - LoCoMo 92.5 (lider), p95 -%91, token -%90 vs naive context

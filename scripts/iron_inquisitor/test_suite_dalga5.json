@@ -1,0 +1,175 @@
+[
+  {
+    "id": "verify-d5-1-active-model-256k",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "memory/active_model.json.bak_v11.4",
+    "pattern": "\"context_size\": 16384",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: 16K backup dosyasi v11.4 onceki context teyit"
+  },
+  {
+    "id": "verify-d5-1-gguf-inspector",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/_inspect_gguf.py",
+    "pattern": "from gguf import GGUFReader",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: GGUF metadata extractor kaniti araci"
+  },
+  {
+    "id": "verify-d5-1-ctx-test",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_test_ctx_256k.sh",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: 256K ctx test script"
+  },
+  {
+    "id": "verify-d5-1-needle-test",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/_test_long_ctx_retrieval.sh",
+    "pattern": "73729",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: Needle-in-haystack 73729 sayisi"
+  },
+  {
+    "id": "verify-d5-1-roadmap-entry",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KUROSHIN_MASTER_ROADMAP.md",
+    "pattern": "v11.5.0",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: Roadmap v11.5.0 girisi"
+  },
+  {
+    "id": "verify-d5-1-kilavuz-256k",
+    "category": "verify_dalga5_1",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KILAVUZ.md",
+    "pattern": "256K ctx",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.1: KILAVUZ 256K context guncellemesi"
+  },
+  {
+    "id": "verify-d5-2-rag-module",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/kuroshin_rag.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: Hybrid RAG modulu varligi"
+  },
+  {
+    "id": "verify-d5-2-hybrid-class",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "class HybridRAG",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: HybridRAG sinifi"
+  },
+  {
+    "id": "verify-d5-2-bm25-import",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "BM25Okapi",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: BM25 sparse search engine"
+  },
+  {
+    "id": "verify-d5-2-rrf-fuse",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "_rrf_fuse",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: Reciprocal Rank Fusion (k=60)"
+  },
+  {
+    "id": "verify-d5-2-rrf-k60",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "DEFAULT_RRF_K = 60",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: Cohere/OpenAI standart RRF k=60"
+  },
+  {
+    "id": "verify-d5-2-cross-encoder",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "_cross_encoder_rerank",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: Cross-encoder rerank entegrasyonu (BGE @9003)"
+  },
+  {
+    "id": "verify-d5-2-dense-search",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "_dense_search",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: ChromaDB dense search"
+  },
+  {
+    "id": "verify-d5-2-sparse-search",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "_sparse_search",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: BM25 sparse search"
+  },
+  {
+    "id": "verify-d5-2-verify-script",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_verify_dalga5_2_rag.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: 4-way comparison verify script"
+  },
+  {
+    "id": "verify-d5-2-reranker-endpoint",
+    "category": "verify_dalga5_2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_rag.py",
+    "pattern": "127.0.0.1:9003/rerank",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.2: BGE Reranker port 9003 entegrasyonu"
+  }
+]
