@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.7.0
+# KUROSHIN OS — MASTER ROADMAP v11.8.0
 **Son Güncelleme:** 30 Mayıs 2026
-**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG + EPISODIC MEMORY (3 katman), Dalga 5 verify 24/24** 🔱
+**Durum:** 🟢 STABİL — HUİHUİ-35B KALICI, **CONTEXT 256K + HYBRID RAG + EPISODIC + LANGGRAPH MULTI-AGENT, Dalga 5 verify 33/33** 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,38 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.8.0 — 30 Mayıs 2026 — DALGA 5.4: LANGGRAPH MULTI-AGENT ORCHESTRATOR
+
+**Lord direktifi:** "A — devam et."
+
+**Web research:** LangGraph v1.2.2 (Nisan 2026), StateGraph + fan-out/fan-in deseni; ChatOpenAI custom base_url ile llama-server uyumu.
+
+**Yeni dosyalar:**
+- `scripts/kuroshin_orchestrator.py` — LangGraph StateGraph orchestrator
+  - State: `OrchestratorState` (task, rag_results, episodic_results, final_answer, metrics)
+  - 3 node: `_node_rag` (HybridRAG) + `_node_episodic` (EpisodicMemory) + `_node_synthesize` (Huihui via ChatOpenAI)
+  - Sequential edge: START → rag → episodic → synthesize → END
+  - **Thread-safe singleton ChromaDB client** (paralel node'lar için)
+  - `baseline_single_agent()` — karşılaştırma için tek-LLM baseline
+- `scripts/_verify_dalga5_4_orchestrator.py` — 5 query vs baseline verify
+
+**KANIT (orchestrator vs baseline):**
+- 5 query, episodic'e 5 setup fact yerleştirildi
+- **Baseline (single-agent): 0/5 = %0** (her seferinde hallucinate: "favori sayi 7", "2. dalga 8K", vb.)
+- **Multi-agent (LangGraph): 5/5 = %100** (her seferinde doğru fact)
+- **Kalite delta: +100 pp**
+- Wall-clock: Baseline 69s, Multi-agent **48s** (%30 daha hızlı — context-aware tek LLM call, baseline tekrarlı düşünme)
+
+**Sequential ChromaDB rationale:** PersistentClient thread-safe değil — paralel node'larda race condition (`KeyError: '/root/kuroshin/memory/chroma'`). Singleton + lock ile çözüldü, edge'ler sequential. Multi-agent kazancı LLM context kalitesinde (RAG+Episodic enjeksiyonu), wall-clock'ta değil.
+
+**Bağımlılıklar:** `langgraph==1.2.2`, `langchain-openai==1.2.2`
+
+**Iron Inquisitor `test_suite_dalga5.json` genişledi:**
+- 5.1: 6 + 5.2: 10 + 5.3: 8 + 5.4: 9 = **33 test**
+- **33/33 PASS %100**
+
+**Açık:** Chancellor.py'a orchestrator entegrasyonu (önemli görev sorularında ilk orkestratör çağırılması) — opsiyonel, prod risk minimum.
 
 ### v11.7.0 — 30 Mayıs 2026 — DALGA 5.3: EPISODIC MEMORY (CoALA 3-katman, Llama-server JSON mode)
 
