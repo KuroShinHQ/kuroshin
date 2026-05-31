@@ -10,6 +10,28 @@
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
 
+### v11.12.1 — 31 Mayıs 2026 — TELEGRAM ÇIKTI KALİTESİ (canlı inject güdümlü)
+
+**Lord direktifi:** "Bayat log değil; sistemi ayağa kaldır, taze Telegram inject at, her çıktıya kullanıcı gözüyle bak, gereken düzeltmeleri yap. A+B yap, 35B'nin tavanına kadar kaliteyi maksimize et."
+
+**Metodoloji:** bayat log tespiti → sistem ayağa kaldırma (WSL E_UNEXPECTED→`wsl --shutdown` recovery) → taze 6-senaryo live inject → kullanıcı gözüyle kusur tespiti → deterministik fix → çift kanıt (offline+live).
+
+**Tur-1 (2 deterministik bug):**
+1. ✅ **FIX-1** `system_info` şeması `konu`'yu zorunlu sanıyordu → her `{}` çağrı `E-13 INVALID_TOOL_ARGS` ile reddediliyor, model 5× döngüye girip saçma cevap veriyordu. Handler zaten `konu="hepsi"` default kullandığından `required:[]`. (Tool tamamen kırıktı.)
+2. ✅ **FIX-2** yanıt sonu yetim variation selector (U+FE0F) — `⚔️ Lordum, ️ Merhametli` bozulması; boşluk/satırbaşı sonrası VS stripi (⚔️ korunur).
+
+**Tur-2 (A+B — kapsamlı):**
+- ✅ **A** Scraping infra: Crawl4AI stealth `patchright` (playwright fork) chromium-**1208** istiyordu (venv playwright 1.58 = 1223 farklı) → `patchright install chromium` → search-02 PASS. Crawlee bridge'in `pkill -f` self-match bug'ı (kendi cmdline'ını öldürüyordu) → `fuser -k 3006/tcp`.
+- ✅ **B1** SYSTEM_PROMPT "OLGUSAL SORULAR" disiplini: saat/tarih uydurma yasak→system_info; chancellor restart=`restart_chancellor.sh` (systemctl yok); olgusal yanıtta persona/metafor yok; tırnak tekrarı yok.
+- ✅ **B2** orchestrator (`_node_synthesize`) grounding: context dışı uydurma yok + systemctl→`restart_chancellor.sh` + markdown yok. full_power systemctl halüsinasyonu ve `**bold**` düzeldi.
+- ✅ **B3** dengesiz (tek) çift-tırnak temizliği (dengeli çiftler korunur) + 'yapay zeyam' typo kimlik-leak deseni.
+
+**⚠️ Tuzak/ders:** SYSTEM_PROMPT değişince BLUE-NEURAL-01 (`memory/prompt_integrity.json` SHA256) "PROMPT_TAMPERED" verir → `prompt_integrity.json` silinip **re-lock** edilmeli.
+
+**Kanıt:** `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` 8/8 + offline battery 193/193 + **live suite 6/6** (T6 systemctl→restart_chancellor.sh, T5 markdown temiz, T3 tarih uydurmuyor, T2 tırnak temiz, T1 VS temiz).
+
+**Kalan (35B kapasite tavanı — deterministik değil):** selamlamada persona tonu (kasıtlı), çoğul "Yapayız" ifadesi.
+
 ### v11.12.0 — 31 Mayıs 2026 — KILIÇ-KALKAN v6 + SCRAPER + GPU_WATCHER FIX
 
 **Lord direktifi:** "Sistem analizi yap, bug fix varsa yap, iyileştirme öneriyorsan yap. Sonra web search ile KILIÇ-KALKAN'da ne kadar saf kaldığımızı gör — kılıçlarımızı güçlendir, RED TEAM'i yükselt. Bot yakalanma, veri çekme, exploit, injection güçlendirmeler."

@@ -178,6 +178,7 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 - **WEB SCRAPER RESILIENCE ✅** UA rotation + Sec-Fetch headers + 8 anti-bot signature + cookie persist
 - **GPU_WATCHER FIX ✅** subprocess → NVML (log spam bitti)
 - **Iron Inquisitor:** 48/48 verify_v11 + **68/68 dalga5+v6+scraper** + 73/73 security + 103/104 canlı tier_core (toplam 301 test)
+- **TELEGRAM KALİTE FIX (31 May 2026) ✅** Tur-1: FIX-1 `system_info` şeması `konu`'yu zorunlu sanıp E-13 döngüsüyle kırıyordu → `required:[]`; FIX-2 yetim variation selector (U+FE0F) stripi. Tur-2 (A+B): **A** patchright chromium-1208 kuruldu (Crawl4AI stealth — search-02 PASS); **B1** SYSTEM_PROMPT "OLGUSAL SORULAR" disiplini (tarih uydurma→system_info, systemctl yasak, persona gevezeliği yok); **B2** orchestrator synthesis grounding (full_power systemctl→`restart_chancellor.sh`, markdown yok); **B3** dengesiz tırnak temizliği + 'yapay zeyam' typo kimlik-leak deseni. NOT: SYSTEM_PROMPT değişince `memory/prompt_integrity.json` re-lock şart (BLUE-NEURAL-01). Kanıt: `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` **8/8** + live suite 6/6 (T6 systemctl→restart_chancellor.sh, T3 tarih uydurmuyor, T2 tırnak temiz, T1 VS temiz)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif

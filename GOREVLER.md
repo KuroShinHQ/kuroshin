@@ -4,6 +4,25 @@
 
 ---
 
+## ✅ TELEGRAM ÇIKTI KALİTESİ (31 May 2026 — canlı inject güdümlü) — TAMAMLANDI
+
+**Lord direktifi:** "Sistemi ayağa kaldır, taze Telegram inject at, her çıktıya kullanıcı gözüyle bak, gereken düzeltmeleri yap. A+B yap, 35B tavanına kadar kaliteyi maksimize et."
+
+| # | Bulgu (canlı inject) | Fix | Kanıt |
+|---|----------------------|-----|-------|
+| FIX-1 | `system_info` E-13 döngüsü (şema `konu` zorunlu) | `required:[]` | live T3 döngüsüz |
+| FIX-2 | yetim VS glyph `Lordum, ️ ...` | boşluk-sonrası VS strip | live T1 temiz |
+| A | Crawl4AI stealth chromium-1208 yok | `patchright install chromium` | search-02 PASS |
+| B1 | tarih/komut uydurma | SYSTEM_PROMPT "OLGUSAL SORULAR" | live T3 uydurmuyor |
+| B2 | full_power systemctl + markdown | orchestrator synthesis grounding | live T6 `restart_chancellor.sh` |
+| B3 | kaçak tırnak + 'yapay zeyam' typo | dengesiz-tırnak strip + leak deseni | live T2 temiz |
+
+**Kanıt:** `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` 8/8 + offline 193/193 + live suite 6/6.
+**Ders:** SYSTEM_PROMPT değişince `memory/prompt_integrity.json` re-lock şart (BLUE-NEURAL-01 PROMPT_TAMPERED).
+**Kalan:** 35B kapasite tavanı (selamlamada persona tonu, "Yapayız" çoğul) — deterministik değil, kabul edildi.
+
+---
+
 ## ⚡ DALGA 5 — KAPASİTE PATLAMASI (30 May 2026 — Web research destekli)
 
 **Lord direktifi:** "Modeli kapasitesini artır, web araştırmasıyla globalden güçlendir, her başarılı adımda MD güncelle."

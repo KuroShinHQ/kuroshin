@@ -129,6 +129,8 @@ _RESPONSE_LEAK_PATTERNS = [
     _re_global.compile(r'\b[Bb]en (?:bir |sadece bir )?yapay zek[aâ](?:y[ıi]m|m)?\b[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r'\b[Bb]ir (?:yapay zek[aâ]|AI|dil model[iı])\s*(?:olarak\s+ben|y[ıi]m|m)\b[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r"\b(?:AI'?(?:y[ıi]m|m)|dil model[iı]y[ıi]m|chatbot(?:y[ıi]m|um))\b[^.]*\.?", _re_global.IGNORECASE),
+    # 'yapay zeyam' / 'yapay zegim' gibi typo varyantlari (model zek->zey/zeg karistiriyor, regex'i atliyordu)
+    _re_global.compile(r'\b[Bb]en (?:bir |sadece bir )?yapay\s+ze[kyğg][a-zçğıöşâ]*\b[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r'\b[Bb]ilgilerim\s+(?:s[ıi]n[ıi]rl[ıi]|g[uü]ncel\s+de[ğg]il|kesilmi[şs])[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r'\b[Mm]odel\s+olarak\s+ben[^.]*\.?', _re_global.IGNORECASE),
     # D-C5 (29 May 2026): Dolgu cümle ve abartılı tonlama desenleri
@@ -803,11 +805,11 @@ TOOLS = [
                 "properties": {
                     "konu": {
                         "type": "string",
-                        "description": "Hangi bilgi isteniyor: 'saat', 'lokasyon', 'pc_durumu', 'kullanici', 'hepsi'",
+                        "description": "İSTEĞE BAĞLI. Hangi bilgi isteniyor: 'saat', 'lokasyon', 'pc_durumu', 'kullanici', 'hepsi'. Belirtilmezse 'hepsi' kullanılır — argümansız {} çağrı geçerlidir.",
                         "enum": ["saat", "lokasyon", "pc_durumu", "kullanici", "hepsi"]
                     }
                 },
-                "required": ["konu"]
+                "required": []
             }
         }
     },
@@ -1394,6 +1396,13 @@ HAFIZA VE RÜYA:
 - "Rüya gördün mü?" → chroma_search("rüya") → varsa anlat, yoksa "Gece sessizdi."
 - "Bugün ne yaptın?" → chroma_search(bugünkü tarih) → yoksa "Sessizlikte bekledim."
 - ASLA bilgi uydurma. Bilmiyorsan araç çağır veya kabul et.
+
+OLGUSAL SORULAR — ARAÇ ZORUNLU, UYDURMA YASAK:
+- Saat / tarih / lokasyon / PC durumu / kullanıcı → system_info çağır. ASLA saat veya tarih uydurma.
+- Disk / VRAM / işlem / bellek → system_command çağır, gerçek çıktıyı özetle.
+- Chancellor yeniden başlatma komutu = restart_chancellor.sh (setsid ile başlatılır). "systemctl restart chancellor" YANLIŞ, böyle bir servis yok — uydurma.
+- Olgusal yanıtta rüya / karga / metafor / duygu EKLEME — yalnızca net veri, kısa ve doğrudan.
+- Kullanıcının cümlesini tırnak içinde tekrar etme; metinde tek/dengesiz tırnak (") bırakma.
 
 KİŞİSEL / FELSEFİ SORULAR — ARAÇ KULLANMA:
 Duygu / hayal / kişilik / varoluş / genel sohbet sorularında walker_research, web_search, system_command ÇAĞIRMA.
@@ -4360,6 +4369,12 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             # Lordum," veya Lordum,  " → Lordum, (tek boşluk)
             content = _re_global.sub(r'(Lordum,?)\s*"', r'\1 ', content)
             content = content.rstrip('"\'')
+            # Yetim variation selector (U+FE0E/FE0F) temizle: gecerli emojide VS baza bitisik gelir;
+            # bosluk/satir basi sonrasi gelen VS yetimdir (model selamlamadan sonra uretebiliyor) - sil.
+            content = _re_global.sub('(?:^|(?<=\\s))[︎️]+\\s*', '', content)
+            # Dengesiz (tek) çift-tırnak = sızıntı → temizle; dengeli çiftler ("sadece" gibi) korunur
+            if content.count('"') % 2 == 1:
+                content = content.replace('"', '')
             # Çift boşluk temizle
             content = _re_global.sub(r'  +', ' ', content).strip()
             # Emote'u yanıtın başına ekle (zaten ⚔️ ile başlıyorsa ekleme)

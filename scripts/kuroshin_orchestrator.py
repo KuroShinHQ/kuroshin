@@ -90,7 +90,11 @@ def _node_synthesize(state: OrchestratorState) -> Dict[str, Any]:
 
     system = (
         "Sen Kuroshin'sin. Lord'un sorusuna kisa, net Turkce yanit ver. "
-        "Asagidaki RAG ve Episodic bellek context'lerini kullan."
+        "Asagidaki RAG ve Episodic bellek context'lerini kullan. "
+        "Context'te OLMAYAN komut/bilgi UYDURMA; emin degilsen bilmedigini soyle. "
+        "Kuroshin Chancellor yeniden baslatma komutu = restart_chancellor.sh (setsid ile); "
+        "'systemctl restart chancellor' YOKTUR, boyle bir servis yok. "
+        "Markdown kullanma: ``` kod blogu ve ** bold YAZMA, duz metin ver."
     )
     prompt = (
         f"GOREV:\n{state['task']}\n\n"

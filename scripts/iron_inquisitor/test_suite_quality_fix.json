@@ -1,0 +1,89 @@
+[
+  {
+    "id": "qfix-1-system-info-optional-konu",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "argümansız {} çağrı geçerlidir",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FIX-1: system_info semasi konu'yu istege bagli yapti (eski required=['konu'] tool'u E-13 dongusuyle kiriyordu)"
+  },
+  {
+    "id": "qfix-2-orphan-vs-strip-present",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "variation selector",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FIX-2: yanit finalizasyonunda yetim variation selector (U+FE0F) stripi eklendi (T1 'Lordum, <VS> Merhametli' bozulmasi)"
+  },
+  {
+    "id": "qfix-verify-script-exists",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_verify_quality_fixes.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Kalite fix dogrulama scripti varligi (8/8 birim+kaynak testi)"
+  },
+  {
+    "id": "qfix-verify-script-covers-fixes",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/_verify_quality_fixes.py",
+    "pattern": "system_info-required-empty",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dogrulama scripti FIX-1 required=[] kontrolunu icermeli"
+  },
+  {
+    "id": "qfix-b1-olgusal-disiplin",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "OLGUSAL SORULAR",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "B1: SYSTEM_PROMPT olgusal disiplin blogu (tarih uydurma yok, system_info zorunlu, systemctl yanlis)"
+  },
+  {
+    "id": "qfix-b2-orchestrator-grounding",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_orchestrator.py",
+    "pattern": "systemctl restart chancellor",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "B2: full_power orchestrator synthesis prompt grounding (systemctl YOKTUR + uydurma yasak + markdown yok)"
+  },
+  {
+    "id": "qfix-b3-typo-leak-pattern",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "yapay zeyam",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "B3: 'yapay zeyam' typo varyanti kimlik-leak desenine eklendi"
+  },
+  {
+    "id": "qfix-b3-unbalanced-quote-strip",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "Dengesiz (tek) çift-tırnak",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "B3: dengesiz tek cift-tirnak sizinti temizligi (dengeli ciftler korunur)"
+  }
+]
