@@ -45,6 +45,9 @@ def _init_nvml():
     if _NVML_OK:
         return
     try:
+        # nvidia-ml-py (modern) — eski pynvml ile ayni API, FutureWarning yok
+        import warnings as _w
+        _w.filterwarnings("ignore", category=FutureWarning)
         import pynvml
         pynvml.nvmlInit()
         _NVML_HANDLE = pynvml.nvmlDeviceGetHandleByIndex(0)

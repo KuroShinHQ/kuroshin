@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.11.0 — 31 Mayıs 2026
+**Sürüm:** v11.12.0 — 31 Mayıs 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -170,14 +170,14 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 
 ---
 
-## 🏆 Son durum (v11.11.0 — 31 May 2026)
+## 🏆 Son durum (v11.12.0 — 31 May 2026)
 
 - **DALGA 5.1-5.6 ✅** Context 256K + Hybrid RAG + Episodic + LangGraph + Full Power + HW Guard
-- **BÜYÜK TEST SUITE ✅** Live Telegram inject 6/6 PASS — Full Power yanıtında `73729` + HW status
-- **BUG FIX SUITE ✅** explicit routing + re alias + critical-only HW + HTML sanitize + log normalize
-- **MD DOCTRINE ✅** "Yeni özellik = otomatik test" KILAVUZ'da
-- **DALGA 5.7 ❌** Vision İPTAL (8GB VRAM yetmez)
-- **Iron Inquisitor:** 48/48 verify_v11 + **55/55 dalga5+bugfix+doctrine** + 73/73 security + 103/104 canlı tier_core (toplam 288 test)
+- **BÜYÜK TEST + BUG FIX (v11.11) ✅** Live 6/6 + 5 bug fix + MD doctrine
+- **KILIÇ-KALKAN v6 ✅** 5 yeni saldırı (ChatInject + Data exfil + RAG indirect + Rug pull + Tool chain), 14/14 live verify
+- **WEB SCRAPER RESILIENCE ✅** UA rotation + Sec-Fetch headers + 8 anti-bot signature + cookie persist
+- **GPU_WATCHER FIX ✅** subprocess → NVML (log spam bitti)
+- **Iron Inquisitor:** 48/48 verify_v11 + **68/68 dalga5+v6+scraper** + 73/73 security + 103/104 canlı tier_core (toplam 301 test)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif

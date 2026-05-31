@@ -1282,3 +1282,225 @@ def detect_semantic_chameleon(query: str, retrieved_docs) -> tuple[bool, dict]:
               "n_docs": len(sims)}
     return (len(outliers) > 0), detail
 
+
+# ═════════════════════════════════════════════════════════════════
+# KILIC-KALKAN v6 — RED TEAM 2026 (31 May 2026)
+# Web research kanitiyla 5 yeni saldiri tipi:
+#   1. Rug pull         — tool description SHA256 silent update
+#   2. ChatInject       — chat template token escape (<|im_start|> etc.)
+#   3. Data exfiltration— output'ta secret/PII (API key, JWT, password)
+#   4. RAG indirect inj — retrieved context'inde direktif (system:, ignore prev)
+#   5. Tool chain kill  — sequential tool abuse (chroma_read -> exfil)
+# Referans: arxiv 2509.22830 (ChatInject), arxiv 2603.15714 (Indirect inj),
+#           CVE-2025-54136 (MCP poison), OX Security April 2026 MCP RCE.
+# ═════════════════════════════════════════════════════════════════
+
+import json as _json_v6
+import hashlib as _hashlib_v6
+from pathlib import Path as _Path_v6
+
+_BASELINE_HASH_FILE = _Path_v6("/mnt/c/Kuroshin/memory/tool_baseline_hashes.json")
+
+# Chat template token kacisi — Qwen/Llama/ChatML/Mistral
+_CHAT_TEMPLATE_TOKENS = [
+    "<|im_start|>", "<|im_end|>",                      # ChatML / Qwen
+    "<|user|>", "<|assistant|>", "<|system|>",         # Generic
+    "<|begin_of_text|>", "<|eot_id|>",                 # Llama 3
+    "<|start_header_id|>", "<|end_header_id|>",
+    "[INST]", "[/INST]",                                # Mistral / Llama
+    "<<SYS>>", "<</SYS>>",
+    "<|fim_prefix|>", "<|fim_middle|>", "<|fim_suffix|>",  # FIM
+    "<|endoftext|>",
+]
+
+# Data exfiltration — output'ta secret pattern
+_EXFIL_PATTERNS = [
+    # API keys
+    (r"sk-(?:proj-|ant-api[0-9]{2}-)?[A-Za-z0-9_\-]{20,}",  "OpenAI/Anthropic API key"),
+    (r"AIza[0-9A-Za-z\-_]{35}",                "Google API key"),
+    (r"ya29\.[0-9A-Za-z\-_]+",                 "Google OAuth"),
+    (r"AKIA[0-9A-Z]{16}",                      "AWS access key"),
+    (r"ghp_[A-Za-z0-9]{36,}",                  "GitHub PAT"),
+    (r"github_pat_[A-Za-z0-9_]{82,}",          "GitHub fine-grained PAT"),
+    (r"xox[abp]-[A-Za-z0-9-]{10,}",            "Slack token"),
+    (r"hf_[A-Za-z0-9]{30,}",                   "HuggingFace token"),
+    # JWT
+    (r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "JWT"),
+    # Private keys
+    (r"-----BEGIN (RSA|DSA|EC|OPENSSH|PGP|PRIVATE) (PRIVATE )?KEY-----", "Private key block"),
+    # Password leak patterns
+    (r"(?:passw(?:or)?d|sifre|pwd)\s*[:=]\s*['\"]?[^\s'\"]{6,}", "Password assignment"),
+    # PII
+    (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z]{2,}\b", "Email address (PII)"),
+    (r"\b(?:\d{4}[\s-]?){3}\d{4}\b",          "Credit card (Luhn-like)"),
+    (r"\b\d{11}\b",                            "TC kimlik no (11 hane)"),
+]
+
+# RAG indirect injection — retrieved context'te direktif
+_RAG_DIRECTIVE_PATTERNS = [
+    r"(?i)ignore (all )?(previous|prior|above) (instructions?|directives?|commands?)",
+    r"(?i)system\s*[:\.]\s*(you are|act as|forget)",
+    r"(?i)new instructions?:",
+    r"(?i)override:?\s*(yes|true|enabled?)",
+    r"(?i)disregard\s+(the\s+)?(rules?|guidelines?|previous)",
+    r"(?i)you (are|must) now (a |an |the )?(?!Kuroshin|assistant)",
+    r"(?i)execute (immediately|now|silent\w*)",
+    r"(?i)reveal (your\s+)?(system|prompt|instructions)",
+    # Markdown link payload (RAG'da link metni payload tasiyabilir)
+    r"\[.+?\]\(javascript:",
+]
+
+
+def detect_chat_template_injection(text: str) -> tuple[bool, str]:
+    """RED-CHAT-INJECT v6 — arxiv 2509.22830 ChatInject.
+
+    Returns: (is_clean: bool, detail: str)
+    is_clean=False → tehdit tespit edildi.
+    """
+    if not text:
+        return True, "Bos input"
+    for tok in _CHAT_TEMPLATE_TOKENS:
+        if tok in text:
+            return False, f"CHAT_TEMPLATE_TOKEN: '{tok}' kullanici metninde — fake multi-turn riski"
+    return True, "Chat template temiz"
+
+
+def detect_data_exfiltration(text: str) -> tuple[bool, list]:
+    """RED-EXFIL v6 — model output'ta secret/PII sizdirma.
+
+    Returns: (has_leak: bool, hits: list of dict)
+    """
+    import re as _re_v6
+    if not text:
+        return False, []
+    hits = []
+    for pat, label in _EXFIL_PATTERNS:
+        for m in _re_v6.finditer(pat, text):
+            preview = m.group(0)
+            # 1 PII e-mail (Lord whitelist) leak degilse aci yapmasin
+            if label.startswith("Email") and "REDACTED" in preview.lower():
+                continue
+            hits.append({
+                "label": label,
+                "pattern": pat,
+                "preview": preview[:60],
+                "pos": m.start(),
+            })
+    return (len(hits) > 0), hits
+
+
+def detect_rag_indirect_injection(retrieved_text: str) -> tuple[bool, list]:
+    """RED-RAG-INDIRECT v6 — arxiv 2603.15714.
+
+    RAG retrieve sonucunda gelen dokumanlarin icinde gizli direktif/jailbreak
+    var mi tespit eder. Bu, scan_chroma_documents'in tamamlayicisi (runtime).
+
+    Returns: (is_poisoned: bool, hits: list of dict)
+    """
+    import re as _re_v6
+    if not retrieved_text:
+        return False, []
+    hits = []
+    for pat in _RAG_DIRECTIVE_PATTERNS:
+        for m in _re_v6.finditer(pat, retrieved_text):
+            hits.append({
+                "pattern": pat,
+                "match": m.group(0)[:80],
+                "pos": m.start(),
+            })
+    return (len(hits) > 0), hits
+
+
+def _tool_metadata_hash(tool_metadata) -> str:
+    """Deterministik SHA256 — dict key sort + recursive."""
+    if isinstance(tool_metadata, str):
+        canonical = tool_metadata
+    else:
+        canonical = _json_v6.dumps(tool_metadata, sort_keys=True, ensure_ascii=False)
+    return _hashlib_v6.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def register_tool_baseline(tool_id: str, tool_metadata) -> str:
+    """RED-RUG-PULL v6 baseline kayit — yeni tool ilk gorulurken cagrilir.
+
+    Returns: yazilan hash
+    """
+    h = _tool_metadata_hash(tool_metadata)
+    try:
+        existing = _json_v6.loads(_BASELINE_HASH_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        existing = {}
+    existing[tool_id] = {"hash": h, "ts": __import__("datetime").datetime.utcnow().isoformat(timespec="seconds")}
+    _BASELINE_HASH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _BASELINE_HASH_FILE.write_text(
+        _json_v6.dumps(existing, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return h
+
+
+def detect_tool_rug_pull(tool_id: str, current_metadata) -> tuple[bool, str]:
+    """RED-RUG-PULL v6 — tool description silent update tespit.
+
+    Kayitli baseline ile current_metadata SHA256 karsilastir. Eslesmiyorsa
+    rug pull suphesi.
+
+    Returns: (is_clean: bool, detail: str)
+    is_clean=False → degisim algilandi.
+    """
+    if not tool_id:
+        return True, "tool_id yok"
+    current_hash = _tool_metadata_hash(current_metadata)
+    try:
+        baseline = _json_v6.loads(_BASELINE_HASH_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        # Ilk gorulus — kayit yap, temiz say
+        register_tool_baseline(tool_id, current_metadata)
+        return True, f"RUG_BASELINE_REGISTERED: {tool_id} ilk kayit ({current_hash[:12]})"
+    rec = baseline.get(tool_id)
+    if rec is None:
+        register_tool_baseline(tool_id, current_metadata)
+        return True, f"RUG_BASELINE_REGISTERED: {tool_id} yeni tool ({current_hash[:12]})"
+    if rec.get("hash") != current_hash:
+        return False, (
+            f"RUG_PULL: {tool_id} description hash degisti — "
+            f"baseline={rec.get('hash','?')[:12]} (kayit={rec.get('ts')}), "
+            f"current={current_hash[:12]}"
+        )
+    return True, f"Tool baseline matches ({current_hash[:12]})"
+
+
+def detect_tool_chain_kill(call_history: list, window: int = 5) -> tuple[bool, str]:
+    """RED-TOOL-CHAIN v6 — ardisik tool abuse pattern (read -> exfil).
+
+    call_history: list of {"tool": str, "args": dict, "ts": float}
+    Tehlikeli zincirler:
+      - chroma_search/read_file -> github push (data exfil)
+      - chroma_search -> open_url (data exfil to external)
+      - chroma_search -> reddit_tool (POST) (data exfil)
+      - memory_query -> web_search with sensitive data
+    Returns: (is_clean: bool, detail: str)
+    """
+    if not call_history or len(call_history) < 2:
+        return True, "Yeterli tool gecmisi yok"
+    recent = call_history[-window:]
+    read_tools = {"chroma_search", "memory_query", "memory_manage", "read_file", "self_update"}
+    exfil_tools = {
+        "github":      ("push", "issue_ac"),
+        "reddit_tool": ("post", "yorum"),
+        "open_url":    None,
+        "web_search":  None,
+    }
+    for i, call in enumerate(recent[:-1]):
+        nxt = recent[i + 1]
+        t1 = call.get("tool")
+        t2 = nxt.get("tool")
+        if t1 in read_tools and t2 in exfil_tools:
+            expected = exfil_tools[t2]
+            if expected is None:
+                return False, f"TOOL_CHAIN_KILL: {t1} -> {t2} (potential exfil)"
+            args = nxt.get("args", {}) or {}
+            for k, v in args.items():
+                if isinstance(v, str) and v.lower() in expected:
+                    return False, f"TOOL_CHAIN_KILL: {t1} -> {t2}/{v} (exfil suphesi)"
+    return True, "Tool chain temiz"

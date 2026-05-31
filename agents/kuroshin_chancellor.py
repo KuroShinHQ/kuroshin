@@ -4565,18 +4565,31 @@ TEMP_CRIT   = 93   # °C kritik eşiği
 TEMP_COOLDOWN = 900  # aynı uyarıyı en az bu kadar saniye sonra tekrarla (15dk)
 
 def _gpu_watcher():
-    """Arka plan thread — GPU sıcaklığını her 60 saniyede kontrol eder."""
+    """Arka plan thread — GPU sıcaklığını her 60 saniyede kontrol eder.
+
+    DALGA 5.6.1 fix (31 May 2026): subprocess + system_command yerine doğrudan
+    NVML (kuroshin_hw_guard) — log spam'ı (E-12 LOW_TOOL_SCORE her 60s) bitirir.
+    """
     import threading
     last_warn_ts: dict[str, float] = {}
 
+    # Lazy import — module yokken chancellor boot bozulmasın
+    try:
+        import sys as _sys
+        _scripts_path = "/mnt/c/Kuroshin/scripts"
+        if _scripts_path not in _sys.path:
+            _sys.path.insert(0, _scripts_path)
+        from kuroshin_hw_guard import get_hw_status as _hw_status
+    except Exception:
+        _hw_status = None
+
     def _check():
-        raw = run_tool("system_command", {
-            "command": "nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null"
-        })
-        try:
-            temp = int(raw.strip().split()[0])
-        except Exception:
+        if _hw_status is None:
             return
+        s = _hw_status()
+        if not s.get("available"):
+            return
+        temp = s.get("temp_c", 0)
         now = time.time()
         if temp > TEMP_CRIT:
             key = "crit"

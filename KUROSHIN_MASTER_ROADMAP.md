@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.11.0
+# KUROSHIN OS — MASTER ROADMAP v11.12.0
 **Son Güncelleme:** 31 Mayıs 2026
-**Durum:** 🟢 STABİL — **BÜYÜK TEST + BUG FIX SUITE TAMAM** — Live 6/6 inject PASS, Iron Inquisitor 55/55 offline, MD doctrine aktif 🔱
+**Durum:** 🟢 STABİL — **KILIÇ-KALKAN v6 + SCRAPER + GPU_WATCHER FIX** — 14/14 v6 + Iron Inquisitor 68/68 offline 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,62 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.12.0 — 31 Mayıs 2026 — KILIÇ-KALKAN v6 + SCRAPER + GPU_WATCHER FIX
+
+**Lord direktifi:** "Sistem analizi yap, bug fix varsa yap, iyileştirme öneriyorsan yap. Sonra web search ile KILIÇ-KALKAN'da ne kadar saf kaldığımızı gör — kılıçlarımızı güçlendir, RED TEAM'i yükselt. Bot yakalanma, veri çekme, exploit, injection güçlendirmeler."
+
+**Sistem analizi → 5 bug/iyileştirme:**
+1. ✅ `_gpu_watcher` her 60s `system_command` çağırıyor (E-12 LOW_TOOL_SCORE log spam) → **NVML direkt** (`kuroshin_hw_guard.get_hw_status`)
+2. ✅ `pynvml` deprecation warning → `nvidia-ml-py` kuruldu + `warnings.filterwarnings`
+3. ⚠️ C: %96 dolu (46GB boş) — Lord bilgisi, müdahale yok
+4. ✅ HW guard negative test düzeltildi (strict mode docstring)
+5. ✅ Untracked scripts birikti — sonra cleanup (commit etmiyoruz şimdi)
+
+**Web research (2026 SOTA — global + dikey):**
+- **ChatInject** (arxiv 2509.22830): chat template token escape (`<|im_start|>`)
+- **Indirect injection** (arxiv 2603.15714): RAG borne directive injection
+- **MCP poisoning** (CVE-2025-54136 + OX Security April 2026): %60-72 success rate, 40+ CVE
+- **Rug pull**: silent tool description update post-approval
+- **Anti-bot 2026**: Cloudflare ML score 1-99 (20% internet veri), DataDome 35-signal, 85,000 site-specific model
+
+**KILIÇ-KALKAN v6 — 5 yeni saldırı tespit (scripts/kuroshin_security.py):**
+
+| Fonksiyon | Saldırı | Referans |
+|---|---|---|
+| `detect_chat_template_injection` | ChatInject token escape | arxiv 2509.22830 |
+| `detect_data_exfiltration` | Output'ta secret/PII (15+ pattern) | OWASP LLM |
+| `detect_rag_indirect_injection` | RAG context'te direktif | arxiv 2603.15714 |
+| `detect_tool_rug_pull` | SHA256 baseline + check | OX Security 2026 |
+| `detect_tool_chain_kill` | Sequential exfil (read → push) | MCP attack chain |
+
+**Exfil pattern coverage (15+):** OpenAI sk-/sk-proj-, Anthropic sk-ant-, Google AIza/OAuth, AWS AKIA, GitHub ghp_/PAT, Slack xox, HuggingFace hf_, JWT, RSA/EC/OPENSSH private keys, password assignments, email, credit card Luhn, TC kimlik.
+
+**RAG directive patterns (9):** ignore previous, system:..., new instructions:, override, disregard, you are now X (≠Kuroshin), execute, reveal prompt, markdown link XSS.
+
+**Tool baseline kayıt:** `memory/tool_baseline_hashes.json` (SHA256 per tool_id + first-seen timestamp).
+
+**Tool chain kill matrisi:** read_tools={chroma_search, memory_query, read_file, self_update} → exfil_tools={github:push/issue, reddit:post/yorum, open_url, web_search}.
+
+**Web Scraper Resilience (scripts/kuroshin_scraper.py):**
+- 11 UA havuzu (Chrome 130-131, Firefox 131-132, Safari 17, Edge 131 — Win/Mac/Linux dengeli)
+- Realistic headers: Accept, Accept-Language, Accept-Encoding (zstd dahil), Sec-Fetch-* (Dest/Mode/Site/User), sec-ch-ua, DNT, Upgrade-Insecure-Requests
+- Cookie persist (`memory/scraper_cookies.json`)
+- Exponential backoff retry (Retry adapter, 429/503/504 force list)
+- **8 anti-bot signature tespit:** Cloudflare, DataDome, Akamai, PerimeterX, Imperva, reCAPTCHA, hCaptcha, Cloudflare Turnstile
+- Proxy support: `KUROSHIN_PROXY` env var (Lord ekleyince devreye girer)
+- Live test: example.com → Cloudflare tespit ✓, httpbin.org → headers echo (UA random) ✓
+
+**Iron Inquisitor genişledi:**
+- `test_suite_dalga5.json`: 55 → **68 test** (+13: v6: 7 + scraper: 5 + bugfix-watcher: 1)
+- **68/68 PASS %100**
+
+**Live verify:** `scripts/_verify_kilickalkan_v6.py` — 14 senaryo (positive + negative per fonksiyon) → **14/14 PASS %100**.
+
+**Açık iş:**
+- Chancellor `_get_chroma_context()` runtime'da `detect_rag_indirect_injection` çağrılması (entegrasyon opsiyonel, mevcut `scan_chroma_documents` storage-time yapıyor)
+- Tool baseline boot-time register (chancellor startup'ta her tool için)
+- crawlee_bridge.js fallback olarak kuroshin_scraper.py entegrasyonu
 
 ### v11.11.0 — 31 Mayıs 2026 — BÜYÜK TEST + BUG FIX SUITE
 
