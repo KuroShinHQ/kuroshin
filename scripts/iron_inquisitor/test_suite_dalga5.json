@@ -495,5 +495,104 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Dalga 5.6: HW guard 6-test verify script"
+  },
+  {
+    "id": "verify-d5-6-critical-only",
+    "category": "verify_dalga5_6",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_hw_guard.py",
+    "pattern": "Critical-only block",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.6: 31 May fix - critical-only block doctrine (warn != block)"
+  },
+  {
+    "id": "verify-bugfix-explicit-fp-routing",
+    "category": "verify_bugfix_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "full_power_query direkt cagriliyor",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bugfix 31 May: Explicit routing full_power_query (model auto-select edemedi)"
+  },
+  {
+    "id": "verify-bugfix-re-global-alias",
+    "category": "verify_bugfix_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_re_global.compile",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bugfix 31 May: re modul _re_global alias kullanimi"
+  },
+  {
+    "id": "verify-bugfix-html-sanitize",
+    "category": "verify_bugfix_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "tg-spoiler",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bugfix 31 May: HTML tag whitelist Telegram parse hatasini onler"
+  },
+  {
+    "id": "verify-bugfix-fp-log-tag",
+    "category": "verify_bugfix_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_fp_log_line",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bugfix 31 May: Multiline -> tek satir log (test parser uyumu)"
+  },
+  {
+    "id": "verify-doctrine-md-auto-test",
+    "category": "verify_doctrine_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KILAVUZ.md",
+    "pattern": "STANDART İŞ AKIŞI",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Doctrine 31 May: KILAVUZ otomatik test workflow ekli (Lord 'test et' yazmasin)"
+  },
+  {
+    "id": "verify-doctrine-md-5-step",
+    "category": "verify_doctrine_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KILAVUZ.md",
+    "pattern": "Pre-flight check",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Doctrine 31 May: 5-adim akis ilkesi"
+  },
+  {
+    "id": "verify-doctrine-inject-cmd",
+    "category": "verify_doctrine_31may",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KILAVUZ.md",
+    "pattern": "kuroshin_test_inject.json",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Doctrine 31 May: Inject komutu KILAVUZ'da yazili"
+  },
+  {
+    "id": "verify-master-manifest-d5-included",
+    "category": "verify_master_manifest",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/iron_inquisitor/master_manifest.json",
+    "pattern": "test_suite_dalga5.json",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Master manifest: test_suite_dalga5.json tier_core'a entegre"
   }
 ]

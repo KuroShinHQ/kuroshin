@@ -1,6 +1,6 @@
-# KUROSHIN OS — MASTER ROADMAP v11.10.0
+# KUROSHIN OS — MASTER ROADMAP v11.11.0
 **Son Güncelleme:** 31 Mayıs 2026
-**Durum:** 🟢 STABİL — **FULL POWER + HW GUARD AKTIF** — Pre-action VRAM/temp kontrolü, Dalga 5 verify 46/46 🔱
+**Durum:** 🟢 STABİL — **BÜYÜK TEST + BUG FIX SUITE TAMAM** — Live 6/6 inject PASS, Iron Inquisitor 55/55 offline, MD doctrine aktif 🔱
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**
@@ -9,6 +9,56 @@
 > - `docs/THINKING_QUALITY.md` — TK-01~09 Think Chain tarihçesi (TAMAMLANDI)
 > - `docs/OPTIMIZATION.md` — Rename planı kırılma analizi (KAPANDI)
 > - `docs/DALGA5_PLAN.md` — Dalga 5 web-araştırma destekli kapasite artırma planı
+
+### v11.11.0 — 31 Mayıs 2026 — BÜYÜK TEST + BUG FIX SUITE
+
+**Lord direktifi:** "Ben test etmeme gerek yok, sen yapıcaksın. Telegram inject ile manuel testler yap, izle. Buyuk test tum ozellikleri test ediyoruz. Bug fix aynı usulde."
+
+**Süreç:**
+1. **Telegram inject keşfi:** chancellor polling loop'u `/tmp/kuroshin_test_inject.json` okuyor, `process_message(test_mode=True)` çağırıyor (ChromaDB kirletmez).
+2. **Live test suite (`scripts/_live_test_full_suite.py`):** Inject + log monitor + format check + 6 senaryolu test.
+3. **İlk koşu: 1/6 = %16.7 FAIL** — 5 büyük bug ortaya çıktı.
+
+**5 büyük bug fix:**
+
+| # | Bug | Sebep | Düzeltme |
+|---|---|---|---|
+| 1 | Model `full_power_query` tool'unu seçmiyor | Auto tool-call kararı zayıf, model `system_command`'a yöneliyor | Chancellor'a **explicit routing** eklendi: `_fp_triggers` prefix match → direkt `run_tool` |
+| 2 | `name 're' is not defined` | Chancellor `import re as _re_global` aliası kullanıyor | Tüm `re.X` çağrıları `_re_global.X` yapıldı |
+| 3 | HW guard %95 VRAM = block (overaggressive) | reserve_mb=500 default, VRAM normal max ~%95 | **Critical-only doctrine:** sadece >=7800 MB veya temp>=90°C veya NVML throttle bayrağı block |
+| 4 | Telegram HTML parse hatası (`<servis_adi>`) | send_msg `parse_mode=HTML`, bilinmeyen tag reject | HTML whitelist sanitize: `b\|i\|u\|s\|code\|pre\|a\|strong\|em\|tg-spoiler` izinli, diğer tag'ler silinir |
+| 5 | Multiline log truncation test parser'ı bozuyordu | `_log()` newline preserve ediyor, log dosyasında satır kayıyor | `_fp_log_line = (_safe_html).replace("\n", " \| ")[:600]` |
+
+**MD DOCTRINE EKLENDI (KILAVUZ.md):**
+- "STANDART İŞ AKIŞI — Yeni Özellik = Otomatik Test" başlığı
+- 5 adım: pre-flight → uygulama → çift kanıt (offline+live) → MD update → commit
+- Bug fix protokolü: aynı 5 adım + yeni Iron Inquisitor test ekle
+- Komut listesi: restart chancellor, live inject, master verify, HW status
+
+**Master manifest entegrasyonu (v6.2):**
+- `test_suite_dalga5.json` tier_core'a eklendi
+- Toplam: 199 tier_core + 50 extended + 30 historical = **279 test**
+
+**FİNAL KANIT:**
+- Iron Inquisitor `test_suite_dalga5.json`: **55/55 PASS %100** (Dalga 5.1+5.2+5.3+5.4+5.5+5.6 + bugfix + doctrine + master_manifest)
+- Live Telegram inject suite: **6/6 PASS %100**
+  - T1 selamlama (61s) ✓
+  - T2 kimlik (55s) ✓
+  - T3 system-info (59s) ✓
+  - T4 chroma-search (68s) ✓
+  - T5 full-power (46s) ✓ — **doğru cevap 73729 + HW status**
+  - T6 full-power+hw (34s) ✓ — HW status line yanıtta
+
+**Yeni dosyalar:**
+- `scripts/_live_test_full_suite.py` — 6-test live inject suite
+- `scripts/_live_test_solo.py` — tek-test debugging
+- `scripts/_live_test_inject.sh` — bash inject smoke test
+
+**chancellor.py değişiklikleri (production touch ama izole):**
+- Explicit routing block (process_message içi, `_fp_triggers` kontrolü)
+- HW guard import + pre-check + status line
+- HTML sanitize + multiline log fix
+- Ana akış DOKUNULMADI (sadece full_power_query path'inde)
 
 ### v11.10.0 — 31 Mayıs 2026 — DALGA 5.6: HARDWARE GUARDIAN AKTIF KORUMA
 

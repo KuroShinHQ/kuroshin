@@ -98,26 +98,37 @@ def get_hw_status() -> Dict[str, Any]:
         }
 
 
-def safe_for_heavy(reserve_mb: int = 500) -> Tuple[bool, str]:
+def safe_for_heavy(reserve_mb: int = 0, strict: bool = False) -> Tuple[bool, str]:
     """Agir bir LLM cagrisi guvenli mi?
 
-    Esik:
-      - VRAM kullanim < VRAM_WARN_MB - reserve (yeni alloc icin yer var mi)
-      - Temp < TEMP_WARN_C
-      - Throttle aktif degil
+    Default mod (strict=False, 31 May 2026 doctrine — Lord: "kalite oncelik,
+    donanim korumali ama PC'yi oldurme"): YALNIZCA gercek tehlikede blokla:
+      - VRAM CRITICAL >= 7800 MB (kalite kaybi cok yuksek)
+      - Temp CRITICAL >= 90°C (throttle riski)
+      - NVML clock throttle bayrak aktif
+
+    Strict mode (eski davranis): WARN seviyesi de blokla.
     """
     s = get_hw_status()
     if not s["available"]:
         return True, "NVML yok — koruma atlandi"
-    if s["vram_used_mb"] >= (VRAM_WARN_MB - reserve_mb):
+
+    if strict:
+        if s["vram_used_mb"] >= max(VRAM_WARN_MB - reserve_mb, 0):
+            return False, f"VRAM warn (strict): {s['vram_used_mb']}/{VRAM_TOTAL_MB} MB"
+        if s["temp_c"] >= TEMP_WARN_C:
+            return False, f"Temp warn (strict): {s['temp_c']}°C"
+
+    # Critical-only block (default)
+    if s["vram_used_mb"] >= VRAM_CRIT_MB:
         return False, (
-            f"VRAM dolu: {s['vram_used_mb']}/{VRAM_TOTAL_MB} MB "
-            f"(>{VRAM_WARN_MB - reserve_mb} esigi)"
+            f"VRAM kritik: {s['vram_used_mb']}/{VRAM_TOTAL_MB} MB "
+            f"(>={VRAM_CRIT_MB} kritik esigi)"
         )
-    if s["temp_c"] >= TEMP_WARN_C:
-        return False, f"GPU sicakligi yuksek: {s['temp_c']}°C (>{TEMP_WARN_C} esigi)"
+    if s["temp_c"] >= TEMP_CRIT_C:
+        return False, f"GPU termal kritik: {s['temp_c']}°C (>={TEMP_CRIT_C}°C)"
     if s["throttle_active"]:
-        return False, "GPU thermal throttle aktif"
+        return False, "NVML thermal throttle bayragi AKTIF — donanim siginiyor"
     return True, "ok"
 
 

@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.10.0 — 31 Mayıs 2026
+**Sürüm:** v11.11.0 — 31 Mayıs 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -123,16 +123,61 @@ Detay: `memory/feedback_lord_kurallari.md` (Claude memory sistemi)
 
 ---
 
-## 🏆 Son durum (v11.10.0 — 31 May 2026)
+## 🔁 STANDART İŞ AKIŞI — Yeni Özellik = Otomatik Test (31 May 2026 doctrine)
 
-- **DALGA 5.1 ✅** Context 16K → **256K (16x kazanım)**
-- **DALGA 5.2 ✅** Hybrid RAG (BM25+Dense+RRF+CrossEncoder)
-- **DALGA 5.3 ✅** Episodic Memory (3 katman, JSON mode)
-- **DALGA 5.4 ✅** LangGraph Orchestrator (baseline %0 → multi-agent %100, +100 pp, %30 hızlı)
-- **DALGA 5.5 ✅** Chancellor **Full Power Mode** — `full_power_query` tool entegre
-- **DALGA 5.6 ✅** Hardware Guardian — pre-action VRAM/temp/throttle koruması; her yanıta HW status line
-- **DALGA 5.7 ❌** Vision İPTAL (8GB VRAM yetmez, swap overhead)
-- **Iron Inquisitor:** 48/48 verify_v11 + **46/46 dalga5** + 73/73 security + 103/104 canlı tier_core (toplam 279 test)
+Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** Claude otomatik şu 5 adımı çalıştırır:
+
+### 1. Pre-flight check
+- VRAM/RAM/disk yeterli mi (`scripts/kuroshin_hw_guard.py`)
+- Web research: 2026 SOTA, alternatif yaklaşımlar
+- Bağımlılık analizi (yeni pip paket → boyut + risk)
+
+### 2. Uygulama
+- Bağımsız modül yaz (production chancellor.py'a dokunma — gerekirse minimal tool ekle)
+- Lazy import (boot etkisi sıfır)
+- Safe fallback (hata = string return, ana akış bozulmaz)
+
+### 3. Çift kanıt
+- **Offline:** Iron Inquisitor `code_inspect` (file_exists + file_contains)
+  - Yeni `test_suite_dalgaX.json` veya mevcut suite'e ek
+  - Hedef: %100 PASS, regression yok
+- **Live:** Telegram inject suite (`scripts/_live_test_full_suite.py`)
+  - chancellor.log'dan `[TELEGRAM_OUT]` izle
+  - Format kontrol: `⚔️ Lordum`, markdown yok, think leak yok
+  - Hedef: ≥%80 PASS
+
+### 4. MD update (zincir)
+- `KILAVUZ.md` — sürüm + son durum
+- `KUROSHIN_MASTER_ROADMAP.md` — yeni versiyon entry
+- `GOREVLER.md` — dalga checklist
+- `memory/MEMORY.md` + `project_kuroshin.md` — auto-memory (gelecek session için)
+
+### 5. Commit
+- HEREDOC ile commit message (kanıt zinciri + skor + dosyalar)
+- Push: sadece Lord açıkça istediğinde
+
+### Bug bulununca
+- Aynı 5 adımı tekrar et
+- Test rapor JSON'a yaz (`scripts/iron_inquisitor/reports/`)
+- "Düzeltildi" demek yetmez — yeni Iron Inquisitor test ekle ki regression olmasın
+
+### Tools / Komutlar
+- **Restart Chancellor (yeni kod aktif):** `wsl -d Ubuntu-22.04 -e /bin/bash -c "bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh"`
+- **Live inject test:** `python3 /mnt/c/Kuroshin/scripts/_live_test_full_suite.py`
+- **Tek inject:** `echo '{"chat_id":YOUR_TELEGRAM_CHAT_ID_HERE,"text":"...","test_mode":true}' > /tmp/kuroshin_test_inject.json`
+- **Master verify:** `python3 scripts/iron_inquisitor/inquisitor_v5.py --manifest scripts/iron_inquisitor/master_manifest.json --tier core`
+- **HW Guard status:** `python3 -c "from kuroshin_hw_guard import short_status_line; print(short_status_line())"`
+
+---
+
+## 🏆 Son durum (v11.11.0 — 31 May 2026)
+
+- **DALGA 5.1-5.6 ✅** Context 256K + Hybrid RAG + Episodic + LangGraph + Full Power + HW Guard
+- **BÜYÜK TEST SUITE ✅** Live Telegram inject 6/6 PASS — Full Power yanıtında `73729` + HW status
+- **BUG FIX SUITE ✅** explicit routing + re alias + critical-only HW + HTML sanitize + log normalize
+- **MD DOCTRINE ✅** "Yeni özellik = otomatik test" KILAVUZ'da
+- **DALGA 5.7 ❌** Vision İPTAL (8GB VRAM yetmez)
+- **Iron Inquisitor:** 48/48 verify_v11 + **55/55 dalga5+bugfix+doctrine** + 73/73 security + 103/104 canlı tier_core (toplam 288 test)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif

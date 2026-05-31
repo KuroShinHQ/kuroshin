@@ -1,7 +1,7 @@
 {
-  "version": "v6.1",
-  "updated": "2026-05-30",
-  "doctrine": "Iron Inquisitor — Kuroshin OS ana tester. 3 tier kategori: core (her CI), extended (büyük entegrasyon), historical (kanıt arşivi). Komut: python3 inquisitor_v5.py --manifest master_manifest.json --tier core",
+  "version": "v6.2",
+  "updated": "2026-05-31",
+  "doctrine": "Iron Inquisitor — Kuroshin OS ana tester. 3 tier kategori: core (her CI), extended (büyük entegrasyon), historical (kanıt arşivi). DALGA 5 sonrası: yeni özellik = otomatik test (code_inspect + live inject + Iron Inquisitor) → MD update → commit. Manuel test YASAK. Komut: python3 inquisitor_v5.py --manifest master_manifest.json --tier core",
   "tier_core": {
     "description": "Her commit/entegrasyon sonrası mutlaka koşulur",
     "suites": [
@@ -10,7 +10,8 @@
       {"file": "test_suite_security_v5.json",    "domain": "kilic_kalkan_v4_2026", "tests": 12},
       {"file": "test_suite_think.json",          "domain": "think_chain_tk01_09",  "tests": 8},
       {"file": "test_suite_ajan.json",           "domain": "autonomous_agent",     "tests": 10},
-      {"file": "test_suite_verify_v11.json",     "domain": "dalga1_2_3_4_kanit",   "tests": 49}
+      {"file": "test_suite_verify_v11.json",     "domain": "dalga1_2_3_4_kanit",   "tests": 49},
+      {"file": "test_suite_dalga5.json",         "domain": "dalga5_full_power_hw", "tests": 46}
     ]
   },
   "tier_extended": {
@@ -31,10 +32,10 @@
     ]
   },
   "totals": {
-    "tier_core_tests": 153,
+    "tier_core_tests": 199,
     "tier_extended_tests": 50,
     "tier_historical_tests": 30,
-    "grand_total": 233
+    "grand_total": 279
   },
   "usage": {
     "default": "python3 inquisitor_v5.py --manifest master_manifest.json",

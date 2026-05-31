@@ -4165,6 +4165,39 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             })
             break
 
+    # ── DALGA 5.5 FULL POWER explicit routing ──────────────────────────
+    # Lord'un komutu ne olursa olsun "full power", "tum gucle", "/full" prefix'i
+    # gorulurse orchestrator dogrudan tetiklenir (model tool-call'a guvenmeden).
+    _fp_triggers = ("full power", "tum gucle", "tüm güçle", "derin yanit", "derin yanıt",
+                    "kapsamli yanit", "kapsamlı yanıt", "/full ", "/full:")
+    if any(_trig in _text_lower for _trig in _fp_triggers):
+        # Query'yi temizle: tetikleyici prefix'i cikar
+        _clean_query = text
+        for _trig in _fp_triggers:
+            # case-insensitive sil
+            _ci = _re_global.compile(_re_global.escape(_trig), _re_global.IGNORECASE)
+            _clean_query = _ci.sub("", _clean_query)
+        # Yaygin baglaclari da temizle
+        _clean_query = _re_global.sub(r"^[\s:,\-—]*(query[:\s]*)?", "", _clean_query, flags=_re_global.IGNORECASE).strip()
+        if not _clean_query:
+            _clean_query = text  # fallback
+        _log(f"[EXPLICIT_TOOL] full_power_query direkt cagriliyor query='{_clean_query[:80]}'")
+        _fp_result = run_tool("full_power_query", {"query": _clean_query})
+        # Telegram HTML parse'i kirilmasin: bilinmeyen tag'i temizle (sadece b/i/code/pre/a tutulur)
+        _safe_html = _re_global.sub(
+            r"<(?!/?(?:b|i|u|s|code|pre|a|strong|em|tg-spoiler)\b)[^>]*>",
+            "",
+            _fp_result or "(bos)"
+        )
+        try:
+            send_msg(chat_id, _safe_html)
+        except Exception as _se:
+            _log(f"[FULL_POWER send_msg EX] {_se}")
+        # Log'a tek satir basmak icin newline'lari " | " yap, 600 char
+        _fp_log_line = (_safe_html or "").replace("\n", " | ")[:600]
+        _log(f"[TELEGRAM_OUT] [{chat_id}] {_fp_log_line}")
+        return
+
     # Felsefi/kişisel sorularda araç kullanımını kapat
     arac_kullan = not _is_conversational(text)
     _log(f"[CHANCELLOR] Araç modu: {'AÇIK' if arac_kullan else 'KAPALI (sohbet sorusu)'}")
