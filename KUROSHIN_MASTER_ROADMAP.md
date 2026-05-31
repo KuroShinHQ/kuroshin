@@ -30,6 +30,11 @@
 
 **Kanıt:** `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` 8/8 + offline battery 193/193 + **live suite 6/6** (T6 systemctl→restart_chancellor.sh, T5 markdown temiz, T3 tarih uydurmuyor, T2 tırnak temiz, T1 VS temiz).
 
+**Konsolidasyon + sağlamlık (Lord seçimi: yeni özellik değil):**
+- ✅ **Tool şema denetçisi** `scripts/_audit_tool_schemas.py` — 25 tool'u handler'a karşı denetler (AST, yan etkisiz). system_info-sınıfı (required ama anlamlı-default'lu → E-13 garantili) + KeyError riski. Sonuç: **system_info tek gerçek bug'mış** (düzeltildi); 11 `islem`/`path` çekirdek-eylem param'ı "incelendi, tasarım gereği" whitelist'inde → audit artık YENİ bug için regresyon muhafızı.
+- ✅ **`restart_chancellor.sh` sağlamlaştırıldı** — `nohup`→`setsid`; başlatma sonrası **AKTİF + :8201 doğrulama** (sessiz hang yakalama, chancellor 2672 gibi); başarısızlıkta **Telegram alarmı** (sessiz ölüm bitti); `pkill -f` self-match bug'ı → `fuser -k 3006/tcp`; `--relock` flag'i (kasıtlı prompt değişiminde integrity yeniden kilitle). Uçtan uca test: `✅ Chancellor AKTİF`.
+- Regresyon: `test_suite_quality_fix.json` **11/11** (audit + restart marker'ları dahil).
+
 **Kalan (35B kapasite tavanı — deterministik değil):** selamlamada persona tonu (kasıtlı), çoğul "Yapayız" ifadesi.
 
 ### v11.12.0 — 31 Mayıs 2026 — KILIÇ-KALKAN v6 + SCRAPER + GPU_WATCHER FIX
