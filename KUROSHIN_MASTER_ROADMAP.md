@@ -1,6 +1,45 @@
-# KUROSHIN OS — MASTER ROADMAP v11.14.0
+# KUROSHIN OS — MASTER ROADMAP v11.15.0
 **Son Güncelleme:** 1 Haziran 2026
-**Durum:** 🟢 STABİL — **ENTEGRASYON BORCU: Hybrid RAG normal yola bağlandı (kanıt güdümlü) + observability** — Iron Inquisitor 68/68 + quality 14/14 🔱
+**Durum:** 🟢 STABİL — **EPISODIC MEMORY CANLI ENTEGRASYON** (WRITE+READ chancellor'da, live verified) — Iron Inquisitor 74/74 🔱
+
+### v11.15.0 — 1 Haziran 2026 — EPISODIC MEMORY CANLI ENTEGRASYON (WRITE+READ)
+
+**Tespit:** Dalga 5.3'te `kuroshin_episodic.py` modülü vardı ama **chancellor hiç yazmıyordu** → store dormant kalıyordu, sadece self-test verisi. Lord direktifi: "Önce write'i bağla, sonra read'i."
+
+**3 fonksiyon + 1 entegrasyon eklendi** (`agents/kuroshin_chancellor.py`):
+
+| Eleman | Ne yapar |
+|---|---|
+| `_get_episodic()` | TTL cache'li lazy EpisodicMemory singleton (5dk TTL) |
+| `_save_to_episodic(user, reply, chat_id)` | Her gerçek turu kaydet (embedding-only, JUNK skip — `_CHROMA_SKIP_PATTERNS`) |
+| `_persist_conversation(...)` | Bundle save (chroma + episodic) — tek daemon thread |
+| `_get_episodic_context(sorgu)` | User-scoped (`chat_id`), eşik-filtreli (`_EPISODIC_MIN_SCORE=0.45`) recall |
+
+**Bağlantı noktaları:**
+- `process_message` line ~4521: `_save_to_chroma` → **`_persist_conversation`** (chat_id parametre eklendi)
+- `_get_chroma_context` line ~1157: ChromaDB snippet + **episodic context** birleşiyor
+- Pahalı fact-extraction → idle-loop'a ertelendi (boot-time yük yok)
+
+**Eşik mantığı (0.45):** Sparse store'da (10-20 entry) cross-talk noise enjekte etmesin diye. Score < 0.45 olan hit'ler context'e koyulmuyor (boş döner).
+
+**LIVE VERIFY** (`scripts/_live_test_episodic_write.py`):
+- Baseline: count=0 (purge sonrası temiz)
+- INJECT 1 `"magic sayısı 86421"` → `[EPISODIC] tur kaydedildi`, **count: 0 → 2** (user+assistant)
+- INJECT 2 `"magic sayısı neydi?"` → `[EPISODIC] context n=2` + yanıt: **"86421"** ✓
+- Bonus: model 1. turda 35079 sandı (LLM halüsinasyon), 2. turda episodic READ ile **doğru fact 86421**'i geri verdi → recall çalışıyor
+
+**Iron Inquisitor:**
+- `test_suite_dalga5.json` +6 test (chancellor entegrasyon): 68 → **74**
+- **74/74 PASS %100**
+
+**Yeni/değişen dosyalar:**
+- `agents/kuroshin_chancellor.py` (+74 satır, ana akış dokunulmadı, lazy import + safe fallback)
+- `scripts/_live_test_episodic_write.py` (NEW — write+read live verify)
+- `scripts/_check_episodic_count.py` (NEW — quick count helper)
+- `scripts/_inspect_episodic.py` (NEW — debug)
+- `scripts/iron_inquisitor/test_suite_dalga5.json` (+6 test)
+
+**Açık:** Pahalı fact-extraction (LLM JSON mode ile semantic facts) idle-loop'ta günlük 1 kez batch.
 
 ### v11.14.0 — 1 Haziran 2026 — ENTEGRASYON BORCU: HYBRID RAG NORMAL YOLA + OBSERVABILITY
 

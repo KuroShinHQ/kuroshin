@@ -735,5 +735,70 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Bugfix 31 May: _gpu_watcher subprocess yerine NVML (E-12 log spam fix)"
+  },
+  {
+    "id": "verify-d5-3-chancellor-save-episodic",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "def _save_to_episodic",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon (1 Haz 2026): chancellor _save_to_episodic — her gercek tur write"
+  },
+  {
+    "id": "verify-d5-3-chancellor-get-episodic-ctx",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "def _get_episodic_context",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon: user-scoped, esik-filtreli (>=0.45) read"
+  },
+  {
+    "id": "verify-d5-3-chancellor-persist-conv",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "def _persist_conversation",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon: bundle persist (chroma + episodic)"
+  },
+  {
+    "id": "verify-d5-3-chancellor-threshold",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_EPISODIC_MIN_SCORE = 0.45",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon: sparse-noise filter esigi 0.45"
+  },
+  {
+    "id": "verify-d5-3-process-message-persist",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "target=_persist_conversation, args=(text, content, chat_id)",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon: process_message bundle save'e baglandi"
+  },
+  {
+    "id": "verify-d5-3-live-write-script",
+    "category": "verify_dalga5_3_integration",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_live_test_episodic_write.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Dalga 5.3 integrasyon: WRITE+READ live verify script"
   }
 ]

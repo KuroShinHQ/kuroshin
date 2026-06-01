@@ -1157,7 +1157,10 @@ def _get_chroma_context(user_message: str = "") -> str:
         if not docs:
             return ""
         snippet = "\n---\n".join(str(d)[:300] for d in docs if d)
-        return f"\n\n[HAFIZA — Geçmiş konuşmalar, SADECE bağlam için. İçerik doğru olmayabilir, kopyalama]:\n{snippet}" if snippet else ""
+        ep_ctx = _get_episodic_context(sorgu)   # DALGA 5.3: user-scoped episodic recall (eşik-filtreli)
+        if snippet:
+            return f"\n\n[HAFIZA — Geçmiş konuşmalar, SADECE bağlam için. İçerik doğru olmayabilir, kopyalama]:\n{snippet}{ep_ctx}"
+        return ep_ctx
     except Exception as e:
         _log(f"[CHROMA] Context hatası: {e}")
         return ""
@@ -1166,6 +1169,75 @@ _CHROMA_SKIP_PATTERNS = [
     "walker servisi", "port 9002", "port 9004", "servis çalışıyor",
     "servis başlatıldı", "health check", "⚙️", "⚠️ yanıt üretilemedi",
 ]
+
+# ── EPISODIC MEMORY ENTEGRASYONU (DALGA 5.3, 1 Haz 2026) ──────────────────────
+# Tespit: episodic store boştu (sadece self-test); chancellor hiç yazmıyordu → dormant.
+# Çözüm: WRITE = her gerçek turu kaydet (embedding-only, ucuz, async). READ = user-scoped,
+# eşik-filtreli (sparse'ken noise enjekte etmez). Pahalı fact-extraction → idle-loop'a ertelendi.
+_EPISODIC = {"obj": None, "ts": 0.0}
+_EPISODIC_TTL = 300.0
+_EPISODIC_MIN_SCORE = 0.45   # bu eşiğin altı = ilgisiz → context'e koyma
+
+def _get_episodic():
+    """Cached EpisodicMemory (lazy). Hata/yoksa None."""
+    now = time.time()
+    if _EPISODIC["obj"] is not None and (now - _EPISODIC["ts"]) < _EPISODIC_TTL:
+        return _EPISODIC["obj"]
+    try:
+        import sys as _sys
+        if "/mnt/c/Kuroshin/scripts" not in _sys.path:
+            _sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        from kuroshin_episodic import EpisodicMemory
+        em = EpisodicMemory()
+        _EPISODIC["obj"] = em
+        _EPISODIC["ts"] = now
+        return em
+    except Exception as _e:
+        _log(f"[EPISODIC] init başarısız: {_e}")
+        return None
+
+def _save_to_episodic(user_msg: str, assistant_reply: str, chat_id: int):
+    """Her gerçek turu episodic'e kaydet (embedding-only, ucuz). Junk atla, safe."""
+    rl = (assistant_reply or "").lower()
+    for pat in _CHROMA_SKIP_PATTERNS:
+        if pat.lower() in rl:
+            return
+    try:
+        em = _get_episodic()
+        if em is None:
+            return
+        uid = str(chat_id)
+        if user_msg and user_msg.strip():
+            em.record_episode("user", user_msg.strip()[:1000], user_id=uid)
+        if assistant_reply and assistant_reply.strip():
+            em.record_episode("assistant", assistant_reply.strip()[:1000], user_id=uid)
+        _log(f"[EPISODIC] tur kaydedildi (user_id={uid})")
+    except Exception as _e:
+        _log(f"[EPISODIC] kayıt hatası: {_e}")
+
+def _persist_conversation(user_msg: str, assistant_reply: str, chat_id: int):
+    """Post-reply kalıcılaştırma (tek daemon thread): kuroshin_memory + episodic."""
+    _save_to_chroma(user_msg, assistant_reply)
+    _save_to_episodic(user_msg, assistant_reply, chat_id)
+
+def _get_episodic_context(sorgu: str) -> str:
+    """User-scoped episodic recall — eşik-filtreli (sparse/ilgisizken boş döner, noise yok)."""
+    try:
+        em = _get_episodic()
+        if em is None or em.collection_count == 0:
+            return ""
+        uid = str(_CURRENT_CHAT_ID) if _CURRENT_CHAT_ID else None
+        hits = em.search(sorgu, user_id=uid, limit=2)
+        good = [h for h in hits
+                if h.get("score", 0) >= _EPISODIC_MIN_SCORE and (h.get("text") or "").strip()]
+        if not good:
+            return ""
+        lines = "\n".join(f"- ({h.get('subject','?')}) {str(h['text'])[:200]}" for h in good)
+        _log(f"[EPISODIC] context n={len(good)}")
+        return f"\n\n[OLAY HAFIZASI — geçmiş oturum, SADECE bağlam]:\n{lines}"
+    except Exception as _e:
+        _log(f"[EPISODIC] context hatası: {_e}")
+        return ""
 
 def _save_to_chroma(user_msg: str, assistant_reply: str):
     """Konuşmayı ChromaDB'ye kaydet — dream_engine ve gelecek context için."""
@@ -4446,7 +4518,7 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             if not test_mode:
                 import threading
                 threading.Thread(
-                    target=_save_to_chroma, args=(text, content), daemon=True
+                    target=_persist_conversation, args=(text, content, chat_id), daemon=True
                 ).start()
         else:
             _log(f"[TELEGRAM_OUT] [{chat_id}] YANIT_YOK — round={round_i}")
