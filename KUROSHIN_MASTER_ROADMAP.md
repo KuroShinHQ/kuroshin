@@ -1,6 +1,26 @@
-# KUROSHIN OS — MASTER ROADMAP v11.13.0
+# KUROSHIN OS — MASTER ROADMAP v11.14.0
 **Son Güncelleme:** 1 Haziran 2026
-**Durum:** 🟢 STABİL — **KONSOLİDASYON: tool schema audit + restart sağlamlık + repo hygiene** — Iron Inquisitor 68/68 offline 🔱
+**Durum:** 🟢 STABİL — **ENTEGRASYON BORCU: Hybrid RAG normal yola bağlandı (kanıt güdümlü) + observability** — Iron Inquisitor 68/68 + quality 14/14 🔱
+
+### v11.14.0 — 1 Haziran 2026 — ENTEGRASYON BORCU: HYBRID RAG NORMAL YOLA + OBSERVABILITY
+
+**Lord direktifi:** "Yenilik mi iyileştirme mi? → Entegrasyon borcu + ölçüm. (35B tavanında yeni özellik kaliteyi artırmaz.)"
+
+**Tespit:** DALGA 5.2-5.4 modülleri (Hybrid RAG / Episodic / LangGraph) yapılmış+test edilmiş ama yalnızca `full_power_query` ile erişiliyordu. Normal her Telegram sorusu düz dense `_get_chroma_context` kullanıyordu → sistemin sahip olduğundan zayıf hafıza erişimi.
+
+**Kanıt güdümlü karar (önce ölç, sonra entegre et):**
+- `scripts/_measure_retrieval.py` (yeni observability harness) — precision@3: dense vs hybrid-full vs hybrid-norerank.
+- Sonuç (36 doc corpus): **Dense %83.3 | Hybrid-full %83.3 | Hybrid-norerank %100** (+16.7pp).
+- Reranker küçük corpus'ta **noise** yapıyor (5.2 notunu doğruladı) + ~570ms → **use_reranker=False** (latency ≈ dense, +16.7pp kalite).
+
+**Entegrasyon:**
+- `kuroshin_chancellor.py` `_get_chroma_context` → `_retrieve_for_context` (Hybrid RAG no-rerank, cached 120s TTL, **her hata/boşlukta safe fallback plain dense**).
+- Güvenlik katmanı (injection + hash + MCFA) korundu.
+- **Canlı kanıt:** gerçek-mod sorgu → `[RETRIEVAL] hybrid-norerank top3 n=3` + `[CHROMA_LATENCY] 798ms`.
+
+**Operasyonel:** llama-server gece düşmüştü → yeniden başlatıldı (`{"status":"ok"}`).
+**Regresyon:** dalga5 68/68 + quality_fix **14/14**.
+**Açık:** Episodic'in (5.3) normal yola bağlanması; corpus büyüyünce reranker threshold gözden geçir.
 
 ### v11.13.0 — 1 Haziran 2026 — KONSOLİDASYON + SAĞLAMLIK + REPO HYGIENE
 

@@ -1073,8 +1073,53 @@ def _get_chroma_col():
         _log(f"[CHROMA] Init hatası: {e}")
         return None
 
+# DALGA 5.2 ENTEGRASYON (1 Haz 2026): normal yol artık Hybrid RAG (no-rerank) kullanır.
+# Kanıt: scripts/_measure_retrieval.py @top-3 → hybrid-norerank %100 vs düz dense %83.3 (+16.7pp).
+# Reranker küçük corpus'ta noise + ~570ms → use_reranker=False (latency ≈ dense). Safe fallback: plain dense.
+_HYBRID_RAG = {"obj": None, "ts": 0.0}
+_HYBRID_TTL = 120.0  # corpus değişebilir → 120s'de bir yeniden kur
+
+def _get_hybrid_rag():
+    """Cached HybridRAG (lazy). Hata/yoksa None → caller plain dense'e düşer."""
+    now = time.time()
+    if _HYBRID_RAG["obj"] is not None and (now - _HYBRID_RAG["ts"]) < _HYBRID_TTL:
+        return _HYBRID_RAG["obj"]
+    try:
+        import sys as _sys
+        if "/mnt/c/Kuroshin/scripts" not in _sys.path:
+            _sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        from kuroshin_rag import HybridRAG
+        rag = HybridRAG()
+        _HYBRID_RAG["obj"] = rag
+        _HYBRID_RAG["ts"] = now
+        return rag
+    except Exception as _e:
+        _log(f"[RETRIEVAL] HybridRAG init başarısız → plain fallback: {_e}")
+        return None
+
+def _retrieve_for_context(sorgu: str, col):
+    """Hybrid RAG (no-rerank) → hata/boşsa plain dense fallback. Döner: (docs, ids, metas)."""
+    try:
+        rag = _get_hybrid_rag()
+        if rag is not None and getattr(rag, "corpus_size", 0) > 0:
+            hits = rag.search(sorgu, top_m=3, use_reranker=False)
+            if hits:
+                docs  = [h.get("doc", "") for h in hits]
+                ids   = [h.get("id", "") for h in hits]
+                metas = [h.get("metadata", {}) or {} for h in hits]
+                _log(f"[RETRIEVAL] hybrid-norerank top3 n={len(docs)}")
+                return docs, ids, metas
+    except Exception as _e:
+        _log(f"[RETRIEVAL] hybrid hata → plain fallback: {_e}")
+    # Fallback: plain dense (eski davranış — prod güvenli)
+    result = col.query(query_texts=[sorgu], n_results=min(3, col.count()),
+                       include=["documents", "metadatas", "distances"])
+    return (result.get("documents", [[]])[0],
+            result.get("ids",       [[]])[0],
+            result.get("metadatas", [[]])[0])
+
 def _get_chroma_context(user_message: str = "") -> str:
-    """Kullanıcı mesajına semantik olarak en yakın 3 ChromaDB kaydını çeker."""
+    """Kullanıcı mesajına en yakın 3 kaydı çeker — Hybrid RAG (no-rerank), fallback plain dense."""
     # E-15 (29 May 2026): ChromaDB sorgu latency log
     _chroma_t0 = time.perf_counter()
     try:
@@ -1082,14 +1127,10 @@ def _get_chroma_context(user_message: str = "") -> str:
         if col is None or col.count() == 0:
             return ""
         sorgu = user_message.strip() if user_message.strip() else "son konuşmalar"
-        result = col.query(query_texts=[sorgu], n_results=min(3, col.count()),
-                           include=["documents", "metadatas", "distances"])
+        docs, ids, metas = _retrieve_for_context(sorgu, col)
         # E-15: Sorgu latency raporu
         _chroma_dt = round((time.perf_counter() - _chroma_t0) * 1000, 1)
-        _log(f"[CHROMA_LATENCY] query={_chroma_dt}ms n_results={len(result.get('ids',[[]])[0])} sorgu='{sorgu[:40]}'")
-        docs  = result.get("documents", [[]])[0]
-        ids   = result.get("ids",       [[]])[0]
-        metas = result.get("metadatas", [[]])[0]
+        _log(f"[CHROMA_LATENCY] query={_chroma_dt}ms n_results={len(docs)} sorgu='{sorgu[:40]}'")
         if not docs:
             return ""
         # RED-MEM-02: Okurken injection + hash bütünlük kontrolü — bozuk kayıtlar atlanır

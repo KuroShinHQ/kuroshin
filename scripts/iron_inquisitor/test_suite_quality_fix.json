@@ -117,5 +117,37 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Saglam restart: PROMPT_TAMPERED tespit + Telegram alarm + --relock"
+  },
+  {
+    "id": "qfix-rag-integration-wired",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_retrieve_for_context",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Entegrasyon: _get_chroma_context normal yolda Hybrid RAG kullaniyor (DALGA 5.2 aktive)"
+  },
+  {
+    "id": "qfix-rag-norerank-evidence",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "use_reranker=False",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Kanit temelli: reranker kucuk corpus'ta noise (measure: norerank %100 vs full %83) → use_reranker=False"
+  },
+  {
+    "id": "qfix-retrieval-measure-harness",
+    "category": "quality_fix_telegram",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_measure_retrieval.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Observability: retrieval kalite A/B olcum harness (top-3 dense vs hybrid)"
   }
 ]
