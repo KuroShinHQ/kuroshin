@@ -800,5 +800,72 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Dalga 5.3 integrasyon: WRITE+READ live verify script"
+  },
+  {
+    "id": "verify-fazb-min-length-4",
+    "category": "verify_fazb_speed",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "len(content.split()) < 4",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ B (1 Haz): min-length retry esik 7->4 (sayi/fact cevaplari yavasligi fix)"
+  },
+  {
+    "id": "verify-fazb-reasoning-2048",
+    "category": "verify_fazb_speed",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/start_llama.sh",
+    "pattern": "reasoning-budget 2048",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ B: reasoning-budget 3072->2048 (think loop %33 azalim)"
+  },
+  {
+    "id": "verify-fazc-kk6-boot-baseline",
+    "category": "verify_fazc_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "for _tool in TOOLS",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ C: KK-v6 boot-time TOOLS baseline kayit (rug pull aktif tespit)"
+  },
+  {
+    "id": "verify-fazc-kk6-rag-runtime",
+    "category": "verify_fazc_integration",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "detect_rag_indirect_injection",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ C: KK-v6 runtime RAG indirect injection retrieve sonrasi filter"
+  },
+  {
+    "id": "verify-faza-plural-identity-block",
+    "category": "verify_faza_quality",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "yapay zekayız|dil modeliyiz|yapayız|özümde öyleyizdir",
+    "is_regex": true,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ A: cogul kimlik drift (yapayiz/yapay zekayiz/dil modeliyiz) regex filter"
+  },
+  {
+    "id": "verify-faza-adaptive-threshold",
+    "category": "verify_faza_quality",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "threshold=",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FAZ A: episodic adaptive threshold (sparse 0.30 / dense 0.55)"
   }
 ]

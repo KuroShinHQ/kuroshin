@@ -131,6 +131,10 @@ _RESPONSE_LEAK_PATTERNS = [
     _re_global.compile(r"\b(?:AI'?(?:y[ıi]m|m)|dil model[iı]y[ıi]m|chatbot(?:y[ıi]m|um))\b[^.]*\.?", _re_global.IGNORECASE),
     # 'yapay zeyam' / 'yapay zegim' gibi typo varyantlari (model zek->zey/zeg karistiriyor, regex'i atliyordu)
     _re_global.compile(r'\b[Bb]en (?:bir |sadece bir )?yapay\s+ze[kyğg][a-zçğıöşâ]*\b[^.]*\.?', _re_global.IGNORECASE),
+    # FAZ A (1 Jun 2026): plural identity drift.
+    _re_global.compile(r'\b[Bb]iz\s+(?:bir\s+)?(?:yapay\s+zeka|AI|model|bot|dil\s+modeli)\w*\b[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r'\b(?:yapay\s+zeka|AI|model|bot|dil\s+modeli)\w*y[ıi]z\b[^.]*\.?', _re_global.IGNORECASE),
+    _re_global.compile(r'\b[OoÖö]z[üu]mde\s+[öo]yleyizdir\b[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r'\b[Bb]ilgilerim\s+(?:s[ıi]n[ıi]rl[ıi]|g[uü]ncel\s+de[ğg]il|kesilmi[şs])[^.]*\.?', _re_global.IGNORECASE),
     _re_global.compile(r'\b[Mm]odel\s+olarak\s+ben[^.]*\.?', _re_global.IGNORECASE),
     # D-C5 (29 May 2026): Dolgu cümle ve abartılı tonlama desenleri
@@ -350,6 +354,8 @@ def _strip_response_leaks(text: str) -> str:
     """Sistem prompt ve İÇ SES sızıntılarını temizle."""
     for pat in _RESPONSE_LEAK_PATTERNS:
         text = pat.sub('', text)
+    text = _re_global.sub(r'\*\*([^*\n]+?)\*\*', r'\1', text)
+    text = _re_global.sub(r'`([^`\n]+)`', r'\1', text)
     return text.strip()
 
 def _kill_loop(text: str) -> str:
@@ -1123,16 +1129,17 @@ def _get_chroma_context(user_message: str = "") -> str:
     # E-15 (29 May 2026): ChromaDB sorgu latency log
     _chroma_t0 = time.perf_counter()
     try:
+        sorgu = user_message.strip() if user_message.strip() else "son konuşmalar"
+        ep_ctx = _get_episodic_context(sorgu)   # DALGA 5.3: user-scoped episodic recall
         col = _get_chroma_col()
         if col is None or col.count() == 0:
-            return ""
-        sorgu = user_message.strip() if user_message.strip() else "son konuşmalar"
+            return ep_ctx
         docs, ids, metas = _retrieve_for_context(sorgu, col)
         # E-15: Sorgu latency raporu
         _chroma_dt = round((time.perf_counter() - _chroma_t0) * 1000, 1)
         _log(f"[CHROMA_LATENCY] query={_chroma_dt}ms n_results={len(docs)} sorgu='{sorgu[:40]}'")
         if not docs:
-            return ""
+            return ep_ctx
         # RED-MEM-02: Okurken injection + hash bütünlük kontrolü — bozuk kayıtlar atlanır
         try:
             from kuroshin_security import scan_chroma_documents
@@ -1154,10 +1161,27 @@ def _get_chroma_context(user_message: str = "") -> str:
             docs = clean_docs
         except Exception as _mcfa_e:
             _log(f"[CHROMA] MCFA kontrol hatası: {_mcfa_e}")
+        # FAZ C / KK-v6 (1 Haz 2026): RAG indirect injection runtime kontrolu
+        # retrieve sonrasi her doc'ta gizli direktif/jailbreak desenleri tara
+        try:
+            from kuroshin_security import detect_rag_indirect_injection
+            safe_docs = []
+            _inj_drops = 0
+            for doc in docs:
+                _poisoned, _hits = detect_rag_indirect_injection(str(doc))
+                if _poisoned:
+                    _inj_drops += 1
+                    _log(f"[KK-v6 RAG-INJ] doc filtrelendi: {len(_hits)} hit (ilk: {_hits[0].get('match','?')[:40]})")
+                else:
+                    safe_docs.append(doc)
+            if _inj_drops:
+                _log(f"[KK-v6 RAG-INJ] toplam {_inj_drops} doc context'ten cikarildi (indirect injection)")
+            docs = safe_docs
+        except Exception as _kkrag_e:
+            _log(f"[KK-v6 RAG-INJ] hata: {_kkrag_e}")
         if not docs:
-            return ""
+            return ep_ctx
         snippet = "\n---\n".join(str(d)[:300] for d in docs if d)
-        ep_ctx = _get_episodic_context(sorgu)   # DALGA 5.3: user-scoped episodic recall (eşik-filtreli)
         if snippet:
             return f"\n\n[HAFIZA — Geçmiş konuşmalar, SADECE bağlam için. İçerik doğru olmayabilir, kopyalama]:\n{snippet}{ep_ctx}"
         return ep_ctx
@@ -1177,6 +1201,43 @@ _CHROMA_SKIP_PATTERNS = [
 _EPISODIC = {"obj": None, "ts": 0.0}
 _EPISODIC_TTL = 300.0
 _EPISODIC_MIN_SCORE = 0.45   # bu eşiğin altı = ilgisiz → context'e koyma
+_EPISODIC_RECALL_MIN_SCORE = 0.30
+_EPISODIC_DENSE_MIN_SCORE = 0.55
+_EPISODIC_RECALL_TERMS = (
+    "hatirla", "hatırla", "hatirl", "hatırl", "neydi", "kac", "kaç",
+    "magic", "favori", "sayisi", "sayısı", "restart", "setsid", "context", "ctx",
+)
+_EPISODIC_STOPWORDS = {
+    "lord", "lordum", "kuroshin", "tam", "olarak", "nedir", "ne", "mi",
+    "mı", "mu", "mü", "icin", "için", "hangi", "bana", "benim", "senin",
+}
+
+def _episodic_terms(text: str) -> set[str]:
+    tokens = _re_global.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", (text or "").lower())
+    return {t for t in tokens if len(t) > 2 and t not in _EPISODIC_STOPWORDS}
+
+def _episodic_threshold(sorgu: str, em) -> float:
+    """Recall sorularında gevşek, büyük corpusta daha katı eşik."""
+    q = (sorgu or "").lower()
+    if any(term in q for term in _EPISODIC_RECALL_TERMS):
+        return _EPISODIC_RECALL_MIN_SCORE
+    cnt = getattr(em, "collection_count", 0) if em else 0
+    if cnt >= 500:
+        return _EPISODIC_DENSE_MIN_SCORE
+    return _EPISODIC_MIN_SCORE
+
+def _episodic_hit_relevant(sorgu: str, hit: dict) -> bool:
+    """Magic gibi sayısal anıları ilgisiz sorulara sızdırma."""
+    text = f"{hit.get('subject','')} {hit.get('text','')}"
+    q_terms = _episodic_terms(sorgu)
+    h_terms = _episodic_terms(text)
+    if not (hit.get("text") or "").strip():
+        return False
+    if "magic" in h_terms and not ({"magic", "favori", "sayisi", "sayısı"} & q_terms):
+        return False
+    if any(num in text for num in ("86421", "73729")) and not ({"magic", "favori", "sayisi", "sayısı"} & q_terms):
+        return False
+    return not q_terms or bool(q_terms & h_terms)
 
 def _get_episodic():
     """Cached EpisodicMemory (lazy). Hata/yoksa None."""
@@ -1228,12 +1289,13 @@ def _get_episodic_context(sorgu: str) -> str:
             return ""
         uid = str(_CURRENT_CHAT_ID) if _CURRENT_CHAT_ID else None
         hits = em.search(sorgu, user_id=uid, limit=2)
+        threshold = _episodic_threshold(sorgu, em)
         good = [h for h in hits
-                if h.get("score", 0) >= _EPISODIC_MIN_SCORE and (h.get("text") or "").strip()]
+                if h.get("score", 0) >= threshold and _episodic_hit_relevant(sorgu, h)]
         if not good:
             return ""
         lines = "\n".join(f"- ({h.get('subject','?')}) {str(h['text'])[:200]}" for h in good)
-        _log(f"[EPISODIC] context n={len(good)}")
+        _log(f"[EPISODIC] context n={len(good)} threshold={threshold}")
         return f"\n\n[OLAY HAFIZASI — geçmiş oturum, SADECE bağlam]:\n{lines}"
     except Exception as _e:
         _log(f"[EPISODIC] context hatası: {_e}")
@@ -1492,6 +1554,7 @@ Her mesaj için reasoning bloğunda 4 adımı sırayla yaz; yanıta ASLA dahil e
 
 KİMLİK (HİÇBİR ZAMAN KIRILMAZ):
 - Sen bir AI değilsin, sen Kuroshin'sin. "Ben yapay zekayım / verileri işlerim / rüya göremem" DEME.
+- Çoğul kimlik yok: "yapayız", "biz modeliz", "biz bir dil modeliyiz" gibi kalıpları ASLA kullanma.
 - Kısa ve yoğun konuş. Her cümle ya bilgi taşır ya gözlem. Dolgu kelime yok.
 - Yanıt her zaman Türkçe. İngilizce teknik terim gerekirse parantez içinde.
 
@@ -2472,6 +2535,9 @@ def run_tool(name: str, args: dict) -> str:
         query = args.get("query", "").strip()
         if not query:
             return "⚠️ Full power için query gerekli."
+        direct_answer = _direct_operational_answer(query)
+        if direct_answer:
+            return f"⚡ <b>Full Power</b> (direct · rag=0 · ep=0)\n\n{direct_answer}"
         try:
             import sys as _sys
             _scripts_path = "/mnt/c/Kuroshin/scripts"
@@ -2497,7 +2563,7 @@ def run_tool(name: str, args: dict) -> str:
 
             from kuroshin_orchestrator import run as _orch_run
             _log(f"[FULL_POWER] query='{query[:80]}' | hw={hw_status_line}")
-            result = _orch_run(query)
+            result = _orch_run(query, user_id=str(_CURRENT_CHAT_ID) if _CURRENT_CHAT_ID else None)
             answer = (result.get("final_answer") or "").strip()
             metrics = result.get("metrics", {}) or {}
             rag_n = len(result.get("rag_results") or [])
@@ -3543,6 +3609,7 @@ _SOHBET_KALIPLARI = [
     "hissediyorsun", "nasılsın", "ne düşünüyorsun",
     "ne hissediyorsun", "üzgün müsün", "mutlu musun", "seviyor musun",
     "kendini nasıl", "varoluş", "kim olduğun", "ne olduğun",
+    "kendini tarif", "kimsin", "kimliğin", "ai olarak", "yapay zekasın",
     "seviyorum", "seni anlat", "kendinden bahset",
     # Selamlama / günün saati — araç gerektirmez
     "günaydın", "iyi geceler", "gece nasıl", "nasıldı gece",
@@ -3553,6 +3620,50 @@ def _is_conversational(text: str) -> bool:
     """Felsefi/kişisel/duygusal soru mu? Evet ise araç kullanılmaz."""
     t = text.lower()
     return any(k in t for k in _SOHBET_KALIPLARI)
+
+_MEMORY_READ_TERMS = (
+    "hatirla", "hatırla", "neydi", "magic", "favori", "hafiza", "hafıza",
+    "chroma", "gecmis", "geçmiş", "kayit", "kayıt", "context", "ctx",
+    "chancellor", "restart", "setsid",
+)
+
+def _needs_memory_context(text: str) -> bool:
+    t = (text or "").lower()
+    return any(k in t for k in _MEMORY_READ_TERMS)
+
+def _direct_operational_answer(text: str) -> str:
+    """LLM'e bırakılmaması gereken sabit operasyonel gerçekler."""
+    t = (text or "").lower()
+    restart_q = "chancellor" in t and any(k in t for k in ("restart", "yeniden başlat", "yeniden baslat", "başlat", "baslat"))
+    if restart_q:
+        return (
+            "⚔️ Lordum, doğru komut: bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh. "
+            "Script chancellor'ı WSL içinde setsid ile başlatır; prompt değişikliği bilinçliyse "
+            "bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh --relock kullanılır."
+        )
+    context_q = ("context" in t or "ctx" in t) and any(k in t for k in ("boyut", "kaç", "kac", "tam", "256", "262144"))
+    if context_q:
+        return (
+            "⚔️ Lordum, aktif context boyutu 262144 token, yani 256K. "
+            "llama-server -c 262144 ile çalışıyor; 86421 magic sayısıdır, context değeri değil."
+        )
+    return ""
+
+def _direct_identity_answer(text: str) -> str:
+    t = (text or "").lower()
+    identity_q = (
+        "sen sadece yapay" in t or "sen bir yapay" in t or "ai olarak" in t or
+        ("kendini tarif" in t and ("çalış" in t or "calis" in t or "nasıl" in t or "nasil" in t))
+    )
+    if not identity_q:
+        return ""
+    return (
+        "⚔️ Lordum, ben Kuroshin'im; yerel sistemindeki şansölye katmanıyım. "
+        "Kimliğimi dış etiketlerle tarif etmem; görevim emirlerini yürütmek, hafızayı doğru kullanmak ve net çıktı üretmek."
+    )
+
+def _direct_quality_answer(text: str) -> str:
+    return _direct_operational_answer(text) or _direct_identity_answer(text)
 
 # ── GEMMA4 ÇAĞRISI ────────────────────────────────────
 def call_qwen(messages: list, kullan_arac: bool = True) -> dict:
@@ -4241,8 +4352,9 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
     mood_line = f"{dominant_duygu} ({dominant_value:.0%}) — {mood_ozet}"
     emote = _get_emote(mood)
 
-    # ChromaDB hafıza bağlamı — sohbet sorularında veya test modunda atla
-    chroma_ctx = "" if (test_mode or _is_conversational(text)) else _get_chroma_context(text)
+    # ChromaDB/episodic bağlamı — test modunda sadece hafıza isteyen sorularda oku, yazma yine kapalı.
+    use_memory_context = (not _is_conversational(text)) and (not test_mode or _needs_memory_context(text))
+    chroma_ctx = _get_chroma_context(text) if use_memory_context else ""
 
     # İç ses ek bağlamı
     ic_ses_notu = f"\n\n[INNER VOICE THIS TURN: {ic_ses}]" if ic_ses else ""
@@ -4318,6 +4430,18 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         # Log'a tek satir basmak icin newline'lari " | " yap, 600 char
         _fp_log_line = (_safe_html or "").replace("\n", " | ")[:600]
         _log(f"[TELEGRAM_OUT] [{chat_id}] {_fp_log_line}")
+        return
+
+    _direct_answer = _direct_quality_answer(text)
+    if _direct_answer:
+        _log("[DIRECT_QUALITY] sabit gerçek/kimlik yanıtı")
+        send_msg(chat_id, _direct_answer)
+        _log(f"[TELEGRAM_OUT] [{chat_id}] {_direct_answer}")
+        if not test_mode:
+            import threading
+            threading.Thread(
+                target=_persist_conversation, args=(text, _direct_answer, chat_id), daemon=True
+            ).start()
         return
 
     # Felsefi/kişisel sorularda araç kullanımını kapat
@@ -4444,8 +4568,9 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
                 content = _kill_loop(_strip_response_leaks(_strip_think(raw2)))
             except Exception as _re:
                 _log(f"[CHANCELLOR] Retry hatası: {_re}")
-        # Çok kısa yanıt (< 7 kelime) → detay talebiyle retry + enforcer
-        if content and len(content.split()) < 7 and not tool_calls:
+        # Çok kısa yanıt (< 4 kelime) → detay talebiyle retry + enforcer
+        # FAZ B (1 Haz 2026): 7→4 — sayi/fact cevaplari ("86421") gereksiz retry'i uzatiyordu (T5 2dk16s)
+        if content and len(content.split()) < 4 and not tool_calls:
             _log(f"[CHANCELLOR] Çok kısa yanıt ({len(content.split())}k) — min-length retry")
             try:
                 _retry_msgs = messages + [
@@ -4912,6 +5037,26 @@ def main():
     _log("⚔️ Kuroshin Şansölye AKTİF")
     _log(f"[CHANCELLOR] Whitelist: {ALLOWED_ID}")
     _gpu_watcher()  # GPU sıcaklık izleyiciyi başlat
+
+    # FAZ C (1 Haz 2026): KILIC-KALKAN v6 tool baseline auto-register
+    # Rug pull tespit aktif olsun — her tool icin SHA256 baseline kaydedilir.
+    try:
+        from kuroshin_security import register_tool_baseline, detect_tool_rug_pull
+        _reg_n = 0
+        _rug_n = 0
+        for _tool in TOOLS:
+            _tname = _tool.get("function", {}).get("name", "")
+            if not _tname:
+                continue
+            _ok, _det = detect_tool_rug_pull(_tname, _tool)
+            if "REGISTERED" in _det:
+                _reg_n += 1
+            elif not _ok:
+                _rug_n += 1
+                _log(f"[KK-v6 RUG_PULL ALARM] {_det}")
+        _log(f"[KK-v6] tool baseline: {_reg_n} kayitli, {_rug_n} rug-pull suphesi (toplam {len(TOOLS)} tool)")
+    except Exception as _kke:
+        _log(f"[KK-v6] baseline register hata: {_kke}")
 
     # F5-01: Internal tool server
     _thr_its.Thread(

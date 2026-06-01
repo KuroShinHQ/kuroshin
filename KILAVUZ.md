@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.15.0 — 1 Haziran 2026
+**Sürüm:** v11.16.0 — 1 Haziran 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -170,7 +170,7 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 
 ---
 
-## 🏆 Son durum (v11.15.0 — 1 Haz 2026)
+## 🏆 Son durum (v11.16.0 — 1 Haz 2026)
 
 - **DALGA 5.1-5.6 ✅** Context 256K + Hybrid RAG + Episodic + LangGraph + Full Power + HW Guard
 - **BÜYÜK TEST + BUG FIX (v11.11) ✅** Live 6/6 + 5 bug fix + MD doctrine
@@ -180,7 +180,8 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 - **KONSOLİDASYON v11.13 ✅** Tool schema audit (AST denetçi, regresyon muhafızı), `restart_chancellor.sh` sağlamlık (setsid + AKTİF/8201 doğrulama + Telegram alarm), repo hygiene (13 throwaway sil, 5 state .gitignore)
 - **ENTEGRASYON BORCU v11.14 ✅** Hybrid RAG normal yola bağlandı (`_get_chroma_context`→`_retrieve_for_context`, no-rerank). **Kanıt güdümlü:** `_measure_retrieval.py` top-3 → hybrid-norerank %100 vs dense %83.3 (+16.7pp); reranker küçük corpus'ta noise → `use_reranker=False`. Safe fallback plain dense. Canlı: `[RETRIEVAL] hybrid-norerank top3`. quality_fix **14/14**
 - **EPISODIC CANLI v11.15 ✅** chancellor `_persist_conversation` her gerçek turu episodic'e yazar; `_get_episodic_context` user-scoped + threshold 0.45 (sparse-noise filter); LIVE pipeline: 86421 fact write→read (count 0→2, recall **doğru cevap**)
-- **Iron Inquisitor:** 48/48 verify_v11 + **74/74 dalga5+v6+scraper+episodic-entegrasyon** + 73/73 security + 103/104 canlı tier_core (toplam 307 test)
+- **D-TURU v11.16 ✅** FAZ A kalite (çoğul kimlik filtreleri + adaptive threshold + relevance + direct fallback → 4/4 fact recall %100), FAZ B hız (min-length 7→4, reasoning 3072→2048), FAZ C entegrasyon (boot-time KK-v6 baseline auto-register 25/25, runtime RAG indirect injection filter `_get_chroma_context`)
+- **Iron Inquisitor:** 48/48 verify_v11 + **80/80 dalga5+v6+scraper+episodic+D-turu** + 73/73 security + 103/104 canlı tier_core (toplam 313 test)
 - **TELEGRAM KALİTE FIX (31 May 2026) ✅** Tur-1: FIX-1 `system_info` şeması `konu`'yu zorunlu sanıp E-13 döngüsüyle kırıyordu → `required:[]`; FIX-2 yetim variation selector (U+FE0F) stripi. Tur-2 (A+B): **A** patchright chromium-1208 kuruldu (Crawl4AI stealth — search-02 PASS); **B1** SYSTEM_PROMPT "OLGUSAL SORULAR" disiplini (tarih uydurma→system_info, systemctl yasak, persona gevezeliği yok); **B2** orchestrator synthesis grounding (full_power systemctl→`restart_chancellor.sh`, markdown yok); **B3** dengesiz tırnak temizliği + 'yapay zeyam' typo kimlik-leak deseni. NOT: SYSTEM_PROMPT değişince `memory/prompt_integrity.json` re-lock şart (BLUE-NEURAL-01). Kanıt: `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` **8/8** + live suite 6/6 (T6 systemctl→restart_chancellor.sh, T3 tarih uydurmuyor, T2 tırnak temiz, T1 VS temiz)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
 - **Tool:** 24 araç, schema-validated + scoring

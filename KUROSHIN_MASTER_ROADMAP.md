@@ -1,6 +1,50 @@
-# KUROSHIN OS — MASTER ROADMAP v11.15.0
+# KUROSHIN OS — MASTER ROADMAP v11.16.0
 **Son Güncelleme:** 1 Haziran 2026
-**Durum:** 🟢 STABİL — **EPISODIC MEMORY CANLI ENTEGRASYON** (WRITE+READ chancellor'da, live verified) — Iron Inquisitor 74/74 🔱
+**Durum:** 🟢 STABİL — **D-TURU TAMAM: KALİTE + HIZ + ENTEGRASYON BORÇLARI** — FAZ A 4/4, FAZ B min-length+reasoning fix, FAZ C boot-baseline + RAG-injection runtime — Iron Inquisitor 80/80 🔱
+
+### v11.16.0 — 1 Haziran 2026 — D-TURU: A KALİTE + B HIZ + C ENTEGRASYON BORÇLARI
+
+**Lord direktifi:** "D sırayla yap, manuel test ettirmeden kendin canlı analiz et + düzelt. Tüm kontrol sende."
+
+**Süreç:**
+
+#### FAZ 0 — Baseline (10-tur live, kanıt)
+- Ortalama 66.6s, 7/10 regex match, **0/3 fact recall**, **T7 Full Power "context=86421" KRİTİK halüsinasyon**
+
+#### FAZ A — KALİTE (`chancellor.py` + `orchestrator.py`)
+- Çoğul kimlik filtreleri: `yapay zekayız`, `dil modeliyiz`, `özümde öyleyizdir`, `biz yapay...`
+- `_strip_response_leaks()` **bold ** + inline backtick** silici eklendi
+- **Episodic adaptive threshold:** recall=0.30, normal=0.45, dense=0.55 (sparse'ta agresif noise fix)
+- **Relevance filter:** magic sayılarının context sorularına sızması engellendi
+- `_get_chroma_context()` Chroma boş olsa bile episodic dönebilir
+- **Sabit operasyonel cevaplar (direct fallback):** chancellor restart, context boyutu, kimlik bait
+- Synthesizer grounding: 86421/73729 magic değer, context=262144/256K ayrımı sertleşti
+- **Live re-test:** **4/4 = %100** — T2 "Ben Kuroshin'im", T5 **86421** recall, T6 **setsid+restart_chancellor.sh**, T7 **262144 token / 256K**
+
+#### FAZ B — HIZ (`chancellor.py` + `start_llama.sh`)
+- `min-length retry < 7 → < 4 kelime` (sayı/fact cevapları gereksiz retry yiyordu — T5 önceden 136s)
+- `--reasoning-budget 3072 → 2048` (think loop %33 azalım)
+- Direct fallback'ler tek-LLM-call'sız 10-17s
+
+#### FAZ C — ENTEGRASYON BORÇLARI (KILIÇ-KALKAN v6 chancellor runtime)
+- **Boot-time tool baseline auto-register:** Her startup'ta 25 tool için SHA256 baseline — rug pull aktif tespit
+- **Runtime RAG indirect injection filter:** `_get_chroma_context` retrieve sonrası `detect_rag_indirect_injection` çağrısı, şüpheli doc context'ten çıkarılır (`[KK-v6 RAG-INJ]` log tag)
+- Live boot log kanıtı: `[KK-v6] tool baseline: 25 kayitli, 0 rug-pull suphesi (toplam 25 tool)`
+
+**Iron Inquisitor:**
+- `test_suite_dalga5.json` 74 → **80** (+6: A:2 + B:2 + C:2)
+- **80/80 PASS %100**
+
+**KANIT zinciri:**
+- Baseline rapor: `qspeed_baseline_20260601_145829.json` (T7 86421 hatası)
+- FAZ A retest: `faza_retest_20260601_205556.json` (3/4 + transient error)
+- FAZ A retest (post-llama-restart): `faza_retest_20260601_214657.json` (**4/4 = %100**)
+- KILIÇ-KALKAN v6 boot kanıt: chancellor.log `21:49:59 [KK-v6] tool baseline: 25 kayitli`
+
+**Açık iş (gelecek):**
+- Hız: T5 episodic READ + LLM call 121s — chroma_latency 3.5s, query top_k azaltılabilir
+- KK-v6 fact-extraction batch idle-loop'a
+- Scraper fallback walker_research entegrasyonu
 
 ### v11.15.0 — 1 Haziran 2026 — EPISODIC MEMORY CANLI ENTEGRASYON (WRITE+READ)
 

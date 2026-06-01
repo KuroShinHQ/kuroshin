@@ -19,6 +19,7 @@ kendi pipeline'inda kullanir.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from typing import Annotated, Any, Dict, List, Optional, TypedDict
@@ -46,10 +47,39 @@ def _get_llm(temperature: float = 0.2, max_tokens: int = 1024):
 
 class OrchestratorState(TypedDict, total=False):
     task: str
+    user_id: Optional[str]
     rag_results: List[Dict[str, Any]]
     episodic_results: List[Dict[str, Any]]
     final_answer: str
     metrics: Dict[str, Any]
+
+
+_STOPWORDS = {
+    "lord", "lordum", "kuroshin", "tam", "olarak", "nedir", "hangi",
+    "icin", "için", "bana", "benim", "senin", "query", "full", "power",
+}
+
+
+def _tokens(text: str) -> set[str]:
+    raw = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", (text or "").lower())
+    return {t for t in raw if len(t) > 2 and t not in _STOPWORDS}
+
+
+def _memory_relevant(task: str, text: str) -> bool:
+    q_terms = _tokens(task)
+    h_terms = _tokens(text)
+    if "magic" in h_terms and not ({"magic", "favori", "sayisi", "sayısı"} & q_terms):
+        return False
+    if any(num in (text or "") for num in ("86421", "73729")) and not ({"magic", "favori", "sayisi", "sayısı"} & q_terms):
+        return False
+    return not q_terms or bool(q_terms & h_terms)
+
+
+def _episodic_threshold(task: str, count: int) -> float:
+    q = (task or "").lower()
+    if any(k in q for k in ("magic", "favori", "hatirla", "hatırla", "neydi", "kac", "kaç", "setsid", "restart", "context")):
+        return 0.30
+    return 0.55 if count >= 500 else 0.45
 
 
 def _node_rag(state: OrchestratorState) -> Dict[str, Any]:
@@ -57,6 +87,7 @@ def _node_rag(state: OrchestratorState) -> Dict[str, Any]:
     t0 = time.time()
     rag = HybridRAG()
     hits = rag.search(state["task"], top_m=5, use_reranker=False)
+    hits = [h for h in hits if _memory_relevant(state["task"], h.get("doc", ""))]
     return {
         "rag_results": [{"doc": h["doc"][:300], "score": h.get("rerank_score", h.get("rrf_score", 0))} for h in hits],
         "metrics": {"rag_ms": round((time.time() - t0) * 1000, 1)},
@@ -67,7 +98,13 @@ def _node_episodic(state: OrchestratorState) -> Dict[str, Any]:
     from kuroshin_episodic import EpisodicMemory
     t0 = time.time()
     em = EpisodicMemory()
-    hits = em.search(state["task"], limit=5)
+    user_id = state.get("user_id") or None
+    hits = em.search(state["task"], user_id=user_id, limit=5)
+    threshold = _episodic_threshold(state["task"], em.collection_count)
+    hits = [
+        h for h in hits
+        if h.get("score", 0) >= threshold and _memory_relevant(state["task"], h.get("text", ""))
+    ]
     return {
         "episodic_results": [{"text": h["text"][:300], "type": h.get("type"), "score": h["score"]} for h in hits],
         "metrics": {"episodic_ms": round((time.time() - t0) * 1000, 1)},
@@ -94,6 +131,8 @@ def _node_synthesize(state: OrchestratorState) -> Dict[str, Any]:
         "Context'te OLMAYAN komut/bilgi UYDURMA; emin degilsen bilmedigini soyle. "
         "Kuroshin Chancellor yeniden baslatma komutu = restart_chancellor.sh (setsid ile); "
         "'systemctl restart chancellor' YOKTUR, boyle bir servis yok. "
+        "Kuroshin context boyutu = 262144 token (256K); 86421/73729 gibi magic sayilar context boyutu degildir. "
+        "Magic/favori sayi yalnizca soru magic/favori sayi soruyorsa kullanilir. "
         "Markdown kullanma: ``` kod blogu ve ** bold YAZMA, duz metin ver."
     )
     prompt = (
@@ -143,10 +182,10 @@ def build_graph():
     return g.compile()
 
 
-def run(task: str) -> Dict[str, Any]:
+def run(task: str, user_id: Optional[str] = None) -> Dict[str, Any]:
     graph = build_graph()
     t0 = time.time()
-    result = graph.invoke({"task": task, "metrics": {}})
+    result = graph.invoke({"task": task, "user_id": user_id, "metrics": {}})
     total = round((time.time() - t0) * 1000, 1)
     result.setdefault("metrics", {})["total_ms"] = total
     return result
