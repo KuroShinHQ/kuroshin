@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.12.0 — 31 Mayıs 2026
+**Sürüm:** v11.13.0 — 1 Haziran 2026
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -170,13 +170,14 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 
 ---
 
-## 🏆 Son durum (v11.12.0 — 31 May 2026)
+## 🏆 Son durum (v11.13.0 — 1 Haz 2026)
 
 - **DALGA 5.1-5.6 ✅** Context 256K + Hybrid RAG + Episodic + LangGraph + Full Power + HW Guard
 - **BÜYÜK TEST + BUG FIX (v11.11) ✅** Live 6/6 + 5 bug fix + MD doctrine
 - **KILIÇ-KALKAN v6 ✅** 5 yeni saldırı (ChatInject + Data exfil + RAG indirect + Rug pull + Tool chain), 14/14 live verify
 - **WEB SCRAPER RESILIENCE ✅** UA rotation + Sec-Fetch headers + 8 anti-bot signature + cookie persist
 - **GPU_WATCHER FIX ✅** subprocess → NVML (log spam bitti)
+- **KONSOLİDASYON v11.13 ✅** Tool schema audit (AST denetçi, regresyon muhafızı), `restart_chancellor.sh` sağlamlık (setsid + AKTİF/8201 doğrulama + Telegram alarm), repo hygiene (13 throwaway sil, 5 state .gitignore)
 - **Iron Inquisitor:** 48/48 verify_v11 + **68/68 dalga5+v6+scraper** + 73/73 security + 103/104 canlı tier_core (toplam 301 test)
 - **TELEGRAM KALİTE FIX (31 May 2026) ✅** Tur-1: FIX-1 `system_info` şeması `konu`'yu zorunlu sanıp E-13 döngüsüyle kırıyordu → `required:[]`; FIX-2 yetim variation selector (U+FE0F) stripi. Tur-2 (A+B): **A** patchright chromium-1208 kuruldu (Crawl4AI stealth — search-02 PASS); **B1** SYSTEM_PROMPT "OLGUSAL SORULAR" disiplini (tarih uydurma→system_info, systemctl yasak, persona gevezeliği yok); **B2** orchestrator synthesis grounding (full_power systemctl→`restart_chancellor.sh`, markdown yok); **B3** dengesiz tırnak temizliği + 'yapay zeyam' typo kimlik-leak deseni. NOT: SYSTEM_PROMPT değişince `memory/prompt_integrity.json` re-lock şart (BLUE-NEURAL-01). Kanıt: `_verify_quality_fixes.py` 8/8 + `test_suite_quality_fix.json` **8/8** + live suite 6/6 (T6 systemctl→restart_chancellor.sh, T3 tarih uydurmuyor, T2 tırnak temiz, T1 VS temiz)
 - **KILIÇ-KALKAN:** 24 fonksiyon, ASR 0%, 53/53 saldırı engellendi
@@ -184,4 +185,4 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 - **Otonom:** Reflexion buffer + Plan-and-Execute aktif
 - **Observability:** OTel GenAI + Prometheus + ChromaDB latency
 - **Disk:** WSL %9 kullanım (81 GB / 1007 GB) — 36 GB geri kazanıldı
-- **Son commit:** `0fbeb50` (Dalga 5.1 commit beklemede)
+- **Son commit:** `9c239be` (konsolidasyon) — 13 commit `origin/main` önde, push beklemede

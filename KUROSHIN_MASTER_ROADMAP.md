@@ -1,6 +1,51 @@
-# KUROSHIN OS — MASTER ROADMAP v11.12.0
-**Son Güncelleme:** 31 Mayıs 2026
-**Durum:** 🟢 STABİL — **KILIÇ-KALKAN v6 + SCRAPER + GPU_WATCHER FIX** — 14/14 v6 + Iron Inquisitor 68/68 offline 🔱
+# KUROSHIN OS — MASTER ROADMAP v11.13.0
+**Son Güncelleme:** 1 Haziran 2026
+**Durum:** 🟢 STABİL — **KONSOLİDASYON: tool schema audit + restart sağlamlık + repo hygiene** — Iron Inquisitor 68/68 offline 🔱
+
+### v11.13.0 — 1 Haziran 2026 — KONSOLİDASYON + SAĞLAMLIK + REPO HYGIENE
+
+**Lord direktifi:** "Tool şema denetimi (ucuz bug avı) + Konsolidasyon/sağlamlık. Push ve yeni özellik yok. Throwaway grup silinsin, state .gitignore."
+
+**Üç parça:**
+
+1. **Tool şema denetçisi** (`scripts/_audit_tool_schemas.py`)
+   - 25 tool AST denetim: TOOLS array `required` vs run_tool handler `args.get(..., default)`
+   - İlk koşu kaba heuristic → 21 false positive
+   - Rafinasyon: "default boş-değil string = efektif opsiyonel" → 11 kalem
+   - İnceleme: 11'in hepsi tasarım gereği (çekirdek-eylem param, model doğal sağlar)
+   - `system_info` benzersizmiş (info-tool + rafinasyon param "konu" → model `{}` çağırıyordu)
+   - **Regresyon muhafızı modu:** whitelist ile sadece YENİ system_info-sınıfı bug flag'lenir → şu an **0 yeni kusur** ✓
+
+2. **`restart_chancellor.sh` sağlamlaştırma** (sessiz ölüm bitti)
+   - `nohup` → `setsid` (SIGHUP'a karşı bağışık)
+   - `fuser 8201/tcp` self-match fix (script kendi kendini öldürmüyor)
+   - **AKTİF + port 8201 doğrulama** (`--health`): hang olursa ❌ + Telegram alarmı
+   - `--relock` opsiyonu (SYSTEM_PROMPT değişikliği sonrası `prompt_integrity.json`)
+   - Uçtan uca: ✅ Chancellor AKTİF (PID 3054), 8201 hazır, yanlış alarm yok
+   - **Çözülen önceki incident:** chancellor PID 2672 sessiz ölmüştü, haber alamamıştık → artık olamaz
+
+3. **Repo hygiene** (Lord onayı 1 Haziran 2026)
+   - 13 throwaway script silindi (eski debug + tek-seferlik kanıt):
+     - `restart_chancellor_tk.sh` (buggy pkill self-match)
+     - `kuroshin_spy.py`, `wsl_spy.sh` (strace debug)
+     - `_syntax_check.py`, `_check_doom.py` (ad-hoc)
+     - `prep_doom.py`, `test_doom_pipeline.py` (DOOM)
+     - `test_ajan05_wakeup.py`, `test_autonomous_dispatch.py`, `test_chancellor_quick.py`, `test_services_direct.py`, `test_task_status.py`, `test_tk02.py` (post-fix kanıtlar — roadmap'te yazılı)
+   - 2 state dosyası `.gitignore`'a:
+     - `memory/active_model.json.bak*` (rollback backup)
+     - `memory/tool_baseline_hashes.json` (runtime SHA256 baseline)
+     - Bonus: `memory/scraper_cookies.json`, `memory/episodic.jsonl`, `memory/chroma_mem0/` (runtime state)
+   - Keeper: `scripts/iron_inquisitor/gen_v4_tests.py` (utility)
+
+**Kanıt:**
+- Audit dry-run: 25 tool, 0 kusur
+- Restart hardening uçtan uca: AKTİF + 8201
+- Iron Inquisitor `test_suite_dalga5.json`: **68/68 PASS %100** (silmeler regression yapmadı)
+- `test_suite_quality_fix.json`: 11/11 (audit + restart regresyon koruması)
+
+**Açık:** Push beklemede — toplam **13 commit `origin/main` önde**.
+
+### v11.12.1 — 31 Mayıs 2026 — TELEGRAM ÇIKTI KALİTESİ (canlı inject güdümlü)
 
 > **Core MD'ler:** Bu dosya (`KUROSHIN_MASTER_ROADMAP.md`) + [`ARCHITECTURE.md`](ARCHITECTURE.md) + [`GOREVLER.md`](GOREVLER.md) (aktif TODO)
 > **Arşiv (`docs/`):**

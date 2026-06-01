@@ -1,6 +1,17 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 30 Mayıs 2026
-**Süreç:** 🚀 **OTONOMİ-MAX** — DALGA 1+2+3+4 ✅ + **VERIFY 48/48** + **DALGA 5.1 ✅ Context 16K → 256K (16x)**; 5.2-5.5 sıra bekliyor
+**Son Güncelleme:** 1 Haziran 2026
+**Süreç:** 🚀 **OTONOMİ-MAX** — Dalga 5.1-5.6 ✅ + Telegram kalite ✅ + KILIÇ-KALKAN v6 ✅ + **Konsolidasyon v11.13.0 ✅** (tool audit + restart sağlamlık + repo hygiene)
+
+---
+
+## 🧹 KONSOLİDASYON + REPO HYGIENE (1 Haz 2026 — Lord onayı)
+
+**Tool schema audit:** `scripts/_audit_tool_schemas.py` — 25 tool AST denetim, regresyon muhafızı modu, 0 yeni kusur.
+**Restart sağlamlık:** `setsid` + AKTİF/8201 doğrulama + Telegram alarm + `--relock`. Sessiz ölüm bitti.
+**Repo hygiene (silindi):** 13 throwaway script (`restart_chancellor_tk.sh`, `kuroshin_spy.py`, `wsl_spy.sh`, `_syntax_check.py`, `_check_doom.py`, `prep_doom.py`, `test_doom_pipeline.py`, `test_ajan05_wakeup.py`, `test_autonomous_dispatch.py`, `test_chancellor_quick.py`, `test_services_direct.py`, `test_task_status.py`, `test_tk02.py`).
+**Gitignore eklendi:** `memory/active_model.json.bak*`, `memory/tool_baseline_hashes.json`, `memory/scraper_cookies.json`, `memory/episodic.jsonl`, `memory/chroma_mem0/`.
+**Keeper:** `scripts/iron_inquisitor/gen_v4_tests.py` (utility).
+**Regression:** Iron Inquisitor 68/68 + quality 11/11.
 
 ---
 

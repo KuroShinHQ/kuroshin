@@ -52,6 +52,7 @@ memory/chromadb/
 
 # Çalışma zamanı hafıza dosyaları (kişisel veri)
 memory/active_model.json
+memory/active_model.json.bak*
 memory/energy_budget.json
 memory/hype_last_scan.json
 memory/hype_reports/
@@ -67,6 +68,10 @@ memory/gorev_gecmisi.json
 memory/next_wakeup.json
 memory/sd_cache.json
 memory/son_selam_ts.txt
+memory/tool_baseline_hashes.json
+memory/scraper_cookies.json
+memory/episodic.jsonl
+memory/chroma_mem0/
 memory/prompt_integrity.json
 memory/md_backups/
 memory/reflections/
