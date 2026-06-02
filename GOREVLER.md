@@ -140,16 +140,27 @@ Recent 24h (non-llm_extract): 2
 
 **Ana doküman:** [`docs/OTONOM_ALISVERIS_PROTOKOLU.md`](docs/OTONOM_ALISVERIS_PROTOKOLU.md) (v3, DALGA-6 prob sonuçlarıyla revize)
 
-### FAZ-0 Prob Sonuçları (`scripts/_test_4site_scraper.py`):
+### FAZ-0 Prob (Sprint 1 — sadece `kuroshin_scraper`) → 1/4 PASS
 
 | Site | Status | Karakter | Anti-bot | Sonuç |
 |------|--------|----------|----------|-------|
-| Epey | **200** | **196,797** | CF light | 🟢 PASS |
+| Epey | 200 | 196,797 | CF light | 🟢 PASS |
 | Sahibinden | 403 | 5,871 | CF + Turnstile | 🔴 BLOCKED |
 | Trendyol | 403 | 5,869 | CF + Turnstile | 🔴 BLOCKED |
 | Hepsiburada | 403 | 1,331 | Akamai | 🔴 BLOCKED |
 
-**Net karar:** **Epey-first MVP** (FAZ-1). 3 zor site için FAZ-2'de FlareSolverr Docker (Turnstile ihtimaline karşı) + Google Shopping snippet dolaylı veri + `cimri.com`/`akakce.com` agregatörler.
+### FAZ-0 ARSENAL UPGRADE (Sprint 2 — `curl_cffi` + `cloudscraper` ekledim) → 3/4 PASS ✅
+
+GitHub 2026 SOTA: `pip install curl_cffi cloudscraper nodriver` (3 paket, $0 maliyet).
+
+| Site | curl_cffi (chrome124 TLS impersonate) | cloudscraper (multi-challenge JS) | Sonuç |
+|------|---|---|---|
+| Trendyol | **🟢 200, 522K** ("Arama Sonuçları") | 🟢 200, 522K | **PASS — curl_cffi** |
+| Hepsiburada | **🟢 200, 3.8MB** (Akamai aşıldı!) | 🔴 403 | **PASS — curl_cffi** |
+| Epey | 🟢 200, 196K | 🟢 200, 196K | **PASS — curl_cffi** |
+| Sahibinden | 🔴 403 (CF) | 🟡 200 ama LOGIN redirect | **Login zorunlu** — Lord "login yok" → dolaylı |
+
+**Net karar (REVİZE):** **3 site FAZ-1'e HAZIR** (Trendyol + HB + Epey, hepsi `curl_cffi chrome124`). Sahibinden FAZ-2'de **dolaylı** (Google snippet + cimri/akakce agregatörü).
 
 ### Açık Borçlar (FAZ-1 öncesi yapılacak):
 
