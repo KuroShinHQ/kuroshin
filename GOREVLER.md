@@ -171,12 +171,25 @@ GitHub 2026 SOTA: `pip install curl_cffi cloudscraper nodriver` (3 paket, $0 mal
 
 ### FAZ-1 MVP Kapsamı (sıradaki):
 
-1. `scripts/kuroshin_market_master.py` — MarketFetcher (Epey katmanı) + KnowledgeBase + MerchantScore (V/R/F → MASTER) + Telegram 5-mesaj akışı
+1. `scripts/kuroshin_market_master.py` — `MarketFetcher` (3 site `curl_cffi` smart routing) + `KnowledgeBase` + `MerchantScorer` (V/R/F → MASTER) + 5-mesaj Telegram akışı + inline keyboard
 2. `agents/kuroshin_chancellor.py` yeni tool: `market_master` (sorgu, bütçe, mod, top_n)
-3. Iron Inquisitor `verify-dalga6-*` testler
-4. Live inject kanıtı: `'Kuroshin Market Master: 5000 TL bütçe kondisyon bisikleti ara'` → Telegram raporu
+3. `scripts/iron_inquisitor/test_suite_dalga6.json` — 38 test (FAZ-0×5 + FAZ-1×14 + FAZ-2×7 + FAZ-3×6 + FAZ-4×6) + `master_manifest.json` v6.2'ye dahil
+4. Live inject: `_live_test_solo.py 'Kuroshin Market Master: 5000 TL kondisyon bisikleti'` → Telegram 5-mesaj kanıt
 
-**Tahmini süre:** 2-3 saat FAZ-1 (Epey-only MVP). FAZ-2 ileride.
+### 🧪 Iron Inquisitor DALGA-6 Test Planı (38 code_inspect + 5 live inject)
+
+| FAZ | Test | Live | Toplam | Kapsamlı dosya |
+|---|---|---|---|---|
+| FAZ-0 (✅) | 5 | 1 | 6 | arsenal kurulum + bypass kanıt |
+| FAZ-1 | 14 | 1 | 15 | MarketFetcher, KnowledgeBase, MerchantScorer, Chancellor tool, 5-msg, inline keyboard, HTTPS, no-login |
+| FAZ-2 | 7 | 1 | 8 | Sahibinden indirect, Google snippet, cimri/akakce, walker BORC-4-bis, max retry |
+| FAZ-3 | 6 | 1 | 7 | analyze_flaws (4 kusur tipi), evaluate_reviews (Bayesian), merchant_judge JSON mode |
+| FAZ-4 | 6 | 1 | 7 | ASCII chart, 5 inline callback, fallback şablonları |
+| **TOPLAM** | **38** | **5** | **43** | — |
+
+**Detaylı test ID listesi:** [`docs/OTONOM_ALISVERIS_PROTOKOLU.md`](docs/OTONOM_ALISVERIS_PROTOKOLU.md) → "Uygulama Fazları" her FAZ'ın kabul testleri alt başlığı.
+
+**Tahmini süre:** FAZ-1 2-3 saat. Toplam 4 FAZ ~6-8 saat. Lord doktrini hatasız işlemek için her FAZ ayrı commit + Iron Inquisitor PASS + live inject kanıtı zorunlu.
 
 ---
 
