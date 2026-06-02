@@ -81,19 +81,31 @@ wsl -d Ubuntu-22.04 -e /bin/bash -c "grep CHROMA_LATENCY /root/kuroshin/logs/cha
 
 ---
 
-### BORÇ-3 · Fact-extraction idle-loop batch · 🟢 HİPOTEZ DOĞRULANDI: zaten optimal (yeni özellik gerek)
+### BORÇ-3 · Idle-loop fact-batch (yeni özellik) · ✅ PATCH + KANIT TAMAM (2 Haz 14:17)
 
-**Tespit (2 Haz 09:00):** `grep extract_facts` taraması yapıldı.
-- Production'da `extract_facts` çağrılmıyor — sadece `kuroshin_episodic.py:22,230` self_test + `_verify_dalga5_3_episodic.py` (offline doğrulama)
-- Chancellor `_save_to_episodic` ucuz embedding only (record_episode), LLM çağrısı YOK
-- Yani "her turda pahalı JSON extraction" hipotezi yanlış — şu anda 0 çağrı/tur ZATEN.
+**Tespit (2 Haz 09:00):** Production'da `extract_facts` çağrılmıyor — semantic katman dolmuyor. Yeni özellik gerek.
 
-**Yeni iş kapsamı (kaydedildi, ileri sohbete):** Semantic katman (fact distillation) DOLDURULMUYOR. Bu yeni özellik:
-- `kuroshin_autonomous.py` idle-loop 03:00 günlük batch: son 24h episodic kayıtlarını birleştir → `em.extract_facts(conv_text)` → semantic katman ChromaDB
-- Log: `[FACT_BATCH] processed=N saved=M`
-- **Kabul:** SONRASI grep `[FACT_BATCH]` günlük 1+ kayıt, recall T4/T5 korundu.
+**Düzeltme (UYGULANDI):** `agents/kuroshin_chancellor.py`:
+- `_FACT_BATCH_TS_PATH = memory/son_fact_batch.json` (idempotency)
+- `_fact_batch_kontrol()` — 24h+ geçti + saat 02-05 arası kontrol
+- `_fact_batch_run()` — episodic ChromaDB `.get()` ile son 24h kayıt (llm_extract source hariç) → `em.extract_facts(conv_text)` → semantic katman otomatik kayıt → `[FACT_BATCH] processed=N saved=M`
+- `_idle_probe` başına tetik (zorla=False) — gece 02-05 + 24h+ → batch
 
-**Karar:** Bu sohbet kapsamında BEKLEMEDE — kalite/hız sorunu YOK (gereksiz iş değil ama acil değil).
+**ÖNCESİ kanıt:** `grep FACT_BATCH chancellor.log` = 0; semantic katman boş
+
+**SONRASI kanıt (standalone test 14:17:10):**
+```
+Total episodic records: 2
+Recent 24h (non-llm_extract): 2
+[FACT_BATCH] processed=2 saved=1 elapsed=8.9s
+  - semantic | lord_preferences | Lord's new magic number is 86421
+```
+- Iron Inquisitor offline regression: **80/80 PASS** (`inquisitor_20260602_141742.json`)
+- Test script: `scripts/_test_borc3_factbatch.py` (zorla bypass, fonksiyon doğrulama)
+
+**Kabul:** ✅ extract_facts canlı çağrı; semantic fact kaydedildi (`lord_preferences` ile); idle-loop tetik kodu yüklü (gece çalışacak).
+
+**Açık (bonus iyileştirme):** Fact text'i İngilizce dönüyor → `_FACT_EXTRACTION_PROMPT`'a Türkçe instruction eklemek mümkün (gelecek sohbet).
 
 ---
 

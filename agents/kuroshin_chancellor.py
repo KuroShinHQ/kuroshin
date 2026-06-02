@@ -3504,10 +3504,65 @@ def _ooda_karar(mood: dict, sessizlik: float, kalan: int) -> str:
         return "arastir"
     return "paylasim"
 
+# BORÇ-3 (2 Haz 2026): Idle-loop fact-batch — günlük (24h+) gece 02-05 arası semantik katman doldur
+_FACT_BATCH_TS_PATH = Path("/mnt/c/Kuroshin/memory/son_fact_batch.json")
+
+def _fact_batch_kontrol() -> bool:
+    """24h+ gectiyse + saat 02-05 arasi → True."""
+    try:
+        last_ts = 0.0
+        if _FACT_BATCH_TS_PATH.exists():
+            last_ts = float(json.loads(_FACT_BATCH_TS_PATH.read_text(encoding="utf-8")).get("ts", 0))
+        if time.time() - last_ts < 86400:  # 24h
+            return False
+        hour = datetime.datetime.now().hour
+        if not (2 <= hour <= 5):
+            return False
+        return True
+    except Exception:
+        return False
+
+def _fact_batch_run():
+    """BORÇ-3: Son 24h episodic kayıt → extract_facts → semantic katman ChromaDB."""
+    try:
+        em = _get_episodic()
+        if em is None:
+            _log("[FACT_BATCH] episodic None, atlandı")
+            return
+        col = em._col
+        result = col.get(limit=200, include=["documents", "metadatas"])
+        docs  = result.get("documents", []) or []
+        metas = result.get("metadatas", []) or []
+        cutoff = time.time() - 86400  # son 24h
+        recent = []
+        for doc, meta in zip(docs, metas):
+            try:
+                ts_iso = meta.get("ts", "")
+                ts = datetime.datetime.fromisoformat(ts_iso).timestamp()
+                if ts >= cutoff and (meta.get("source") or "").lower() != "llm_extract":
+                    recent.append({"doc": doc, "meta": meta, "ts": ts})
+            except Exception:
+                continue
+        if not recent:
+            _log("[FACT_BATCH] son 24h episodic kayit yok, atlandı")
+            _FACT_BATCH_TS_PATH.write_text(json.dumps({"ts": time.time()}), encoding="utf-8")
+            return
+        recent.sort(key=lambda x: x["ts"])
+        conv_text = "\n".join(f"{r['meta'].get('subject','?')}: {r['doc'][:300]}" for r in recent[-30:])
+        facts = em.extract_facts(conv_text, user_id="batch_24h")
+        _log(f"[FACT_BATCH] processed={len(recent)} saved={len(facts)} ts={time.time():.0f}")
+        _FACT_BATCH_TS_PATH.write_text(json.dumps({"ts": time.time(), "processed": len(recent), "saved": len(facts)}), encoding="utf-8")
+    except Exception as e:
+        _log(f"[FACT_BATCH] hata: {e}")
+
 def _idle_probe(zorla: bool = False):
     """OODA heartbeat — arka plan thread'den çağrılır."""
     global _son_probe_ts
     _son_probe_ts = time.time()
+
+    # BORÇ-3 (2 Haz 2026): Günlük fact-batch tetik (gece 02-05 + 24h+)
+    if _fact_batch_kontrol():
+        _fact_batch_run()
 
     persona, mood = _load_soul()
     mood = _apply_decay(mood)
