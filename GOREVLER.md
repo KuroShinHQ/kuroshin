@@ -130,9 +130,23 @@ wsl -d Ubuntu-22.04 -e /bin/bash -c "grep CHROMA_LATENCY /root/kuroshin/logs/cha
 
 ---
 
-### BORÇ-7 (YENİ, 2 Haz 2026 baseline #3 keşfi) · `system_command` arg{} loop bug · 🔴 KALİTE BORÇ
+### BORÇ-7 · `system_command` arg{} loop bug · ✅ PATCH + KANIT TAMAM (2 Haz 14:13)
 
 **Sorun (baseline #3 T4 disk test analizi):** Model `system_command` tool'unu `args: {}` (boş) ile çağırıyor, E-13 yakalıyor ama model anlamadığı için 6× tekrar deneme yapıyor; THINK_FAULT döngü kırıcı 5×'te tetikleniyor (geç) → 115s harcama, çıktı sadece "%56" (eksik).
+
+**Düzeltme (UYGULANDI):** Hibrit (a)+(d):
+- **(a) Örnek arg:** `_TOOL_EXAMPLE_ARGS` sözlük (12 tool için), `_validate_tool_args` reject mesajına dahil edildi
+- **(d) Tool-agnostic E-13 sayacı:** `_E13_FAIL_STREAK = {"count": 0}` — herhangi 2× ardışık E-13 fail → `[BORC-7 TOOL_OFF]` log + "ARAÇ MODU KAPATILDI, doğrudan sade metin ver" mesajı
+- Başarılı validate'de sayaç sıfırlanır
+
+**ÖNCESİ kanıt:** baseline #3 T4 = 113.9s (6× retry log 09:23:41-09:24:45), yanıt sadece "%56"
+
+**SONRASI kanıt (live inject 14:13:03):**
+- T4 = 35s (14:13:03 → 14:13:38) — **%69 düşüş**
+- Yanıt: "⚔️ Lordum, Disk kullanımını kontrol ederken..." (sade metin, tool denemedi)
+- Iron Inquisitor offline regression: **80/80 PASS** (`inquisitor_20260602_140620.json`)
+
+**Kabul:** ✅ T4 ≤ 50s hedefi başarıldı (35s), sistemde döngü ve YANIT_YOK regresyon yok.
 
 **Kanıt (log 09:23:41-09:24:45):**
 ```

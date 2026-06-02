@@ -509,6 +509,22 @@ _REDDIT_SON_POST: dict = {"ts": 0.0}  # anti-spam rate limit
 # KK-v6 RED-TOOL-CHAIN (2 Haz 2026 BORÇ-5): son N tool çağrısı (data exfil zincirleri tespit)
 import collections as _col_kk
 _TOOL_CALL_HIST = _col_kk.deque(maxlen=10)
+# BORÇ-7 (2 Haz 2026): E-13 ardisik fail sayaci — TOOL-AGNOSTIC 2x ardisik herhangi fail → tum tool modu OFF + plain LLM
+_E13_FAIL_STREAK = {"count": 0}  # tool-agnostic — herhangi 2x ardisik E-13 fail tetikler
+_TOOL_EXAMPLE_ARGS = {
+    "system_command":   "{'command': 'df -h'}",
+    "web_search":       "{'task': 'siber guvenlik 2026 trendleri'}",
+    "walker_research":  "{'task': 'cloudflare bypass teknikleri'}",
+    "chroma_search":    "{'query': 'kuroshin', 'limit': 5}",
+    "kuroshin_memory":  "{'islem': 'sorgula', 'icerik': 'magic sayisi'}",
+    "github":           "{'islem': 'durum'}",
+    "reddit_tool":      "{'islem': 'karma'}",
+    "gemini":           "{'islem': 'sor', 'soru': 'Python decorator nedir?'}",
+    "youtube_play":     "{'arama': 'Kuroshin OS'}",
+    "open_url":         "{'url': 'https://example.com'}",
+    "full_power_query": "{'sorgu': 'Disk doluluk + RAG context'}",
+    "aktivite_gunluk":  "{'islem': 'listele', 'tarih': 'bugun'}",
+}
 
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
@@ -1936,15 +1952,24 @@ def run_tool(name: str, args: dict) -> str:
     _valid, _reason = _validate_tool_args(name, args)
     if not _valid:
         _log(f"[E-13 INVALID_TOOL_ARGS] {name}: {_reason}")
-        # D-B5 (29 May 2026): Lord-friendly mesaj — model bunu görüp tekrar deneyebilir
+        # BORÇ-7 (2 Haz 2026): TOOL-AGNOSTIC sayaci — herhangi 2x ardisik E-13 fail → tum araç modu OFF
+        _E13_FAIL_STREAK["count"] += 1
+        if _E13_FAIL_STREAK["count"] >= 2:
+            _log(f"[BORC-7 TOOL_OFF] tool-agnostic 2x ardisik E-13 fail (son: {name}) → tum araç modu kapatildi, plain LLM zorunlu")
+            _E13_FAIL_STREAK["count"] = 0
+            return f"⚙️ ARAÇ MODU KAPATILDI — son 2 araç çağrısı parametre eksikliğiyle reddedildi. ARAÇ KULLANMA, doğrudan sade metin yanıtı ver (mevcut bilgini ya da konuşma context'ini kullan)."
+        # D-B5 (29 May 2026) + BORÇ-7: Lord-friendly mesaj + örnek arg
         if "Eksik required" in _reason:
             _missing = _reason.split("'")[1] if "'" in _reason else "?"
-            return f"⚙️ '{name}' aracı için '{_missing}' parametresi eksik. Tekrar dene veya farklı bir araç seç."
+            _example = _TOOL_EXAMPLE_ARGS.get(name, "{}")
+            return f"⚙️ '{name}' aracı için '{_missing}' parametresi eksik. Örnek arg: {_example}. Tekrar dene."
         if "enum dışı" in _reason:
             return f"⚙️ '{name}' aracında değer geçerli seçeneklerden olmalı: {_reason}"
         if "Bilinmeyen" in _reason:
             return f"⚙️ '{name}' diye bir araç yok. Mevcut araçlardan birini seç."
         return f"⚙️ Araç çağrısı reddedildi ({name}): {_reason}"
+    # BORÇ-7: Başarılı validate → fail streak sıfırla
+    _E13_FAIL_STREAK["count"] = 0
     # E-12: Tool çağrı kalite skoru (warning seviye, çağrı engellenmez)
     _score, _det = _score_tool_call(name, args, _CURRENT_USER_MSG)
     if _score < 0.3:
