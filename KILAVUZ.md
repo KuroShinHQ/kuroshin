@@ -1,5 +1,5 @@
 # Kuroshin OS — KILAVUZ (yeni geliştirici / Claude için)
-**Sürüm:** v11.16.0 — 1 Haziran 2026
+**Sürüm:** v11.26.0 — 2 Haziran 2026 (atomik checkpoint doktrini eklendi)
 
 > Bu dosya **giriş kapısı**. Sisteme yabancı biri buradan başlasın. Detaylar diğer MD'lerde.
 
@@ -155,6 +155,21 @@ Lord "test et" yazmasa bile, **yeni özellik gelirse** veya **kod değişirse** 
 ### 5. Commit
 - HEREDOC ile commit message (kanıt zinciri + skor + dosyalar)
 - Push: sadece Lord açıkça istediğinde
+
+### 6. ⚓ ATOMİK CHECKPOINT (2 Haz 2026 — Lord direktifi: token/elektrik kaybı minimize)
+**Kural:** Her FAZ **içinde ara checkpoint commit** at, FAZ tamamlanma sonrası tam commit. Yarım kalan iş hiçbir zaman uncommit kalmasın.
+
+**Çözünürlük rehberi:**
+- **Sub-FAZ (her ~30 dk):** kod modülü tamamlandı + dosya çalışır durumda → ara commit `wip(daX-fazY): <ne yapıldı>` (kanıt henüz yok, sadece kod state)
+- **Test geçen sub-FAZ:** Iron Inquisitor offline PASS → commit `daX-fazY-test: N/N PASS code_inspect`
+- **FAZ tamamlama:** Live inject + log kanıt → commit `vX.Y.Z FAZ-Y TAMAM: <delta+kanıt>`
+- **Her commit'ten ÖNCE:** `MD update zinciri` (KILAVUZ.md gerekmez ama GOREVLER.md + DEVAM.md güncel olsun) — yeni Claude oturumu commit'i okuyabilsin
+- **Hiçbir zaman:** uncommit kod >1 saat veya bir sub-modülün yarısı tamamlanmış durumda bırakma. Token bittiğinde HEMEN ara checkpoint atıp dur.
+
+**Risk yönetimi:**
+- Token / elektrik kesintisinde son `git log --oneline -1` durumu = "neredeyiz" referansı
+- DEVAM.md her checkpoint commit sonrası "Son commit: hash" satırı güncel
+- WIP commit'ler `vX.Y.Z` numarası ALMAZ (sadece `wip(daX-fazY):` prefix). Sadece tam FAZ commit numara alır
 
 ### Bug bulununca
 - Aynı 5 adımı tekrar et
