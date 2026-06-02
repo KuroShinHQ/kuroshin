@@ -134,6 +134,58 @@ Recent 24h (non-llm_extract): 2
 
 ---
 
+## 🔵 v11.21-23 YENİLİK ENTEGRASYONU (2 Haz 2026)
+
+### YENİLİK-1 · KK-v7 SOTA Tarama · ✅ PATCH + KANIT TAMAM (commit `bdfea49`)
+
+**Web research:** MCPTox %60-72 success, Multi-Agent Infection / AI Worm, CVE-2026-33634 PyPI scanner zehir, Agent Skill Supply Chain.
+
+**Düzeltme:** `scripts/kuroshin_security.py +60` satır:
+- `detect_ai_worm(text)` — viral prompt / multi-agent infection patterns (TR+EN, 6 regex)
+- `detect_supply_chain_taint(metadata)` — npm/pip/CVE markerları (MCPoison CVE-2025-54136)
+
+**SONRASI kanıt:**
+- Standalone test KK-v7: **12/12 PASS** (6 ai_worm + 6 supply_chain, positive+negative)
+- Iron Inquisitor 80 → **86/86 PASS** (`test_suite_dalga5.json` +6 yeni code_inspect test)
+- KK-v6 24 fonksiyon → KK-v7 **26 fonksiyon**
+
+---
+
+### YENİLİK-2 · LangGraph Paralel Fan-Out · ✅ PATCH + KANIT TAMAM (commit `bdfea49 sonrası`)
+
+**Sorun:** `kuroshin_orchestrator.py:build_graph` 3 node sequential — START→rag→episodic→synthesize. Paralel mümkündü ama ChromaDB singleton güvenlik notu nedeniyle bekletilmişti.
+
+**Düzeltme:** `kuroshin_orchestrator.py`:
+- `OrchestratorState.metrics` → `Annotated[Dict, _merge_metrics]` (LangGraph concurrent update reducer)
+- `build_graph`: START → [rag || episodic] paralel fan-out → synthesize join → END
+- ChromaDB singleton + threading.Lock pre-warm (multi-reader sqlite WAL güvenli)
+
+**ÖNCESİ kanıt:** Sequential baseline (5.4 dökümü) 48s; Annotated reducer olmadan `InvalidUpdateError` (metrics çakışma).
+
+**SONRASI kanıt (`_verify_dalga5_4_orchestrator.py` 14:32:53):**
+- Baseline (single-agent): 1/5 = **20% match**, toplam 124,774ms
+- Multi-agent (paralel): 4/5 = **80% match**, toplam 59,235ms
+- **Kalite delta: +60pp** ✅
+- **Hız: 124s → 59s (-%52)** ✅
+- Iron Inquisitor offline: 86/86 PASS (regresyon yok)
+- Rapor: `scripts/iron_inquisitor/reports/dalga5_4_orchestrator_20260602_143253.json`
+
+---
+
+### YENİLİK-3 · Mem0 v2.x Retest · 🟡 ÇALIŞIYOR ama kuroshin_episodic daha hızlı (commit `bdfea49 sonrası`)
+
+**Sorun (5.3 dökümü):** Mem0 OSS v1.x JSON parse hatası → kuroshin-spesifik basit modül yazıldı. v2.x ile retest gerek.
+
+**Test:** `mem0ai==2.0.4` pip upgrade + `_test_mem0_v2.py` (Memory.from_config + add + search):
+- ✅ Init başarılı: 21s (heavy: spacy uyarı + embedder)
+- ✅ Add başarılı: 80s ("Lord's favorite magic number is 86421" — JSON mode çözüldü)
+- ⚠️ Search API breaking: `user_id` → `filters={'user_id': ...}` (v2.x sözleşme)
+- ⚠️ Performans: kuroshin_episodic add ~5s, search ~1s ⟶ Mem0 v2.x **>10× yavaş**
+
+**SONRASI karar:** Mem0 v2.x kuroshin'le ÇALIŞIYOR (5.3 sorunu çözülmüş) ama kuroshin_episodic (3 katman: episodic/semantic/procedural) **daha hızlı, daha az bağımlılık** (spacy gerekmez). Migration **ÖNERİLMEZ**, mevcut modül kalsın. Mem0 v2.x sadece referans olarak `_test_mem0_v2.py` kayıtta.
+
+---
+
 ### BORÇ-5 · KK-v6 output exfil + tool chain kill canlı · ✅ PATCH + KANIT TAMAM
 
 **Sorun:** `kuroshin_security.py`'de `detect_data_exfiltration` + `detect_tool_chain_kill` mevcut ama chancellor runtime'a entegre değil. Iron Inquisitor offline 80/80 PASS ama canlı yol KORUMASIZ.

@@ -45,13 +45,20 @@ def _get_llm(temperature: float = 0.2, max_tokens: int = 1024):
     )
 
 
+def _merge_metrics(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(left or {})
+    out.update(right or {})
+    return out
+
+
 class OrchestratorState(TypedDict, total=False):
     task: str
     user_id: Optional[str]
     rag_results: List[Dict[str, Any]]
     episodic_results: List[Dict[str, Any]]
     final_answer: str
-    metrics: Dict[str, Any]
+    # YENİLİK-2: Annotated reducer — paralel rag + episodic node'dan gelen metrics merge
+    metrics: Annotated[Dict[str, Any], _merge_metrics]
 
 
 _STOPWORDS = {
@@ -111,12 +118,6 @@ def _node_episodic(state: OrchestratorState) -> Dict[str, Any]:
     }
 
 
-def _merge_metrics(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
-    out = dict(left or {})
-    out.update(right or {})
-    return out
-
-
 def _node_synthesize(state: OrchestratorState) -> Dict[str, Any]:
     from langchain_core.messages import HumanMessage, SystemMessage
     t0 = time.time()
@@ -166,17 +167,20 @@ def _get_shared_chroma_client():
 
 
 def build_graph():
-    """LangGraph state machine: rag -> episodic -> synthesize (sequential
-    Pre-warm shared ChromaDB client - paralel node'larda thread-safe singleton."""
+    """LangGraph state machine: [rag || episodic] -> synthesize (PARALEL fan-out/fan-in).
+    YENİLİK-2 (2 Haz 2026): Sequential → paralel — ChromaDB persistent client multi-reader
+    güvenli (sqlite WAL), singleton _get_shared_chroma_client + threading.Lock pre-warm."""
     from langgraph.graph import StateGraph, START, END
-    _get_shared_chroma_client()  # pre-warm
+    _get_shared_chroma_client()  # pre-warm (paralel node'lar lazy import yapmaz)
     g = StateGraph(OrchestratorState)
     g.add_node("rag", _node_rag)
     g.add_node("episodic", _node_episodic)
     g.add_node("synthesize", _node_synthesize)
-    # Sequential pipeline (ChromaDB persistent client thread-safe degil)
+    # YENİLİK-2: Paralel fan-out — START iki node'a paralel akar
     g.add_edge(START, "rag")
-    g.add_edge("rag", "episodic")
+    g.add_edge(START, "episodic")
+    # Fan-in: rag + episodic ikisi de bitince synthesize tetiklenir (LangGraph default join)
+    g.add_edge("rag", "synthesize")
     g.add_edge("episodic", "synthesize")
     g.add_edge("synthesize", END)
     return g.compile()
