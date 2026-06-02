@@ -1,6 +1,6 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
 **Son Güncelleme:** 2 Haziran 2026
-**Süreç:** 🚀 **D-TURU v11.16.0** — KALİTE 4/4 ✅ + HIZ fix ✅ + ENTEGRASYON ✅ + Iron Inquisitor 80/80 ✅ · **6 KALAN BORÇ kanıt güdümlü kuyrukta**
+**Süreç:** 🚀 **D-TURU v11.23.0** — TR prompt ✅ + Walker canli ✅ + LangGraph Checkpoint ✅ + DALGA 6 Protokol v2 ✅
 
 ---
 
@@ -131,6 +131,41 @@ Recent 24h (non-llm_extract): 2
 **Açık (gelecek):** Walker service şu an kapalı; canlı `walker_research` inject testi yapmadık — patch syntax + scraper modülü ayrı ayrı doğrulanmış durumda, walker_service ayağa kalkınca 4. seviye otomatik devreye girecek.
 
 **Kabul:** ✅ Patch entegre, scraper modülü hazır, fallback noktası tanımlı; canlı CF inject testi servis açılınca verifikasyon için yapılacak.
+
+---
+
+## 🛍️ DALGA-6 — MARKET MASTER (2 Haz 2026 19:40 — FAZ-0 KEŞIF TAMAM)
+
+**Lord direktifi:** *"4 sitede 4lü ağ (Sahibinden + Trendyol + Hepsiburada + Epey). Kazıcılar yakalanmamalı. Public veri, login yok, iz bırakmadan. Vision'sız (DOM/text + LLM)."*
+
+**Ana doküman:** [`docs/OTONOM_ALISVERIS_PROTOKOLU.md`](docs/OTONOM_ALISVERIS_PROTOKOLU.md) (v3, DALGA-6 prob sonuçlarıyla revize)
+
+### FAZ-0 Prob Sonuçları (`scripts/_test_4site_scraper.py`):
+
+| Site | Status | Karakter | Anti-bot | Sonuç |
+|------|--------|----------|----------|-------|
+| Epey | **200** | **196,797** | CF light | 🟢 PASS |
+| Sahibinden | 403 | 5,871 | CF + Turnstile | 🔴 BLOCKED |
+| Trendyol | 403 | 5,869 | CF + Turnstile | 🔴 BLOCKED |
+| Hepsiburada | 403 | 1,331 | Akamai | 🔴 BLOCKED |
+
+**Net karar:** **Epey-first MVP** (FAZ-1). 3 zor site için FAZ-2'de FlareSolverr Docker (Turnstile ihtimaline karşı) + Google Shopping snippet dolaylı veri + `cimri.com`/`akakce.com` agregatörler.
+
+### Açık Borçlar (FAZ-1 öncesi yapılacak):
+
+- **BORÇ-4-bis** · `walker_service.crawlee_deep_crawl` her katman sonrası short-content/CF-sig check → 4. seviye scraper'a doğru tetik (Sahibinden walker testinde Camoufox 58 char "Başarılı" döndü, scraper'a düşmedi)
+- **Walker LLM agent max retry** · Agno `max_iterations=3` param (sonsuz tool retry yok)
+- **`kuroshin_scraper.get()` rate limit** · 5-15s random delay between requests (iz bırakmama)
+- **Iron Inquisitor DALGA-6** · 4-6 yeni `verify-dalga6-*` code_inspect test
+
+### FAZ-1 MVP Kapsamı (sıradaki):
+
+1. `scripts/kuroshin_market_master.py` — MarketFetcher (Epey katmanı) + KnowledgeBase + MerchantScore (V/R/F → MASTER) + Telegram 5-mesaj akışı
+2. `agents/kuroshin_chancellor.py` yeni tool: `market_master` (sorgu, bütçe, mod, top_n)
+3. Iron Inquisitor `verify-dalga6-*` testler
+4. Live inject kanıtı: `'Kuroshin Market Master: 5000 TL bütçe kondisyon bisikleti ara'` → Telegram raporu
+
+**Tahmini süre:** 2-3 saat FAZ-1 (Epey-only MVP). FAZ-2 ileride.
 
 ---
 
@@ -800,6 +835,29 @@ Kanıt: `scripts/iron_inquisitor/reports/inquisitor_20260529_152658.json`
 5. Telegram pipeline `test_telegram_sim.py --clear` (14/15)
 
 Herhangi biri PASS'tan düşerse → **rollback + diagnose**, ENTEGRASYON görevi reopen.
+
+---
+
+## 🌊 DALGA 6 — MARKET MASTER v2 (Otonom Alışveriş)
+
+**Lord Direktifi:** *"Ben saatlerce manuel filtreleyip tek tek ilan incelemeyeyim, Kuroshin kendi iç muhakemesi ve araçlarıyla tüm ürünleri tarasın, analiz etsin, filtrelesin ve bana en mükemmel ürünü sunsun."*
+
+### 6.1 Market Master v2 Protokol Tasarımı ✅ TAMAMLANDI (2 Haz 2026)
+- [x] Bayesian Ağırlıklı Ortalama (puan/hacim dengesi) mantığı kuruldu.
+- [x] 2. el Risk Matrisi (kozmetik/fonksiyonel/yapısal kusur ayrımı) tanımlandı.
+- [x] Muadil fiyatlandırma (üretimi bitmiş ürün tahmini) algoritması belirlendi.
+- [x] Epey tabanlı kategori kriteri öğrenme şeması oluşturuldu.
+- [x] `docs/OTONOM_ALISVERIS_PROTOKOLU.md` v2 olarak güncellendi.
+
+### 6.2 FAZ-1: MarketFetcher & Resilient Scraper 🔄 PLANLANDI
+- [ ] Sahibinden, Trendyol ve Hepsiburada için özel DOM parser'lar geliştirilecek.
+- [ ] Walker servisi üzerinden anti-bot (Cloudflare/Captcha) aşımı için `ResilientFetcher` modülü optimize edilecek.
+- [ ] Epey özellik tablosu kazıyıcı entegre edilecek.
+
+### 6.3 FAZ-2: Merchant Reasoning (Tüccar Zekası) 🔄 BEKLEMEDE
+- [ ] `analyze_flaws`: Açıklama metninden risk analizi yapan LLM alt-ajanı.
+- [ ] `evaluate_reviews`: Yorumlardan kronik sorun tespiti yapan LLM alt-ajanı.
+- [ ] `merchant_judge`: Final Master Score hesaplayıcı.
 
 ---
 
