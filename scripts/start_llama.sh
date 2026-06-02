@@ -1,5 +1,7 @@
 #!/bin/bash
 # Llama-server başlatıcı — active_model.json'dan dinamik model okur
+# SYSTEM_PAUSED.flag check (Lord direktifi 2 Haz 2026)
+source /mnt/c/Kuroshin/scripts/_check_system_paused.sh
 STATE_FILE="/mnt/c/Kuroshin/memory/active_model.json"
 BIN="/root/kuroshin/engines/llama.cpp/build/bin/llama-server"
 LOG="/mnt/c/Kuroshin/logs/llama-server.log"

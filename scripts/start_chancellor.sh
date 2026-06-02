@@ -1,5 +1,7 @@
 #!/bin/bash
 # Chancellor başlatıcı — WSL'den veya bat'tan çağrılır
+# SYSTEM_PAUSED.flag check (Lord direktifi 2 Haz 2026)
+source /mnt/c/Kuroshin/scripts/_check_system_paused.sh
 LOG="/mnt/c/Kuroshin/logs/chancellor.log"
 
 # Eski instance temizle

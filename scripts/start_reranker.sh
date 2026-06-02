@@ -1,4 +1,6 @@
 #!/bin/bash
+# SYSTEM_PAUSED.flag check (Lord direktifi 2 Haz 2026)
+source /mnt/c/Kuroshin/scripts/_check_system_paused.sh
 source /root/kuroshin/venv/bin/activate
 exec python3 /mnt/c/Kuroshin/scripts/kuroshin_reranker_service.py \
     >> /root/kuroshin/logs/reranker.log 2>&1

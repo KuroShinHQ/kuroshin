@@ -7,6 +7,12 @@ Persona: Şansölye — operasyonel, sert, sadık
 Özellikler: OODA Probe, İlgi Profili, Rüya, Enerji Bütçesi, Feedback→Mood
 """
 
+# SYSTEM_PAUSED.flag boot-time check (Lord direktifi 2 Haz 2026 — auto-restart engelle)
+import sys as _sys_pause, os as _os_pause
+if _os_pause.path.exists("/mnt/c/Kuroshin/memory/SYSTEM_PAUSED.flag"):
+    print("[SYSTEM_PAUSED] kuroshin_chancellor.py boot atlandi — Lord menu 5 ile sistemi durdurdu")
+    _sys_pause.exit(0)
+
 import requests
 import json
 import time

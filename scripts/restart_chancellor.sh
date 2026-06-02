@@ -1,5 +1,7 @@
 #!/bin/bash
 # Kuroshin Chancellor — SAĞLAM restart (31 May 2026)
+# SYSTEM_PAUSED.flag check (Lord direktifi 2 Haz 2026 — restart bile paused durumda iptal)
+source /mnt/c/Kuroshin/scripts/_check_system_paused.sh
 # Dersler (bu turdan):
 #   - nohup/& WSL'de SIGHUP ile ölür → setsid ŞART
 #   - chancellor sessizce hang olabilir (startup yarım) → AKTİF + 8201 DOĞRULA, olmadıysa Telegram ALARM
