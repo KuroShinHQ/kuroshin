@@ -210,11 +210,27 @@ def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
             raise Exception("Crawl4AI boş döndü")
         except Exception as e2:
             _log(f"[CRAWLEE] Crawl4AI de başarısız ({e2}), Camoufox deneniyor...")
-        # 3. Camoufox son çare
+        # 3. Camoufox 3. fallback
         try:
             return _camoufox_fetch(url)
         except Exception as e3:
-            return f"Crawlee + Crawl4AI + Camoufox üçü de başarısız: {e3}"
+            _log(f"[CRAWLEE] Camoufox da başarısız ({e3}), kuroshin_scraper son fallback deneniyor...")
+        # 4. BORÇ-4 (2 Haz 2026) kuroshin_scraper son fallback — 8 anti-bot signature + UA rotate
+        try:
+            import sys as _sys_sc
+            if "/mnt/c/Kuroshin/scripts" not in _sys_sc.path:
+                _sys_sc.path.insert(0, "/mnt/c/Kuroshin/scripts")
+            from kuroshin_scraper import ResilientFetcher as _ResF
+            _scraper = _ResF()
+            _res = _scraper.get(url)
+            if _res.status_code == 200 and len(_res.text or "") > 200:
+                _sig = ",".join(_res.antibot_detected) if _res.antibot_detected else "none"
+                _log(f"[SCRAPER_FALLBACK] url={url[:60]} sig={_sig} status=200 chars={len(_res.text)} attempts={_res.attempts}")
+                return sanitize_web_content(_res.text, max_chars=CRAWL_CHAR_LIMIT)
+            _log(f"[SCRAPER_FALLBACK] başarısız url={url[:60]} status={_res.status_code} chars={len(_res.text or '')}")
+            return f"Crawlee + Crawl4AI + Camoufox + Scraper dördü de başarısız (scraper status={_res.status_code})"
+        except Exception as e4:
+            return f"Crawlee + Crawl4AI + Camoufox + Scraper dördü de başarısız: {e4}"
 
 
 def save_to_memory(data: str) -> str:
