@@ -171,9 +171,9 @@ class HybridRAG:
     def search(
         self,
         query: str,
-        top_k_dense: int = 50,
-        top_k_sparse: int = 50,
-        rerank_top_n: int = 50,
+        top_k_dense: int = 30,   # 2 Haz 2026 BORÇ-2: 50 → 30 (T5 fact regresyon: 20 dar kaldi, 30 = full recall in 30-doc corpus)
+        top_k_sparse: int = 30,  # 2 Haz 2026 BORÇ-2: 50 → 30
+        rerank_top_n: int = 30,  # 2 Haz 2026 BORÇ-2: 50 → 30
         top_m: int = 10,
         use_reranker: bool = True,
     ) -> List[Dict[str, Any]]:

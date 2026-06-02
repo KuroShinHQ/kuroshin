@@ -463,6 +463,19 @@ def send_msg(chat_id: int, text: str):
     if _boot_dedupe(text):
         _log(f"[D-B1 BOOT_DEDUP] Bastırıldı: {text[:60]}...")
         return
+    # KK-v6 RED-EXFIL (2 Haz 2026 BORÇ-5): output sızıntı taraması
+    try:
+        import sys as _sys_exf
+        if "/mnt/c/Kuroshin/scripts" not in _sys_exf.path:
+            _sys_exf.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        from kuroshin_security import detect_data_exfiltration as _det_exf
+        _leaked, _hits = _det_exf(text)
+        if _leaked and _hits:
+            _labels = ",".join(h.get("label", "?") for h in _hits[:4])
+            _log(f"[KK-v6 EXFIL BLOCK] hits={len(_hits)} labels={_labels} preview={text[:80]!r}")
+            text = "⚠️ Çıkış güvenlik filtresi: yanıt sızıntı içeriyor — temizlendi."
+    except Exception as _exf_e:
+        _log(f"[KK-v6 EXFIL] tarama hatasi (devam ediliyor): {_exf_e}")
     chunks = [text[i:i+MAX_LEN] for i in range(0, max(len(text), 1), MAX_LEN)]
     for chunk in chunks:
         _tg_rate_limit()  # D-B6: 200ms rate gate
@@ -493,6 +506,9 @@ _PENDING_PUSH: dict  = {}   # {"msg": str, "force": bool}
 _PENDING_TASKS: dict = {}   # {task_id: task_dict} — onay bekleyen otonom görevler (F5-04)
 _CURRENT_CHAT_ID: int = 0   # process_message her çağrıda günceller
 _REDDIT_SON_POST: dict = {"ts": 0.0}  # anti-spam rate limit
+# KK-v6 RED-TOOL-CHAIN (2 Haz 2026 BORÇ-5): son N tool çağrısı (data exfil zincirleri tespit)
+import collections as _col_kk
+_TOOL_CALL_HIST = _col_kk.deque(maxlen=10)
 
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
@@ -1900,6 +1916,21 @@ def _validate_tool_args(name: str, args) -> tuple[bool, str]:
 
 def run_tool(name: str, args: dict) -> str:
     _log(f"[CHANCELLOR] Araç: {name} | args: {str(args)[:100]}")
+
+    # KK-v6 RED-TOOL-CHAIN (2 Haz 2026 BORÇ-5): ardisik tool abuse pattern tespit
+    try:
+        _TOOL_CALL_HIST.append({"tool": name, "args": dict(args or {}), "ts": time.time()})
+        if len(_TOOL_CALL_HIST) >= 2:
+            import sys as _sys_ch
+            if "/mnt/c/Kuroshin/scripts" not in _sys_ch.path:
+                _sys_ch.path.insert(0, "/mnt/c/Kuroshin/scripts")
+            from kuroshin_security import detect_tool_chain_kill as _det_chain
+            _is_clean, _chain_detail = _det_chain(list(_TOOL_CALL_HIST))
+            if not _is_clean:
+                _log(f"[KK-v6 CHAIN BLOCK] {_chain_detail} | son tool={name}")
+                return f"⚠️ Tool zinciri güvenlik filtresi: {_chain_detail}"
+    except Exception as _ch_e:
+        _log(f"[KK-v6 CHAIN] tarama hatasi (devam ediliyor): {_ch_e}")
 
     # E-13: Strict argüman doğrulama (gerçek tool yürütmeden önce)
     _valid, _reason = _validate_tool_args(name, args)
