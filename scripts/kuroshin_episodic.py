@@ -43,31 +43,40 @@ LOG_PATH = Path("/root/kuroshin/memory/episodic.jsonl")
 DEFAULT_USER = "lord"
 
 
-_FACT_EXTRACTION_PROMPT = """You are a memory extractor. Read the conversation and pull out STABLE facts: user preferences, lasting decisions, identity facts, rules, recurring patterns. Label each:
-  - "semantic"   : permanent facts ("Lord's favorite number is 73729")
-  - "episodic"   : timestamped events ("Lord asked for X on 2026-05-30")
-  - "procedural" : how-to steps ("To restart chancellor, use setsid in WSL")
+_FACT_EXTRACTION_PROMPT = """Sen bir hafiza cikaricisin. Konusmayi oku ve KALICI gercekleri cikar: kullanici tercihleri, uzun sureli kararlar, kimlik bilgileri, kurallar, tekrarlayan oruntuler. Her birini etiketle:
+  - "semantic"   : kalici gercek ("Lord'un favori sayisi 73729'dur")
+  - "episodic"   : zaman damgali olay ("Lord 2026-05-30'da X istedi")
+  - "procedural" : nasil-yapilir adimi ("Chancellor restart icin WSL'de setsid kullan")
 
-Reply ONLY with raw JSON, no markdown, no explanation. If no facts, return {"facts": []}.
+SADECE ham JSON yanitla, markdown yok, aciklama yok. Gercek yoksa {"facts": []}.
 
-Schema:
-{"facts":[{"type":"semantic","text":"the fact itself","subject":"what it's about"}]}
+ONEMLI KURAL: "text" ve "subject" alanlari MUTLAKA TURKCE yazilmali. Ingilizce kelime kullanma. Cumleyi Turkce kur.
 
-Example 1 input:
+Sema:
+{"facts":[{"type":"semantic","text":"gercegin kendisi (Turkce)","subject":"konu/kategori (Turkce)"}]}
+
+Ornek 1 girdi:
 user: Lord'un favori magic sayisi 73729'dur.
 assistant: Anladim Lordum.
 
-Example 1 output:
-{"facts":[{"type":"semantic","text":"Lord's favorite magic number is 73729","subject":"lord_preferences"}]}
+Ornek 1 cikti:
+{"facts":[{"type":"semantic","text":"Lord'un favori magic sayisi 73729'dur","subject":"lord_tercihleri"}]}
 
-Example 2 input:
+Ornek 2 girdi:
 user: ne yapiyorsun?
 assistant: Lord, dinleniyorum.
 
-Example 2 output:
+Ornek 2 cikti:
 {"facts":[]}
 
-Now extract from this conversation:
+Ornek 3 girdi:
+user: chancellor'i restart icin hangi komut?
+assistant: bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh — setsid ile baslatir.
+
+Ornek 3 cikti:
+{"facts":[{"type":"procedural","text":"Chancellor restart icin bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh komutunu calistir; setsid ile baslar","subject":"chancellor_restart"}]}
+
+Simdi bu konusmadan cikar (TURKCE yazmayi unutma):
 """
 
 

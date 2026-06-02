@@ -66,6 +66,9 @@ _STOPWORDS = {
     "icin", "için", "bana", "benim", "senin", "query", "full", "power",
 }
 
+# YENİ-3 (2 Haz 2026): process-wide checkpoint singleton (thread_id'lerin state'i kalıcı)
+_CHECKPOINTER_SINGLETON = None
+
 
 def _tokens(text: str) -> set[str]:
     raw = re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]+", (text or "").lower())
@@ -183,15 +186,27 @@ def build_graph():
     g.add_edge("rag", "synthesize")
     g.add_edge("episodic", "synthesize")
     g.add_edge("synthesize", END)
-    return g.compile()
+    # YENİ-3 (2 Haz 2026): State checkpointing — process-wide singleton InMemorySaver
+    try:
+        global _CHECKPOINTER_SINGLETON
+        if _CHECKPOINTER_SINGLETON is None:
+            from langgraph.checkpoint.memory import InMemorySaver
+            _CHECKPOINTER_SINGLETON = InMemorySaver()
+        return g.compile(checkpointer=_CHECKPOINTER_SINGLETON)
+    except Exception:
+        # InMemorySaver yoksa veya import hata → checkpointer'sız fallback (mevcut davranis)
+        return g.compile()
 
 
-def run(task: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+def run(task: str, user_id: Optional[str] = None, thread_id: Optional[str] = None) -> Dict[str, Any]:
+    """YENİ-3: thread_id verirsen state checkpoint'lenir; kesilirse run(thread_id=ayni) ile devam."""
     graph = build_graph()
     t0 = time.time()
-    result = graph.invoke({"task": task, "user_id": user_id, "metrics": {}})
+    config = {"configurable": {"thread_id": thread_id or f"kuroshin_thread_{int(time.time())}"}}
+    result = graph.invoke({"task": task, "user_id": user_id, "metrics": {}}, config=config)
     total = round((time.time() - t0) * 1000, 1)
     result.setdefault("metrics", {})["total_ms"] = total
+    result["metrics"]["thread_id"] = config["configurable"]["thread_id"]
     return result
 
 

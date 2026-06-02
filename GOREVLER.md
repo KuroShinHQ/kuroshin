@@ -172,6 +172,49 @@ Recent 24h (non-llm_extract): 2
 
 ---
 
+### YENİ-1 · Fact-batch prompt TR'leştirme · ✅ PATCH + KANIT (2 Haz 14:38)
+
+**Sorun:** YENİLİK-1 KK-v7 sonrası BORÇ-3 fact-batch test çıktısı İngilizce: "Lord's new magic number is 86421" subject="lord_preferences".
+
+**Düzeltme:** `kuroshin_episodic.py:_FACT_EXTRACTION_PROMPT` Türkçeleştirildi (instruction + 3 örnek). "ONEMLI KURAL: text ve subject MUTLAKA TURKCE" vurgusu.
+
+**SONRASI kanıt:** `_test_borc3_factbatch.py` retest:
+- text: **"Lord'un yeni magic sayisi 86421'dir"** ✅
+- subject: **"lord_tercihleri"** ✅
+- elapsed: 9.8s (kabul edilebilir, eski 8.9s'ye yakın)
+
+---
+
+### YENİ-2 · Walker service canlı CF inject · ✅ AYAĞA KALKTI + 3-seviye fetch PASS
+
+**Süreç (2 Haz 14:37):** `start_walker.sh` setsid background → port 9002 LISTEN, `/health` → `{status: ready, version: 3.0}` ✅
+
+**Live test (CF korumalı Medium URL, /task POST):**
+- Walker `crawlee_deep_crawl` stealth mode: 329 karakter fetched (39.4s) ✅
+- Medium hesabı 410 Account Suspended → walker LLM bağlamla özet yazdı (127s toplam)
+- 4. seviye `[SCRAPER_FALLBACK]` tetiklenmedi (Crawlee + stealth Medium için yeterli)
+
+**Karar:** Walker servisi canlı, ilk 3 seviye yeterli. 4. seviye `kuroshin_scraper` edge case (Camoufox dahil hepsi fail) için kalır — BORÇ-4 patch hazır, gerektiğinde tetiklenecek.
+
+---
+
+### YENİ-3 · LangGraph state checkpointing · ✅ PATCH + KANIT (2 Haz 14:41)
+
+**Sorun:** `kuroshin_orchestrator.py:build_graph` checkpointer yok → uzun ajan koşumları kesilirse state kayboluyor.
+
+**Düzeltme:** `kuroshin_orchestrator.py`:
+- `_CHECKPOINTER_SINGLETON` global — process-wide InMemorySaver tek instance (yeniden build_graph'ta aynı saver)
+- `build_graph` `g.compile(checkpointer=_CHECKPOINTER_SINGLETON)` + ImportError fallback
+- `run(task, user_id, thread_id=...)` — opsiyonel `thread_id`, config `{"configurable": {"thread_id": ...}}`
+- `result.metrics["thread_id"]` raporlama
+
+**SONRASI kanıt:**
+- `run('Lord magic sayisi', thread_id='kuroshin_test_yeni3_002')` → final_answer + thread_id metric ✅
+- `build_graph().get_state({"configurable": {"thread_id": "kuroshin_test_yeni3_002"}})` → **state.values 6 alan persist** (task, user_id, rag_results, episodic_results, final_answer, metrics) ✅
+- Iron Inquisitor offline: **86/86 PASS** (regresyon yok)
+
+---
+
 ### YENİLİK-3 · Mem0 v2.x Retest · 🟡 ÇALIŞIYOR ama kuroshin_episodic daha hızlı (commit `bdfea49 sonrası`)
 
 **Sorun (5.3 dökümü):** Mem0 OSS v1.x JSON parse hatası → kuroshin-spesifik basit modül yazıldı. v2.x ile retest gerek.
