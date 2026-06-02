@@ -50,11 +50,12 @@ KB_CACHE_TTL_HOURS = 24
 
 # ============================================================================
 # DALGA-6 Smart Routing Tablosu (FAZ-0 prob kanıtı ile aligned)
+# 4 hedef site: epey.com + trendyol.com + hepsiburada.com + sahibinden.com
 # ============================================================================
 # Test sonuçları (2 Haz 2026 19:53):
-#   epey.com         → curl_cffi chrome124 → 200, 196K char  🟢
-#   trendyol.com     → curl_cffi chrome124 → 200, 522K char  🟢
-#   hepsiburada.com  → curl_cffi chrome124 → 200, 3.8M char (Akamai aşıldı!) 🟢
+#   epey.com         → curl_cffi impersonate="chrome124" → 200, 196K char  🟢
+#   trendyol.com     → curl_cffi impersonate="chrome124" → 200, 522K char  🟢
+#   hepsiburada.com  → curl_cffi impersonate="chrome124" → 200, 3.8M char (Akamai aşıldı!) 🟢
 #   sahibinden.com   → LOGIN ZORUNLU 2026 policy → indirect (Lord "login yok")
 SITE_FETCHER: Dict[str, Tuple[str, str]] = {
     "epey.com":        ("curl_cffi",     "chrome124"),
@@ -64,9 +65,12 @@ SITE_FETCHER: Dict[str, Tuple[str, str]] = {
     "_fallback":       ("cloudscraper",  "chrome/windows/desktop"),
 }
 
-# Lord doktrini "iz bırakmadan" — request arası random delay
-RATE_LIMIT_MIN_SEC = 5
+# Lord doktrini "iz bırakmadan" — request arası random.uniform(5, 15) saniye delay
+RATE_LIMIT_MIN_SEC = 5    # min 5s (random.uniform(5, 15) min sınır)
 RATE_LIMIT_MAX_SEC = 15
+
+# Telegram 5-mesaj akışı: _market_msg_baslangic + _market_msg_canli_durum + _market_msg_ana_rapor + _market_render_ascii_chart + _market_msg_derin_analiz
+# Inline keyboard callback'leri: market_yeniden_ara, market_mod_degistir, market_tablo, market_derin, market_tum_linkler
 
 # ============================================================================
 # MerchantScorer mod ağırlıkları (MD v3 tablosu — V/R/F → MASTER)

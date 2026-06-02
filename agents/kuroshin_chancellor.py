@@ -530,7 +530,15 @@ _TOOL_EXAMPLE_ARGS = {
     "open_url":         "{'url': 'https://example.com'}",
     "full_power_query": "{'sorgu': 'Disk doluluk + RAG context'}",
     "aktivite_gunluk":  "{'islem': 'listele', 'tarih': 'bugun'}",
+    "market_master":    "{'query': 'kondisyon bisikleti', 'budget': 5000, 'mod': 'dengeli', 'top_n': 3}",
 }
+
+# DALGA-6 FAZ-4 inline keyboard callback'leri (Lord direktifi 2 Haz 2026)
+# market_yeniden_ara: ayni param fresh tarama
+# market_mod_degistir: butce/guven/performans/dengeli mod secimi
+# market_derin: 1. urun derin analiz (analyze_flaws + evaluate_reviews + merchant_judge)
+MARKET_CALLBACKS = ["market_yeniden_ara", "market_mod_degistir", "market_derin",
+                    "market_tablo", "market_tum_linkler"]
 
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
@@ -1004,6 +1012,41 @@ TOOLS = [
                     }
                 },
                 "required": ["islem"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "market_master",
+            "description": "DALGA-6 Otonom Alışveriş Master. Kullanıcı verdiği anahtar kelime+bütçe ile 3 site (Epey/Trendyol/Hepsiburada) direkt + Sahibinden dolaylı tarama yapar, V/R/F skoru hesaplar, en iyi top_n ürünü Telegram'a 5-mesaj rapor (başlangıç+canlı durum+ana rapor+ASCII diyagram+derin) olarak sunar. Lord doktrini: login YOK, iz bırakmadan, $0 maliyet.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Aranacak ürün (örn: 'kondisyon bisikleti', 'mekanik klavye', 'kahve makinesi')"
+                    },
+                    "budget": {
+                        "type": "number",
+                        "description": "TL bütçe üst limiti (örn: 5000)"
+                    },
+                    "mod": {
+                        "type": "string",
+                        "description": "Puanlama modu — butce: fiyat odaklı (Wv=0.5), guven: yorum/marka odaklı (Wr=0.5), performans: özellik odaklı (Wf=0.5), dengeli: varsayılan (0.4/0.3/0.3)",
+                        "enum": ["butce", "guven", "performans", "dengeli"],
+                        "default": "dengeli"
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Dönecek en iyi ürün sayısı (1-5, varsayılan 3)"
+                    },
+                    "category_slug": {
+                        "type": "string",
+                        "description": "Epey URL kategori slug (örn: 'kondisyon-bisikleti', 'mekanik-klavye'). Opsiyonel — query'den çıkarılabilir."
+                    }
+                },
+                "required": ["query", "budget"]
             }
         }
     }
@@ -3107,6 +3150,48 @@ def run_tool(name: str, args: dict) -> str:
             return "\n".join(lines)
 
         return f"⚠️ Bilinmeyen işlem: {islem}"
+
+    elif name == "market_master":
+        # DALGA-6 FAZ-1 — Otonom alışveriş master (2 Haz 2026)
+        try:
+            import sys as _sys_mm
+            if "/mnt/c/Kuroshin/scripts" not in _sys_mm.path:
+                _sys_mm.path.insert(0, "/mnt/c/Kuroshin/scripts")
+            from kuroshin_market_master import market_master_query
+            query = args.get("query", "kondisyon bisikleti")
+            budget = float(args.get("budget", 5000))
+            mod = args.get("mod", "dengeli")
+            top_n = int(args.get("top_n", 3))
+            category_slug = args.get("category_slug", "")
+            if not category_slug:
+                # Basit Türkçe → Epey URL slug heuristic
+                category_slug = query.lower().replace(" ", "-").replace("ı", "i").replace("ş", "s")
+                category_slug = re.sub(r"[^a-z0-9-]", "", category_slug)
+            _log(f"[MARKET_MASTER] query={query!r} budget={budget} mod={mod} top_n={top_n} slug={category_slug}")
+            result = market_master_query(query, budget, mod, top_n, category_slug)
+            # 4 mesajı sırayla gönder (chat_id = _CURRENT_CHAT_ID)
+            chat_id = _CURRENT_CHAT_ID or 0
+            if chat_id:
+                # Inline keyboard ana raporda
+                kb_buttons = [
+                    [{"text": "🔄 Yeniden Ara", "callback_data": "market_yeniden_ara"},
+                     {"text": "⚖️ Mod Değiştir", "callback_data": "market_mod_degistir"}],
+                    [{"text": "📊 Tablo", "callback_data": "market_tablo"},
+                     {"text": "🔍 Derin Analiz", "callback_data": "market_derin"}],
+                    [{"text": "🛒 Tüm Linkler", "callback_data": "market_tum_linkler"}],
+                ]
+                for i, msg in enumerate(result["messages"]):
+                    if i == 2:  # ana rapor → inline keyboard
+                        send_msg_keyboard(chat_id, msg, kb_buttons)
+                    else:
+                        send_msg(chat_id, msg)
+                    time.sleep(0.3)  # Telegram rate-limit
+            n = len(result.get("listings", []))
+            top_score = result["listings"][0]["master"] if n else "N/A"
+            return f"✅ Market Master tamamlandı: {n} ürün bulundu, top score={top_score}, elapsed={result['elapsed_sec']}s"
+        except Exception as e:
+            _log(f"[MARKET_MASTER] hata: {type(e).__name__}: {e}")
+            return f"⚠️ Market Master hatası: {type(e).__name__}: {str(e)[:200]}"
 
     return f"Bilinmeyen araç: {name}"
 

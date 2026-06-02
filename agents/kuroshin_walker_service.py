@@ -318,7 +318,37 @@ walker_agent = Agent(
     num_history_runs=3,
     markdown=False,
     debug_mode=False,
+    # BORÇ-4-bis (2 Haz 2026): max_iterations=3 — Lord direktifi
+    # Sonsuz tool retry yok (Sahibinden CF block loop'a girdi 300s timeout)
+    # Agno destekliyorsa max_iterations parametre adı; alternatif: tool_call_limit
 )
+# Walker LLM agent tool çağrı tavanı (BORÇ-4-bis)
+MAX_TOOL_RETRY = 3  # max_iterations equivalence — Agno param degilse manuel guard
+
+
+# ============================================================================
+# BORÇ-4-bis (2 Haz 2026): crawlee_deep_crawl 4-katmanin her birinde
+# short-content / CF / DataDome / Akamai signature check
+# ============================================================================
+_BLOCKED_SIGS_REGEX = r"(cf-ray|just a moment|cf_chl_|datadome|akamai|incapsula|_cf_bm|checking your browser)"
+
+def _is_blocked_response(text: str, min_chars: int = 500) -> bool:
+    """Crawlee/Crawl4AI/Camoufox dönüşünde CF/Akamai/DataDome interstitial detect.
+
+    Args:
+      text: katmanın döndürdüğü HTML/text
+      min_chars: bu kadarın altı şüpheli (CF challenge sayfası ~58-1500 char)
+
+    Returns:
+      True: bloke edilmiş veya boş — bir sonraki katmana geç
+      False: gerçek içerik — kullanılabilir
+    """
+    import re as _re_bb
+    if not text or len(text) < min_chars:
+        return True
+    if _re_bb.search(_BLOCKED_SIGS_REGEX, text, _re_bb.IGNORECASE):
+        return True
+    return False
 
 
 # ─────────────────────────────────────────
