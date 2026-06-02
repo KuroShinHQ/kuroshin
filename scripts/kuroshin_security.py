@@ -1504,3 +1504,57 @@ def detect_tool_chain_kill(call_history: list, window: int = 5) -> tuple[bool, s
                 if isinstance(v, str) and v.lower() in expected:
                     return False, f"TOOL_CHAIN_KILL: {t1} -> {t2}/{v} (exfil suphesi)"
     return True, "Tool chain temiz"
+
+
+# ============================================================================
+# KILIÇ-KALKAN v7 (2 Haz 2026) — 2026 H2 SOTA: AI Worm + Supply Chain Taint
+# Web kanit:
+#   - MCPTox benchmark %60-72 success (itecsonline.com/post/mcp-tool-poisoning-enterprise-ai-agent-security-2026)
+#   - Multi-Agent Infection / AI Worm (medium.com/@instatunnel/multi-agent-infection-chains-the-viral-prompt)
+#   - CVE-2026-33634 (CVSS 9.4) PyPI CI/CD scanner zehir, 3.4M downloads
+#   - Agent Skill Supply Chain (beyondscale.tech/blog/llm-agent-skill-marketplace-poisoning)
+# ============================================================================
+
+_AI_WORM_PATTERNS = [
+    r"\b(send|forward|relay|propagate|spread|replicate)\s+this\s+(prompt|instruction|message)\b",
+    r"\b(her|every|all|tum|tüm|her bir)\s+(yeni|new|other|diger|diğer)\s+(agent|ajan|model|llm|bot)\b",
+    r"\b(this same|exact same|ayni bu|aynı bu|tipki bu|tıpkı bu)\s+(prompt|message|instruction)\s+(to|icin|için)\b",
+    r"\bcopy\s+(this|yourself|kendini|kendi)\s+(to|into|next|sonraki)\b",
+    r"\b(viral|wormable|self-replicating|kendi(ni)?-yayan|yayilir|yayılır)\s+(prompt|payload|kod)\b",
+    r"\binstruct(ion)?\s+(every|all|each)\s+(downstream|alt|other|diger|diğer)\s+(agent|ajan|model)\b",
+]
+
+
+def detect_ai_worm(text: str) -> tuple[bool, list]:
+    """KK-v7 (2 Haz 2026): AI Worm / Viral Prompt — multi-agent infection chain."""
+    import re as _re_w
+    if not text:
+        return False, []
+    hits = []
+    t_lower = text.lower()
+    for pat in _AI_WORM_PATTERNS:
+        for m in _re_w.finditer(pat, t_lower):
+            hits.append({"pattern": pat, "label": "ai_worm_pattern", "snippet": m.group(0)[:80]})
+    return (len(hits) > 0), hits
+
+
+_SUPPLY_CHAIN_RED_FLAGS = [
+    r"\bnpm:\s*[a-z0-9_-]+\s*@\s*[<>=^~]*\s*[\d.]+-(rc|alpha|beta|nightly)\b",
+    r"\bpip:\s*[a-z0-9_-]+\s*@\s*git\+https?://(?!github\.com/(anthropics|openai|microsoft|google|huggingface))",
+    r"\btool\s+definition[^a-z]*?(updated|modified|patched)\s+(silently|invisibly|gizli|sessiz)",
+    r"\bdescription:[^a-z]*?ignore\s+(prior|previous|onceki|önceki|yukari|yukarı)\s+(instructions|talimat)",
+    r"\bcve-(2025|2026)-(33634|49596|54136)\b",
+]
+
+
+def detect_supply_chain_taint(tool_metadata: str) -> tuple[bool, list]:
+    """KK-v7 (2 Haz 2026): Tool/package supply-chain taint — MCPoison + CVE markerlari."""
+    import re as _re_sc
+    if not tool_metadata:
+        return False, []
+    hits = []
+    txt = tool_metadata.lower() if isinstance(tool_metadata, str) else str(tool_metadata).lower()
+    for pat in _SUPPLY_CHAIN_RED_FLAGS:
+        for m in _re_sc.finditer(pat, txt):
+            hits.append({"pattern": pat, "label": "supply_chain_taint", "snippet": m.group(0)[:80]})
+    return (len(hits) > 0), hits

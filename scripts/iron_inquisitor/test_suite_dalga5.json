@@ -867,5 +867,71 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "FAZ A: episodic adaptive threshold (sparse 0.30 / dense 0.55)"
+  },
+  {
+    "id": "verify-borc7-fail-streak",
+    "category": "verify_borc7",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_E13_FAIL_STREAK",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "BORC-7: tool-agnostic E-13 ardisik fail sayaci (2x → tool OFF)"
+  },
+  {
+    "id": "verify-borc7-tool-examples",
+    "category": "verify_borc7",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_TOOL_EXAMPLE_ARGS",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "BORC-7: tool ornek arg sozluk (Lord-friendly E-13 mesaji)"
+  },
+  {
+    "id": "verify-borc3-fact-batch",
+    "category": "verify_borc3",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_fact_batch_run",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "BORC-3: idle-loop fact-batch helper (24h+ + saat 02-05 → extract_facts)"
+  },
+  {
+    "id": "verify-borc4-scraper-fallback",
+    "category": "verify_borc4",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_walker_service.py",
+    "pattern": "SCRAPER_FALLBACK",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "BORC-4: walker_service 4. seviye kuroshin_scraper fallback"
+  },
+  {
+    "id": "verify-kkv7-ai-worm",
+    "category": "verify_kkv7",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_security.py",
+    "pattern": "def detect_ai_worm",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KK-v7: AI Worm / Viral Prompt tespit (multi-agent infection chain)"
+  },
+  {
+    "id": "verify-kkv7-supply-chain",
+    "category": "verify_kkv7",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_security.py",
+    "pattern": "def detect_supply_chain_taint",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KK-v7: Tool/package supply-chain taint tespit (MCPoison + CVE markerlari)"
   }
 ]
