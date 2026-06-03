@@ -3198,6 +3198,10 @@ def run_tool(name: str, args: dict) -> str:
                     time.sleep(0.3)  # Telegram rate-limit
             n = len(result.get("listings", []))
             top_score = result["listings"][0]["master"] if n else "N/A"
+            # 4 Haz 2026 FIX: market_master internal log'larini chancellor.log'a dump et
+            # (debug — Epey 0 ya da Sahibinden 0 olunca neden anlasilsin)
+            for _ll in result.get("log_lines", []):
+                _log(_ll)
             # FAZ-4: callback handler icin son market_master sonucu cache'le
             _LAST_MARKET_RESULT.clear()
             _LAST_MARKET_RESULT.update({
