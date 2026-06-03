@@ -40,6 +40,10 @@ try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = None
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 
 # Local llama-server endpoint (kuroshin standard)
 LLAMA_URL = "http://127.0.0.1:8080/v1/chat/completions"
@@ -49,19 +53,22 @@ KB_CACHE_PATH = Path("/mnt/c/Kuroshin/memory/category_criteria.json")
 KB_CACHE_TTL_HOURS = 24
 
 # ============================================================================
-# DALGA-6 Smart Routing Tablosu (FAZ-0 prob kanıtı ile aligned)
+# DALGA-6 Smart Routing Tablosu (3 Haz 2026 19:30 — Playwright kanıt revize)
 # 4 hedef site: epey.com + trendyol.com + hepsiburada.com + sahibinden.com
 # ============================================================================
-# Test sonuçları (2 Haz 2026 19:53):
-#   epey.com         → curl_cffi impersonate="chrome124" → 200, 196K char  🟢
-#   trendyol.com     → curl_cffi impersonate="chrome124" → 200, 522K char  🟢
-#   hepsiburada.com  → curl_cffi impersonate="chrome124" → 200, 3.8M char (Akamai aşıldı!) 🟢
-#   sahibinden.com   → LOGIN ZORUNLU 2026 policy → indirect (Lord "login yok")
+# Kanit (Lord izlerken, gerçek URL'ler ile Playwright + curl_cffi):
+#   trendyol.com     → curl_cffi 596K char AMA CSR (JSON-LD 0, data-test-id 0) → PARSER 0 urun
+#                      Playwright Chromium JS-render → 5 GERCEK urun (Cosfer 2544 TL, vs.)
+#   hepsiburada.com  → curl_cffi 3.8M, li[class^="productListContent-"] 36 SSR urun (Cosfer 3990 TL, vs.) ✅
+#                      Playwright headless ZARARLI → Akamai "Güvenlik" 1.3K (TLS impersonate sart!)
+#   epey.com         → curl_cffi 196K AMA body sadece navigation menusu (kategori CSR-after-load)
+#                      Playwright → 213K + .listelegr 10 GERCEK urun (Voit V-Fit 7520 TL, vs.)
+#   sahibinden.com   → LOGIN ZORUNLU 2026 → indirect (cimri/akakce/DDG snippet)
 SITE_FETCHER: Dict[str, Tuple[str, str]] = {
-    "epey.com":        ("curl_cffi",     "chrome124"),
-    "trendyol.com":    ("curl_cffi",     "chrome124"),
-    "hepsiburada.com": ("curl_cffi",     "chrome124"),  # Akamai aşıldı
-    "sahibinden.com":  ("indirect",      "google_snippet"),  # Lord doktrini: login YOK
+    "epey.com":        ("playwright",    "chromium"),
+    "trendyol.com":    ("playwright",    "chromium"),
+    "hepsiburada.com": ("curl_cffi",     "chrome124"),  # ironik — TLS impersonate Akamai aşıyor, headless yakalanıyor
+    "sahibinden.com":  ("indirect",      "google_snippet"),
     "_fallback":       ("cloudscraper",  "chrome/windows/desktop"),
 }
 
@@ -200,56 +207,160 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                     out.append(ld)
     log(f"[PARSER {site}] JSON-LD'den {len(out)} urun")
 
-    # 2. CSS selectors site-spesifik fallback (JSON-LD yetmezse)
+    # 2. CSS selectors SITE-SPESIFIK (3 Haz 2026 19:30 — Lord canli kanit revize)
+    # Generic selectors (.title, [class*='title']) Trendyol homepage widget'larini
+    # yakaliyordu ("Flas Urun", "En Cok Satan 1. Urun" sahte sonuc) — site-spesifik pin'li.
     if len(out) < 3:
         cards = []
+        title_selectors: List[str] = []
+        price_selectors: List[str] = []
         if "trendyol" in site:
-            cards = soup.select(".p-card-wrppr, .product-card, .prdct-cntnr-wrppr")[:limit*2]
+            # Trendyol arama sayfasi (?q=) layout: .product-card kart icinde .product-brand + .product-name
+            # Trendyol kategori sayfasi: .p-card-wrppr + .prdct-desc-cntnr-name
+            cards = soup.select(".product-card, .p-card-wrppr")[:limit*3]
+            title_selectors = [".product-name", ".prdct-desc-cntnr-name",
+                               "[class*='product-down-text']", "span[class*='ProductName']"]
+            price_selectors = ["[class*='price-current']", "[class*='discounted']",
+                               ".prc-box-dscntd", "[class*='price-box']",
+                               "div[class*='price']", "[class*='Price__']"]
         elif "hepsiburada" in site:
-            cards = soup.select('[data-test-id*="product"], .productListContent li, .hbus-product-card')[:limit*2]
+            # HB SSR — li[class^="productListContent-..."] (hash uçucu, prefix pin)
+            cards = soup.select('li[class^="productListContent-"]')[:limit*2]
+            title_selectors = ['h3', 'h2', '[class*="title"][class*="product"]',
+                               'a[title]', '[data-test-id*="product-card-name"]']
+            price_selectors = ['[class*="price"][class*="current"]', '[data-test-id*="price"]',
+                               '[class*="finalPrice"]', '[class*="Price__"]', 'div[class*="price"]']
         elif "epey" in site:
-            cards = soup.select('.urun-listesi-blok, .listele-blok, .urun-item, article.urun')[:limit*2]
+            # Epey kategori — urun adi linkleri (/<cat>/<slug>.html) + fiyat linkleri (#fiyatlar) AYRI
+            # Strateji: tum #fiyatlar linklerini al → href slug'ini kullanarak isim link'i ile esle
+            # Bu Epey'in standart layout'u (3 Haz 2026 canli debug ile teyit)
+            cards = soup.select('a[href*="#fiyatlar"]')[:limit*4]
+            title_selectors = []
+            price_selectors = []
         elif "cimri" in site:
-            cards = soup.select('[class*="product"], [class*="Product"], .item-card, .ProductCard')[:limit*2]
+            cards = soup.select('[class*="product-card"], [class*="ProductCard"], article[class*="product"]')[:limit*2]
+            title_selectors = ['h3', 'h2', '[class*="ProductTitle"]', '[class*="title"]']
+            price_selectors = ['[class*="Price"]', '[class*="price"]']
         elif "akakce" in site:
-            cards = soup.select(".pl, .p_w_v, [class*='pl_v']")[:limit*2]
+            cards = soup.select('.pl, .pw_v, [class*="pl_v"], li[class*="product"]')[:limit*2]
+            title_selectors = ['[class*="pn"]', 'h3', 'a[title]', '[class*="name"]']
+            price_selectors = ['[class*="pt"]', '[class*="price"]']
+
         for card in cards:
             try:
-                # Title
-                title_el = (card.select_one("a[title]") or
-                            card.select_one(".prdct-desc-cntnr-name, [data-test-id*='name'], .urun-isim, h2, h3, .title, [class*='title']"))
-                if not title_el:
-                    continue
-                title = title_el.get("title") or title_el.get_text(strip=True)
-                title = title[:200] if title else ""
-                if not title or len(title) < 5:
-                    continue
-                # Price
-                price_el = card.select_one(".prc-box-dscntd, [data-test-id*='price'], .fiyat, .price, [class*='price']")
-                price_text = price_el.get_text(strip=True) if price_el else ""
-                pm = re.search(r"([\d.,]+)", price_text.replace(".", "").replace(",", "."))
+                title = ""
                 price = 0.0
-                if pm:
-                    try:
-                        price = float(pm.group(1))
-                    except ValueError:
-                        pass
-                # URL
-                a_el = card.select_one("a[href]")
-                url = a_el.get("href", "") if a_el else ""
-                if url.startswith("/"):
-                    url = f"https://www.{site}{url}"
+                url = ""
+                # Epey ozel — card = #fiyatlar linki; isim ayri linkten slug ile eslestir
+                if "epey" in site:
+                    href = card.get("href", "") or ""
+                    if "#fiyatlar" not in href:
+                        continue
+                    # slug = /<cat>/<urun>.html (URL anchor'i kirp)
+                    slug = href.split("#")[0]
+                    if not slug or ".html" not in slug:
+                        continue
+                    # Fiyat metni: "7.520,50 TL 6 site, 7 fiyat"
+                    fiyat_metin = card.get_text(" ", strip=True)
+                    pm = re.search(r"([\d.]+),(\d{2})\s*(?:TL|₺)", fiyat_metin)
+                    if not pm:
+                        # ondalik yok: "7520 TL" gibi
+                        pm2 = re.search(r"([\d.]+)\s*(?:TL|₺)", fiyat_metin)
+                        if pm2:
+                            try:
+                                price = float(pm2.group(1).replace(".", ""))
+                            except ValueError:
+                                pass
+                    else:
+                        try:
+                            price = float(pm.group(1).replace(".", "") + "." + pm.group(2))
+                        except ValueError:
+                            pass
+                    # Urun adi — soup'ta ayni slug href'i kullanan, metni dolu link
+                    name_link = soup.find("a", href=lambda h: h and h.split("#")[0] == slug
+                                          and "#" not in h)
+                    if not name_link or not name_link.get_text(strip=True):
+                        # Daha gevsek arama (kart bos olabilir)
+                        name_link = soup.find("a", href=re.compile(re.escape(slug) + r"$"))
+                    title = (name_link.get_text(" ", strip=True) if name_link else "")[:200]
+                    if not title or len(title) < 3:
+                        # Son care: slug'dan isim cikar
+                        m_slug = re.search(r"/([^/]+)\.html$", slug)
+                        if m_slug:
+                            title = m_slug.group(1).replace("-", " ").title()
+                        else:
+                            continue
+                    url = slug if slug.startswith("http") else f"https://www.epey.com{slug}"
+                else:
+                    # Title — site-spesifik selectors sirayla dene
+                    title_el = None
+                    for sel in title_selectors:
+                        title_el = card.select_one(sel)
+                        if title_el:
+                            break
+                    if not title_el:
+                        # Son care: a[title]
+                        title_el = card.select_one("a[title]")
+                    if not title_el:
+                        continue
+                    title = title_el.get("title") or title_el.get_text(" ", strip=True)
+                    title = (title or "").strip()
+                    # Trendyol — brand kart icinde ayri elemandir, title basina ekle
+                    if "trendyol" in site:
+                        brand_el = card.select_one(".product-brand, [class*='ProductBrand']")
+                        if brand_el:
+                            brand_txt = brand_el.get_text(" ", strip=True)
+                            if brand_txt and brand_txt.lower() not in title.lower():
+                                title = f"{brand_txt} {title}"
+                    title = title[:200]
+                    if not title or len(title) < 8:
+                        continue
+                    # Yasak placeholder kelimeler — "Flaş Ürün", "En Çok Satan", widget baslıkları
+                    placeholders = ["flaş ürün", "flas urun", "en çok satan", "en cok satan",
+                                    "fırsat ürün", "firsat urun", "öne çıkan", "one cikan",
+                                    "tümünü gör", "tumunu gor", "kampanya", "favorilerim"]
+                    if any(p in title.lower() for p in placeholders) and len(title) < 30:
+                        continue
+                    # Price
+                    price_el = None
+                    for sel in price_selectors:
+                        price_el = card.select_one(sel)
+                        if price_el:
+                            break
+                    if price_el:
+                        price_text = price_el.get_text(" ", strip=True)
+                        # "3.990 TL" veya "2.544,89 TL" patterni — TR format
+                        pm = re.search(r"([\d.]+)(?:,(\d{1,2}))?\s*(?:TL|₺)", price_text)
+                        if pm:
+                            try:
+                                int_part = pm.group(1).replace(".", "")
+                                dec_part = pm.group(2) or "0"
+                                price = float(f"{int_part}.{dec_part}")
+                            except ValueError:
+                                pass
+                    # URL
+                    a_el = card.select_one("a[href]") if card.name != "a" else card
+                    url = (a_el.get("href", "") if a_el else "") or ""
+                    if url.startswith("/"):
+                        url = f"https://www.{site if not site.endswith('_indirect') else site.replace('_indirect','')}{url}"
+
+                # Min fiyat sart — placeholder/widget genelde 0 veya cok kucuk
+                if price <= 0:
+                    continue
                 out.append({
                     "title": title, "price": price, "url": url, "site": site,
                     "rating": None, "review_count": 0, "description": "",
                 })
             except Exception:
                 continue
-        log(f"[PARSER {site}] CSS selector ile +{len(out) - (len([x for x in out if x.get('rating') is not None]))} ek urun (toplam {len(out)})")
+        log(f"[PARSER {site}] CSS site-spesifik: toplam {len(out)} urun")
 
-    # 3. Filtre: fiyat > 0 ve butce*2 sınırı (anormal degerleri at)
-    filtered = [x for x in out if x.get("title") and 0 < x.get("price", 0) <= budget * 2.5]
-    log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (budget*2.5 ust limit)")
+    # 3. Filtre: makul fiyat araligi (3 Haz 2026 FIX: HB "3 TL" parse hatasi engellendi)
+    # Min: budget*5% (50-150 TL altı sahte parse), Max: budget*2.5 (anormal yuksek)
+    min_price = max(50.0, budget * 0.05)
+    max_price = budget * 2.5
+    filtered = [x for x in out if x.get("title") and min_price <= x.get("price", 0) <= max_price]
+    log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (min={min_price:.0f} max={max_price:.0f} TL)")
     # Tekil baslık (deduplicate)
     seen = set()
     unique = []
@@ -365,12 +476,54 @@ class MarketFetcher:
         if tier == "indirect":
             # Sahibinden gibi login zorunlu siteler → indirect helper
             return self._fetch_indirect(url, domain)
+        elif tier == "playwright":
+            return self._fetch_playwright(url, domain)
         elif tier == "curl_cffi":
             return self._fetch_curlcffi(url, domain, profile)
         elif tier == "cloudscraper":
             return self._fetch_cloudscraper(url, domain)
         else:
             return FetchResult(url=url, status=0, error=f"Bilinmeyen tier: {tier}")
+
+    def _fetch_playwright(self, url: str, domain: str) -> FetchResult:
+        """3 Haz 2026 — JS-render sites (Trendyol kategori sayfasi CSR, Epey listelegr JS-load).
+        Headless Chromium ile DOM tamamlanmasini bekle, page.content() dondur.
+        Sync API kullanir (asyncio loop conflict yok)."""
+        if sync_playwright is None:
+            return FetchResult(url=url, status=0, tier="playwright",
+                               error="playwright yuklu degil (pip install playwright + python -m playwright install chromium)")
+        t0 = time.time()
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=['--no-sandbox', '--disable-blink-features=AutomationControlled',
+                          '--disable-features=IsolateOrigins,site-per-process'],
+                )
+                ctx = browser.new_context(
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                               '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                    viewport={'width': 1366, 'height': 768},
+                    locale='tr-TR',
+                )
+                page = ctx.new_page()
+                page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                # JS lazy-load icin DOM bekle (Trendyol/Epey kartlari ~3-4s sonra dolar)
+                page.wait_for_timeout(4500)
+                html = page.content() or ""
+                title = page.title() or ""
+                browser.close()
+            elapsed = round(time.time() - t0, 1)
+            blocked = (len(html) < 2000) or self._has_block_signature(html)
+            self.log(f"[PLAYWRIGHT] {domain} chars={len(html)} title={title[:50]!r} blocked={blocked} elapsed={elapsed}s")
+            return FetchResult(
+                url=url, status=200 if html else 0, text=html, title=title[:120],
+                elapsed_s=elapsed, tier="playwright", blocked=blocked,
+            )
+        except Exception as e:
+            return FetchResult(url=url, status=0, tier="playwright",
+                               elapsed_s=round(time.time() - t0, 1),
+                               error=f"{type(e).__name__}: {str(e)[:160]}")
 
     def _fetch_curlcffi(self, url: str, domain: str, impersonate_profile: str) -> FetchResult:
         if cc_requests is None:
