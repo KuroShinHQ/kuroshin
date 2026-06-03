@@ -510,6 +510,36 @@ class MarketFetcher:
 # ============================================================================
 # KnowledgeBase — Epey kategori kriter extractor (V/R/F'nin F-Score temeli)
 # ============================================================================
+# FIX-ALL C5: KnowledgeBase fallback statik kategori kriterleri (Epey BS4 0 dönerse)
+CATEGORY_CRITERIA_DEFAULTS: Dict[str, List[str]] = {
+    "kondisyon-bisikleti": ["volan", "direnç", "direnc", "tasima", "taşıma", "manyetik",
+                            "sele", "gidon", "ekran", "monitor", "kalori", "kg"],
+    "spinbike":           ["volan", "direnç", "ağırlık", "manyetik", "spin", "sele"],
+    "klavye":             ["mekanik", "switch", "rgb", "kablosuz", "tepi", "anahtar", "türkçe"],
+    "mekanik-klavye":     ["switch", "blue", "red", "brown", "rgb", "hotswap", "türkçe"],
+    "telefon":            ["batarya", "ekran", "kamera", "ram", "5g", "depolama", "işlemci"],
+    "akilli-telefon":     ["batarya", "amoled", "kamera", "ram", "5g", "depolama"],
+    "laptop":             ["ram", "ssd", "ekran", "işlemci", "ekran kartı", "rtx", "batarya"],
+    "kulaklik":           ["bluetooth", "anc", "anc", "pil", "kablosuz", "mikrofon"],
+    "monitor":            ["hz", "ips", "inç", "ms", "qhd", "4k", "144"],
+    "robot-supurge":      ["lidar", "mop", "emiş", "pa", "batarya", "harita"],
+    # Generic fallback (en az kategori → bos string match)
+    "_generic":           ["fiyat", "marka", "model", "yıl", "garanti"],
+}
+
+
+def _category_defaults(slug: str) -> List[str]:
+    """Slug → static kritik listesi (Epey 0 kritik fallback)."""
+    s = slug.lower()
+    if s in CATEGORY_CRITERIA_DEFAULTS:
+        return CATEGORY_CRITERIA_DEFAULTS[s]
+    # Heuristic: en yakın match
+    for known, kriters in CATEGORY_CRITERIA_DEFAULTS.items():
+        if known != "_generic" and any(w in s for w in known.split("-")):
+            return kriters
+    return CATEGORY_CRITERIA_DEFAULTS["_generic"]
+
+
 class KnowledgeBase:
     """Epey kategori sayfasından kritik özellikleri öğrenen modül.
 
@@ -560,26 +590,43 @@ class KnowledgeBase:
         return self._cache[category_slug]
 
     def _extract_from_epey(self, category_slug: str) -> Dict[str, Any]:
-        """Epey kategori sayfasından kritik özellikleri çıkar."""
+        """Epey kategori sayfasından kritik özellikleri çıkar.
+        FIX-ALL C5: Epey BS4 0 dönerse static fallback kategori defaults kullan."""
         url = f"https://www.epey.com/{category_slug}/"
         r = self.fetcher.fetch(url)
-        if r.status != 200 or not r.text:
-            self.log(f"[KB] Epey fetch FAIL: {r.error or r.status}")
-            return {"kritik": [], "_fallback": True}
-
         criteria = {"kritik": [], "source_url": url}
-        if BeautifulSoup is not None:
+
+        if r.status == 200 and r.text and BeautifulSoup is not None:
             try:
                 soup = BeautifulSoup(r.text, "html.parser")
-                # Epey filtre sidebar özellik adları (genelde h3/h4 veya .filtre)
-                for tag in soup.select("h3, h4, .filtre-baslik, .ozellik-baslik")[:30]:
-                    txt = tag.get_text(strip=True)
-                    if 3 <= len(txt) <= 50 and not any(s in txt.lower() for s in ["fiyat", "marka", "satıcı"]):
-                        criteria["kritik"].append(txt)
+                # Epey filtre sidebar özellik adları — genişletilmiş selectors
+                # Epey 2026 HTML: .filtre-grup .filtre-baslik, .opt h3, sidebar a
+                selectors = [
+                    ".filtre-baslik", ".ozellik-baslik", ".filtre-grup-baslik",
+                    ".filter-title", "h3.title", "h4.title",
+                    ".karsilastirma-baslik th", ".ozellikler th",
+                    "aside h3", "aside h4", ".sidebar .baslik",
+                ]
+                for sel in selectors:
+                    for tag in soup.select(sel)[:30]:
+                        txt = tag.get_text(strip=True)
+                        if 3 <= len(txt) <= 50 and not any(s in txt.lower() for s in
+                                                          ["fiyat", "marka", "satıcı", "satici", "kategori"]):
+                            if txt not in criteria["kritik"]:
+                                criteria["kritik"].append(txt)
+                self.log(f"[KB] Epey BS4: {len(criteria['kritik'])} kritik bulundu")
             except Exception as e:
                 self.log(f"[KB] BS4 parse hata: {e}")
+        elif r.status != 200:
+            self.log(f"[KB] Epey fetch FAIL: {r.error or r.status}")
 
-        # LLM ile destekli kritik özellik öneri (opsiyonel — Web kriter)
+        # FIX-ALL C5: BS4'ten 0 veya az çıktıysa static fallback
+        if len(criteria["kritik"]) < 3:
+            fallback = _category_defaults(category_slug)
+            self.log(f"[KB] Epey BS4 yetersiz, static fallback: {fallback[:5]}")
+            criteria["kritik"] = fallback
+            criteria["_fallback"] = "static_defaults"
+
         return criteria
 
 

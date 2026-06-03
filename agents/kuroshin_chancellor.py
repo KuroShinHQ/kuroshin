@@ -497,6 +497,9 @@ def send_msg(chat_id: int, text: str):
                 # 429 (rate limited) → biraz daha bekle
                 if "Too Many Requests" in str(resp):
                     time.sleep(1.0)
+            else:
+                # FIX-ALL (3 Haz 2026): TELEGRAM_OUT log atılması — kanıt zinciri için
+                _log(f"[TELEGRAM_OUT] [{chat_id}] {chunk[:300]}")
         except Exception as e:
             _log(f"[CHANCELLOR] send_msg HATA ({chunk[:30]}...): {e}")
 
@@ -4663,8 +4666,11 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         _q = _re_global.sub(r"\d+(?:[.,]\d+)*\s*(?:tl|₺|lira)", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"en iyi\s*\d+", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"(bütçe|butce|güven|guven|performans|dengeli)\s*odaklı?", "", _q, flags=_re_global.IGNORECASE)
-        _q = _re_global.sub(r"(ara|araştır|arastir|bul|tara|göster|tool|kullan|al(?:mak|may|ıcı)?|düşünüyor|dusunuyor|raporu sun|rapor)[ıiae]?", "", _q, flags=_re_global.IGNORECASE)
-        _q = _re_global.sub(r"\b(bütçem|butcem|merhaba|lordum)\b", "", _q, flags=_re_global.IGNORECASE)
+        # FIX-ALL B3-bis: kelime sinir (\b) korunmali — "araştır" matched ama "kondisyon" zarar görmez
+        _q = _re_global.sub(r"\b(araştır|arastir|göster|goster|tool|kullan|raporu sun|rapor)\w*", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"\b(al(?:mak|may[ıi]|ay[ıi]|ic[ıi]|maya))\w*", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"\b(düşünüyor|dusunuyor|düşünüy|dusunuy)\w*", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"\b(bütçem|butcem|bütçesi|merhaba|lordum|ve|ile|bana|uygun)\b", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"[:,\-—]+", " ", _q).strip()
         if not _q or len(_q) < 3:
             _q = "kondisyon bisikleti"  # safe fallback
