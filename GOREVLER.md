@@ -162,12 +162,38 @@ GitHub 2026 SOTA: `pip install curl_cffi cloudscraper nodriver` (3 paket, $0 mal
 
 **Net karar (REVİZE):** **3 site FAZ-1'e HAZIR** (Trendyol + HB + Epey, hepsi `curl_cffi chrome124`). Sahibinden FAZ-2'de **dolaylı** (Google snippet + cimri/akakce agregatörü).
 
+### FAZ-1.5 PARSER OVERHAUL (Sprint 3 — 4 Haz 2026 00:00–00:18, Lord live test) → **HİBRİT**
+
+Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 TL" sahte sonuçlar görüldü. Sprint 2'de 522K/3.8M/196K **doğru çekilmişti** — sahte değil, AMA **sadece byte sayımı yapıldı**, içerik parse edilmedi. Sprint 3 derin teşhis:
+
+| Site | curl_cffi static fetch | Playwright JS-render | Hibrit kararı |
+|------|---|---|---|
+| **Trendyol** | 596K AMA **CSR**: JSON-LD 0, `__NEXT_DATA__` YOK, `data-test-id` 0, `.p-card-wrppr` 0 → widget yakalandı | ✅ `.product-card` 24 ürün, `.product-brand`+`.product-name` | **Playwright** zorunlu |
+| **Hepsiburada** | ✅ 3.8M SSR `li[class^="productListContent-"]` 36 ürün (hash-prefix pin) | ❌ Akamai "Güvenlik" 1.3K — **headless yakalanıyor** | **curl_cffi** (TLS impersonate Akamai aşıyor, ironik) |
+| **Epey** | 196K body sadece navigasyon menüsü (kategori JS-load) | ✅ 213K, `a[href*="#fiyatlar"]` 52 link — slug eşleştir name link | **Playwright** |
+| **Sahibinden** | 🔴 CF block | 🔴 "Giriş" login zorunlu | **indirect** (cimri/akakce/DDG, FAZ-2) |
+
+**Net kanıt (Inject #4 4 Haz 00:16):**
+- 🥇 **Triathlon T-222 Ev Tipi Kondisyon Bisikleti** — master **7.15**
+- 🥈 **Cosfer Spinning Bike** — master **6.5**
+- 🥉 **Cosfer Ritmo Dikey Kondisyon Bisikleti** — master **6.4**
+- Toplam 16 ürün (Epey 4 + Trendyol 6 + HB 6), fiyat aralığı 1101–6950 TL makul
+
+**Fix listesi (kod):**
+- `kuroshin_market_master.py`: SITE_FETCHER tablosu revize (Trendyol+Epey→playwright, HB→curl_cffi, Sah→indirect)
+- `MarketFetcher._fetch_playwright` eklendi (sync_api, viewport 1366×768, 4.5s JS-load bekle, blocked check)
+- Parser site-spesifik dallar: Trendyol `.product-card`+brand combine, HB `li[class^=productListContent-]`, Epey `a[href*=#fiyatlar]` slug eşleştir
+- Placeholder filter (Flaş Ürün/En Çok Satan/Kampanya widget başlıkları)
+- Min fiyat filter `max(50, budget*0.05)` — HB "3 TL" parse hatası engellendi
+- `_sanitize_query` stop-word genişletme (butce/bütçe/budget/lira/yap/var)
+- `kuroshin_chancellor.py:4664` query temizleyici **`_market_triggers_strong` kullanmalı** (`_market_triggers` değil) — "kondisyon bisikleti" kategori adı korunuyor
+
 ### Açık Borçlar (FAZ-1 öncesi yapılacak):
 
-- **BORÇ-4-bis** · `walker_service.crawlee_deep_crawl` her katman sonrası short-content/CF-sig check → 4. seviye scraper'a doğru tetik (Sahibinden walker testinde Camoufox 58 char "Başarılı" döndü, scraper'a düşmedi)
-- **Walker LLM agent max retry** · Agno `max_iterations=3` param (sonsuz tool retry yok)
-- **`kuroshin_scraper.get()` rate limit** · 5-15s random delay between requests (iz bırakmama)
-- **Iron Inquisitor DALGA-6** · 4-6 yeni `verify-dalga6-*` code_inspect test
+- **Iron Inquisitor RUNTIME test** ⚠️ — 38 testin TAMAMI `code_inspect` (file_exists/file_contains). "import var" = PASS ama "parse doğru çalışıyor mu?" denetimsiz. Yeni `runtime_test` türü 4-6 test eklenmeli (parser fixture HTML, market_master_query timeout+count, login keyword YOK)
+- **BORÇ-4-bis** · `walker_service.crawlee_deep_crawl` her katman sonrası short-content/CF-sig check (yapıldı v11.29)
+- **`kuroshin_scraper.get()` rate limit** · 5-15s random delay (zaten market_master içinde var)
+- **Bat walker boot** · `start /b wsl ... start_walker.sh` walker'ı kaldırmıyor (kritik değil, Playwright direkt)
 
 ### FAZ-1 MVP Kapsamı (sıradaki):
 

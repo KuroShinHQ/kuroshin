@@ -1088,13 +1088,27 @@ def _sanitize_query(query: str, max_words: int = 6) -> str:
     # URL slug temizle (model bazen ilan ID/slug ekler)
     cleaned = re.sub(r"\b\d{6,}-?[a-z-]*\b", "", query, flags=re.IGNORECASE)
     cleaned = re.sub(r"[^\w\sıİğĞüÜşŞöÖçÇ]", " ", cleaned)
-    # Stop-word listesi
-    stop = {"almak", "almayi", "almayı", "almay", "dusunuyorum", "düşünüyorum", "düşünüyor",
-            "icin", "için", "olan", "olan", "tipi", "bana", "uygun", "ile", "ve", "veya",
-            "araştır", "arastir", "arastrir", "bul", "tara", "göster", "lutfen", "lütfen",
-            "alici", "alıcı", "merhaba", "lordum", "lordum", "kuroshin", "tl", "bütçem", "butcem"}
+    # 3 Haz 2026 FIX: Lord canli inject ornegi 'Kuroshin Market Master: kondisyon bisikleti 3000 TL butce arastir'
+    # → LLM tool param 'Kuroshin butce' verdi → 'butce' stop'ta yoktu → defter/taki sonucu geldi
+    stop = {
+        # Niyet/eylem (eski)
+        "almak", "almayi", "almayı", "almay", "dusunuyorum", "düşünüyorum", "düşünüyor",
+        "icin", "için", "olan", "tipi", "bana", "uygun", "ile", "ve", "veya",
+        "araştır", "arastir", "arastrir", "ara", "bul", "tara", "göster", "goster",
+        "lutfen", "lütfen", "alici", "alıcı", "merhaba", "lordum",
+        # Sistem/hitap kelimeler (yeni)
+        "kuroshin", "master", "marketmaster",
+        # Para/butce kelimeleri (yeni — Lord canli inject bug)
+        "tl", "lira", "para", "para", "fiyat", "fiyatli", "fiyatlı",
+        "butce", "butçe", "bütçe", "bütçem", "butcem", "butcesi", "bütçesi",
+        "budget", "budgetla", "fiyatla", "civari", "civarı", "kadar", "yaklasik", "yaklaşık",
+    }
     tokens = [t for t in cleaned.split() if t and t.lower() not in stop and len(t) > 2]
-    return " ".join(tokens[:max_words]).strip() or "kondisyon bisikleti"
+    out = " ".join(tokens[:max_words]).strip()
+    # Anlamsiz (cok kisa veya stop-only) ise default'a dus
+    if not out or len(out) < 5:
+        return "kondisyon bisikleti"
+    return out
 
 
 def _query_to_slug(query: str) -> str:

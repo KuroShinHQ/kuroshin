@@ -4660,8 +4660,11 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         _top_n = int(_topn_match.group(1)) if _topn_match else 3
         _top_n = max(1, min(_top_n, 5))
         # FIX-ALL B3: Query sanitize ÇOK agresif (sanitize_query market_master içinde de var)
+        # 4 Haz 2026 FIX: _market_triggers içinde "kondisyon bisikleti" varsa (TL+bütçe heuristic)
+        # query temizlerken o kategori adi da silindi → query="Kuroshin yap var" oldu.
+        # Sadece STRONG triggers (sistem kelimeleri) silinmeli, kategori isimleri KORUNMALI.
         _q = text
-        for _trig in _market_triggers:
+        for _trig in _market_triggers_strong:
             _q = _re_global.compile(_re_global.escape(_trig), _re_global.IGNORECASE).sub("", _q)
         _q = _re_global.sub(r"\d+(?:[.,]\d+)*\s*(?:tl|₺|lira)", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"en iyi\s*\d+", "", _q, flags=_re_global.IGNORECASE)
