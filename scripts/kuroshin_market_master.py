@@ -241,10 +241,14 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
             cards = soup.select('[class*="product-card"], [class*="ProductCard"], article[class*="product"]')[:limit*2]
             title_selectors = ['h3', 'h2', '[class*="ProductTitle"]', '[class*="title"]']
             price_selectors = ['[class*="Price"]', '[class*="price"]']
-        elif "akakce" in site:
-            cards = soup.select('.pl, .pw_v, [class*="pl_v"], li[class*="product"]')[:limit*2]
-            title_selectors = ['[class*="pn"]', 'h3', 'a[title]', '[class*="name"]']
-            price_selectors = ['[class*="pt"]', '[class*="price"]']
+        elif "akakce" in site or "sahibinden_indirect" in site:
+            # Akakce/Sahibinden indirect (4 Haz canli debug — 32 urun teyit):
+            # Her urun: <li>...<a class="iC"><span class="pn_v8">{name}</span></a>
+            #            <span class="pt_v8">{price} TL +N FIYAT</span>...</li>
+            # name+price prefix class — version uçucu (pn_v8/pn_v9), prefix sabit
+            cards = soup.select('li:has(span[class^="pn_v"]), li:has(a.iC)')[:limit*3]
+            title_selectors = ['span[class^="pn_v"]', '[class^="pn_v"]', 'a[class*="iC"]']
+            price_selectors = ['span[class^="pt_v"]', '[class^="pt_v"]']
 
         for card in cards:
             try:
@@ -329,8 +333,9 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                             break
                     if price_el:
                         price_text = price_el.get_text(" ", strip=True)
-                        # "3.990 TL" veya "2.544,89 TL" patterni — TR format
-                        pm = re.search(r"([\d.]+)(?:,(\d{1,2}))?\s*(?:TL|₺)", price_text)
+                        # "3.990 TL", "2.544,89 TL", "5.990 ,00 TL" (akakce bosluklu)
+                        # TR format: nokta binlik ayraç, virgül ondalık
+                        pm = re.search(r"([\d.]+)\s*(?:,(\d{1,2}))?\s*(?:TL|₺)", price_text)
                         if pm:
                             try:
                                 int_part = pm.group(1).replace(".", "")
