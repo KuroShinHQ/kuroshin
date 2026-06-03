@@ -540,6 +540,9 @@ _TOOL_EXAMPLE_ARGS = {
 MARKET_CALLBACKS = ["market_yeniden_ara", "market_mod_degistir", "market_derin",
                     "market_tablo", "market_tum_linkler"]
 
+# Son market_master sonucu (callback için): {"args": {...}, "result": {...}}
+_LAST_MARKET_RESULT: dict = {}
+
 # ── ARAÇLAR ───────────────────────────────────────────
 TOOLS = [
     {
@@ -3192,6 +3195,14 @@ def run_tool(name: str, args: dict) -> str:
                     time.sleep(0.3)  # Telegram rate-limit
             n = len(result.get("listings", []))
             top_score = result["listings"][0]["master"] if n else "N/A"
+            # FAZ-4: callback handler icin son market_master sonucu cache'le
+            _LAST_MARKET_RESULT.clear()
+            _LAST_MARKET_RESULT.update({
+                "args": {"query": query, "budget": budget, "mod": mod, "top_n": top_n,
+                         "category_slug": category_slug, "chat_id": chat_id},
+                "result": result,
+                "ts": time.time(),
+            })
             return f"✅ Market Master tamamlandı: {n} ürün bulundu, top score={top_score}, elapsed={result['elapsed_sec']}s"
         except Exception as e:
             _log(f"[MARKET_MASTER] hata: {type(e).__name__}: {e}")
@@ -5504,6 +5515,105 @@ def main():
                         _PENDING_PUSH.clear()
                         answer_callback(cqid, "❌ İptal edildi.")
                         send_msg(ALLOWED_ID, "❌ GitHub push iptal edildi.")
+                        continue
+
+                    # ── DALGA-6 FAZ-4: Market Master inline keyboard callback'leri ──
+                    if cuid == ALLOWED_ID and data in MARKET_CALLBACKS:
+                        if not _LAST_MARKET_RESULT.get("args"):
+                            answer_callback(cqid, "⚠️ Son Market Master sonucu yok.")
+                            continue
+                        _last_args = _LAST_MARKET_RESULT["args"]
+                        _last_result = _LAST_MARKET_RESULT.get("result", {})
+                        _last_listings = _last_result.get("listings", [])
+
+                        if data == "market_yeniden_ara":
+                            answer_callback(cqid, "🔄 Aynı kriterle yeniden taranıyor...")
+                            send_msg(ALLOWED_ID, f"🔄 Yeniden ara: {_last_args.get('query','?')} ({_last_args.get('budget',0):,.0f} TL, {_last_args.get('mod','dengeli')} mod)")
+                            run_tool("market_master", {
+                                "query": _last_args["query"],
+                                "budget": _last_args["budget"],
+                                "mod": _last_args["mod"],
+                                "top_n": _last_args["top_n"],
+                                "category_slug": _last_args.get("category_slug", ""),
+                            })
+                            continue
+
+                        if data == "market_mod_degistir":
+                            answer_callback(cqid, "⚖️ Mod seçimi")
+                            _mod_kb = [
+                                [{"text": "💰 Bütçe",     "callback_data": "market_setmod_butce"},
+                                 {"text": "🛡️ Güven",     "callback_data": "market_setmod_guven"}],
+                                [{"text": "⚡ Performans", "callback_data": "market_setmod_performans"},
+                                 {"text": "⚖️ Dengeli",    "callback_data": "market_setmod_dengeli"}],
+                            ]
+                            send_msg_keyboard(ALLOWED_ID, "⚖️ <b>Mod seçimi</b>\nHangi mod ile yeniden hesaplansın?", _mod_kb)
+                            continue
+
+                        if data == "market_tablo":
+                            answer_callback(cqid, "📊 Tablo tekrar gönderiliyor")
+                            try:
+                                import sys as _s_mt
+                                if "/mnt/c/Kuroshin/scripts" not in _s_mt.path:
+                                    _s_mt.path.insert(0, "/mnt/c/Kuroshin/scripts")
+                                from kuroshin_market_master import _market_render_ascii_chart, ProductListing
+                                _rebuilt = [ProductListing(
+                                    title=L["title"], price=L["price"], url=L["url"], site=L["site"],
+                                    v_score=L["v"], r_score=L["r"], f_score=L["f"], master_score=L["master"],
+                                ) for L in _last_listings]
+                                send_msg(ALLOWED_ID, _market_render_ascii_chart(_rebuilt))
+                            except Exception as _e:
+                                send_msg(ALLOWED_ID, f"⚠️ Tablo render hatası: {_e}")
+                            continue
+
+                        if data == "market_derin":
+                            if not _last_listings:
+                                answer_callback(cqid, "⚠️ Listing yok")
+                                continue
+                            answer_callback(cqid, "🔍 1. ürün için derin analiz...")
+                            try:
+                                import sys as _s_md
+                                if "/mnt/c/Kuroshin/scripts" not in _s_md.path:
+                                    _s_md.path.insert(0, "/mnt/c/Kuroshin/scripts")
+                                from kuroshin_market_master import (
+                                    merchant_judge, _market_msg_derin_analiz, ProductListing,
+                                )
+                                _top = _last_listings[0]
+                                _pl = ProductListing(
+                                    title=_top["title"], price=_top["price"], url=_top["url"],
+                                    site=_top["site"], v_score=_top["v"], r_score=_top["r"],
+                                    f_score=_top["f"], master_score=_top["master"],
+                                )
+                                _jr = merchant_judge(_pl, {"kritik": []}, mod=_last_args.get("mod", "dengeli"))
+                                send_msg(ALLOWED_ID, _market_msg_derin_analiz(_pl, _jr))
+                            except Exception as _e:
+                                send_msg(ALLOWED_ID, f"⚠️ Derin analiz hatası: {_e}")
+                            continue
+
+                        if data == "market_tum_linkler":
+                            answer_callback(cqid, "🛒 Tüm linkler")
+                            if not _last_listings:
+                                send_msg(ALLOWED_ID, "⚠️ Listing yok")
+                                continue
+                            _lines = ["🛒 <b>Tüm Linkler</b>", ""]
+                            for i, L in enumerate(_last_listings, 1):
+                                _lines.append(f"{i}. <b>{L['site']}</b> — <a href=\"{L['url']}\">{L['title'][:60]}</a> ({L['price']:,.0f} TL · MASTER {L['master']})")
+                            send_msg(ALLOWED_ID, "\n".join(_lines))
+                            continue
+
+                    # market_setmod_X callback (FAZ-4 sub-menu)
+                    if cuid == ALLOWED_ID and data.startswith("market_setmod_"):
+                        _new_mod = data.replace("market_setmod_", "")
+                        if not _LAST_MARKET_RESULT.get("args"):
+                            answer_callback(cqid, "⚠️ Son sonuç yok.")
+                            continue
+                        _la = _LAST_MARKET_RESULT["args"]
+                        answer_callback(cqid, f"⚖️ Mod: {_new_mod}")
+                        send_msg(ALLOWED_ID, f"⚖️ Mod değişti: <b>{_new_mod}</b> — {_la.get('query','?')} için yeniden hesaplanıyor")
+                        run_tool("market_master", {
+                            "query": _la["query"], "budget": _la["budget"],
+                            "mod": _new_mod, "top_n": _la["top_n"],
+                            "category_slug": _la.get("category_slug", ""),
+                        })
                         continue
 
                     # F6-07: MD güncelleme onay/iptal callback'leri

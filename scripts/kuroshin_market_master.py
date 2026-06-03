@@ -496,6 +496,48 @@ class MerchantScorer:
 # ============================================================================
 # FAZ-3 STUB'ları — LLM Reasoning (Tüccar Zekası)
 # ============================================================================
+def _safe_json_parse(raw: str) -> dict:
+    """FAZ-3 (2 Haz 2026): Llama JSON yanit guvenli parse.
+    Markdown code block strip + regex { ... } fallback (Llama bazen markdown sariyor)."""
+    if not raw:
+        return {}
+    # 1. Markdown code block strip: ```json ... ```
+    cleaned = re.sub(r"```(?:json)?\s*", "", raw)
+    cleaned = re.sub(r"```\s*$", "", cleaned).strip()
+    # 2. Direkt parse dene
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    # 3. Regex ile en buyuk { ... } blogu cikar
+    m = re.search(r"\{[\s\S]*\}", cleaned)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def _llm_json_call(prompt: str, llama_url: str, max_tokens: int = 600,
+                   temperature: float = 0.0, timeout: int = 90) -> Tuple[dict, str]:
+    """FAZ-3 LLM call wrapper — JSON mode + safe parse + raw response don.
+    Returns: (parsed_dict, raw_response_text)
+    """
+    try:
+        import requests
+        r = requests.post(llama_url, json={
+            "model": "local",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens, "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }, timeout=timeout)
+        raw = r.json()["choices"][0]["message"]["content"]
+        return _safe_json_parse(raw), raw
+    except Exception as e:
+        return {}, f"EXC: {type(e).__name__}: {str(e)[:120]}"
+
+
 def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any]:
     """FAZ-3: 2.el ilan açıklamasından kusur tipi çıkar (LLM JSON mode).
 
@@ -505,29 +547,24 @@ def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any
         return {"flaws": [], "total_kesinti": 0}
 
     prompt = (
-        "İlan açıklamasını analiz et. Aşağıdaki 4 kusur tipinden hangileri var?\n"
-        "  - kozmetik: ufak çizik, etiket izi, boya atması\n"
-        "  - kullanim: kablo ezilmiş, koltuk yıpranması\n"
-        "  - fonksiyonel: motor sesli, direnç ayarı bozuk\n"
-        "  - yapisal: şase çatlağı, kırık\n"
-        "SADECE ham JSON döndür: {\"flaws\": [{\"tip\": \"kozmetik\", \"snippet\": \"...\"}]}\n"
-        f"\nİlan: {description[:1000]}\n"
+        'Aşağıdaki Türkçe ilan açıklamasında 4 kusur tipinden hangileri var?\n\n'
+        'KUSUR TİPLERİ:\n'
+        '- "kozmetik": ufak çizik, etiket izi, boya atması\n'
+        '- "kullanim": kablo ezilmiş, koltuk yıpranması, ekran çizik\n'
+        '- "fonksiyonel": motor ses yapıyor, direnç ayarı bozuk\n'
+        '- "yapisal": şase çatlağı, kırık, devre kartı yanık\n\n'
+        'SADECE şu JSON yapısında yanıt ver (markdown YOK, açıklama YOK):\n'
+        '{"flaws": [{"tip": "kozmetik", "snippet": "ilandan alıntı"}]}\n'
+        'Kusur yoksa: {"flaws": []}\n\n'
+        f'İLAN: {description[:1000]}\n\n'
+        'JSON çıktı:'
     )
-    try:
-        import requests
-        r = requests.post(llama_url, json={
-            "model": "local",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 600, "temperature": 0.0,
-            "response_format": {"type": "json_object"},
-        }, timeout=60)
-        raw = r.json()["choices"][0]["message"]["content"]
-        data = json.loads(raw)
-        flaws = data.get("flaws", [])
-        total = sum(KUSUR_RISK.get(f.get("tip", ""), {}).get("kesinti", 0) for f in flaws)
-        return {"flaws": flaws, "total_kesinti": total}
-    except Exception as e:
-        return {"flaws": [], "total_kesinti": 0, "error": str(e)[:120]}
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=600)
+    if not data:
+        return {"flaws": [], "total_kesinti": 0, "raw_preview": raw[:120]}
+    flaws = data.get("flaws", [])
+    total = sum(KUSUR_RISK.get(f.get("tip", ""), {}).get("kesinti", 0) for f in flaws)
+    return {"flaws": flaws, "total_kesinti": total}
 
 
 def evaluate_reviews(reviews: List[str], llama_url: str = LLAMA_URL) -> Dict[str, Any]:
@@ -536,22 +573,22 @@ def evaluate_reviews(reviews: List[str], llama_url: str = LLAMA_URL) -> Dict[str
         return {"kronik_sorunlar": [], "ozet": ""}
     sample = " ".join(reviews[:20])[:2000]
     prompt = (
-        "Yorumları analiz et. Tekrarlayan kronik sorunlar (>2 yorumda geçen) varsa listele.\n"
-        "SADECE ham JSON: {\"kronik_sorunlar\": [{\"sorun\": \"...\", \"frekans\": N}], \"ozet\": \"...\"}\n"
-        f"\nYorumlar: {sample}\n"
+        'Aşağıdaki Türkçe kullanıcı yorumlarını analiz et. EN AZ 2 yorumda tekrarlayan '
+        'kronik sorunları bul.\n\n'
+        'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
+        '{"kronik_sorunlar": [{"sorun": "kısa açıklama", "frekans": 3}], '
+        '"ozet": "1-2 cümle özet"}\n'
+        'Kronik sorun yoksa: {"kronik_sorunlar": [], "ozet": "..."}\n\n'
+        f'YORUMLAR:\n{sample}\n\n'
+        'JSON çıktı:'
     )
-    try:
-        import requests
-        r = requests.post(llama_url, json={
-            "model": "local",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 800, "temperature": 0.0,
-            "response_format": {"type": "json_object"},
-        }, timeout=90)
-        raw = r.json()["choices"][0]["message"]["content"]
-        return json.loads(raw)
-    except Exception as e:
-        return {"kronik_sorunlar": [], "ozet": "", "error": str(e)[:120]}
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=800, timeout=120)
+    if not data:
+        return {"kronik_sorunlar": [], "ozet": "", "raw_preview": raw[:120]}
+    return {
+        "kronik_sorunlar": data.get("kronik_sorunlar", []),
+        "ozet": data.get("ozet", ""),
+    }
 
 
 def merchant_judge(listing: ProductListing, criteria: Dict[str, Any],
@@ -566,23 +603,20 @@ def merchant_judge(listing: ProductListing, criteria: Dict[str, Any],
         f"Kategori kritikleri: {', '.join((criteria.get('kritik') or [])[:6])}\n"
     )
     prompt = (
-        "Aşağıdaki ürün için 1-3 cümle Türkçe gerekçe yaz (Lord'a hitap). "
-        "JSON: {\"gerekce\": \"...\", \"final_score\": <float>}\n"
-        f"\n{summary}"
+        'Aşağıdaki ürün için Lord\'a hitap eden 1-3 cümle Türkçe gerekçe yaz.\n\n'
+        'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
+        '{"gerekce": "Lordum, bu ürün ... çünkü ...", "final_score": 8.5}\n\n'
+        f'ÜRÜN BİLGİSİ:\n{summary}\n\n'
+        'JSON çıktı:'
     )
-    try:
-        import requests
-        r = requests.post(llama_url, json={
-            "model": "local",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 400, "temperature": 0.2,
-            "response_format": {"type": "json_object"},
-        }, timeout=60)
-        raw = r.json()["choices"][0]["message"]["content"]
-        return json.loads(raw)
-    except Exception as e:
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=400, temperature=0.2, timeout=60)
+    if not data:
         return {"gerekce": "(LLM gerekçe alınamadı)", "final_score": listing.master_score,
-                "error": str(e)[:120]}
+                "raw_preview": raw[:120]}
+    return {
+        "gerekce": data.get("gerekce", "(gerekçe boş)"),
+        "final_score": data.get("final_score", listing.master_score),
+    }
 
 
 # ============================================================================
