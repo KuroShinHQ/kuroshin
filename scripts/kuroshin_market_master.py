@@ -268,23 +268,81 @@ class MarketFetcher:
                            error=f"Indirect destek yok: {domain}")
 
     def fetch_sahibinden_indirect(self, ref_url_or_query: str) -> FetchResult:
-        """FAZ-2 stub: Sahibinden için dolaylı veri.
+        """FAZ-2 (2 Haz 2026): Sahibinden için dolaylı veri — login YOK doktrini.
 
-        Strateji:
-          1. Google search snippet ile başlık + fiyat (web_search tool wrapper)
-          2. cimri.com / akakce.com agregator (curl_cffi)
-          3. LLM ile snippet özet → ProductListing dönüştür
+        Strateji (önem sırasıyla):
+          1. cimri.com agregator (curl_cffi chrome124) — Sahibinden fiyat snippet'leri
+          2. akakce.com agregator (curl_cffi chrome124) — alternatif
+          3. Google search snippet (web_search tool fallback)
+          4. LLM ile snippet özet → ProductListing dönüştür (caller yapar)
 
-        Şu an stub — FAZ-2'de tam implementasyon. Log işareti var.
+        Lord doktrini: public veri, login YOK, iz bırakmadan (rate limit otomatik).
         """
-        self.log(f"[SAHIBINDEN_INDIRECT stub] ref={ref_url_or_query[:60]}")
-        # FAZ-2'de: cimri.com / akakce.com agregator + google_snippet
-        # cimri_url = "https://www.cimri.com/spor/kondisyon-bisikleti"
-        # akakce_url = "https://www.akakce.com/kondisyon-bisikleti-fiyatlari.html"
+        # Query string normalize (URL veya raw query)
+        query = ref_url_or_query
+        if "sahibinden.com" in query.lower():
+            # URL'den anahtar kategori isim çıkar
+            m = re.search(r"/([a-z0-9-]+)(?:/|\?|$)", query.lower())
+            query = m.group(1).replace("-", " ") if m else "kondisyon bisikleti"
+        self.log(f"[SAHIBINDEN_INDIRECT] query='{query[:60]}' — 4 katmanli dolayli")
+
+        # 1. cimri.com — Türkiye'nin en büyük fiyat karşılaştırma agregatörü
+        cimri_slug = query.lower().strip().replace(" ", "-")
+        cimri_url = f"https://www.cimri.com/search?q={query.replace(' ', '+')}"
+        r_cimri = self._fetch_curlcffi(cimri_url, "cimri.com", "chrome124")
+        if r_cimri.status == 200 and not r_cimri.blocked and len(r_cimri.text) > 5000:
+            self.log(f"[SAHIBINDEN_INDIRECT cimri] OK chars={len(r_cimri.text)}")
+            r_cimri.tier = "indirect/cimri"
+            return r_cimri
+
+        # 2. akakce.com — alternatif agregator
+        akakce_url = f"https://www.akakce.com/arama/?q={query.replace(' ', '+')}"
+        r_akakce = self._fetch_curlcffi(akakce_url, "akakce.com", "chrome124")
+        if r_akakce.status == 200 and not r_akakce.blocked and len(r_akakce.text) > 5000:
+            self.log(f"[SAHIBINDEN_INDIRECT akakce] OK chars={len(r_akakce.text)}")
+            r_akakce.tier = "indirect/akakce"
+            return r_akakce
+
+        # 3. Google search snippet — caller bu listeyi alıp LLM ile özetler
+        snippet = self._google_search_snippet(f"site:sahibinden.com {query}")
+        if snippet:
+            self.log(f"[SAHIBINDEN_INDIRECT google_snippet] hits={len(snippet)} chars")
+            return FetchResult(
+                url=ref_url_or_query, status=200, text=snippet,
+                tier="indirect/google_snippet", elapsed_s=0.0,
+                title=f"Sahibinden dolaylı (google snippet): {query[:40]}",
+            )
+
+        # Hepsi fail
         return FetchResult(
             url=ref_url_or_query, status=0, tier="indirect",
-            error="FAZ-2 stub: sahibinden dolaylı (cimri/akakce + google snippet) henüz implementasyon yok",
+            error=f"Sahibinden dolaylı 3 katman fail (cimri/akakce/google_snippet)",
         )
+
+    def _google_search_snippet(self, query: str) -> str:
+        """Google search snippet ile dolaylı veri (DuckDuckGo HTML fallback).
+
+        Lord doktrini: web_search tool kullanımına alternatif. DDG HTML interface
+        (https://duckduckgo.com/html/?q=...) — JavaScript-free, scrape-friendly.
+        """
+        ddg_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}"
+        r = self._fetch_curlcffi(ddg_url, "duckduckgo.com", "chrome124")
+        if r.status != 200 or r.blocked:
+            return ""
+        # DDG result snippet extract (BS4 varsa)
+        if BeautifulSoup is None:
+            return r.text[:3000]
+        try:
+            soup = BeautifulSoup(r.text, "html.parser")
+            snippets = []
+            for res in soup.select(".result__body, .web-result")[:15]:
+                title_el = res.select_one(".result__title, h2")
+                snippet_el = res.select_one(".result__snippet, .result__body")
+                if title_el and snippet_el:
+                    snippets.append(f"• {title_el.get_text(strip=True)[:120]}\n  {snippet_el.get_text(strip=True)[:200]}")
+            return "\n".join(snippets)[:5000] if snippets else r.text[:3000]
+        except Exception:
+            return r.text[:3000]
 
 
 # ============================================================================

@@ -178,7 +178,9 @@ async def _fetch(url: str) -> str:
 
 
 def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
-    """JavaScript-heavy siteleri Crawlee ile crawl et. mode: simple|playwright|stealth"""
+    """JavaScript-heavy siteleri Crawlee ile crawl et. mode: simple|playwright|stealth
+    BORC-4-bis (2 Haz 2026): her katman sonrası _is_blocked_response check
+    → short-content/CF-sig varsa exception fırlat, bir sonraki katmana düş."""
     _log(f"[WALKER TOOL] Crawlee Deep Crawl: {url} (mod: {mode})")
     try:
         resp = httpx.post(
@@ -190,7 +192,11 @@ def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
             data = resp.json()
             content = data.get("content", "")
             elapsed = data.get("elapsed", "?")
-            _log(f"[CRAWLEE] Başarılı: {len(content)} karakter ({elapsed}s, mod: {data.get('mode', mode)})")
+            _log(f"[CRAWLEE] {len(content)} karakter ({elapsed}s, mod: {data.get('mode', mode)})")
+            # BORC-4-bis: short-content / CF interstitial check
+            if _is_blocked_response(content):
+                _log(f"[BLOCKED_RESPONSE] Crawlee donus blocked (chars={len(content)} < 500 veya CF sig) → Crawl4AI fallback")
+                raise Exception("Crawlee blocked-response (short-content/CF-sig)")
             if content:
                 return sanitize_web_content(content, max_chars=CRAWL_CHAR_LIMIT)
             return f"Crawlee içerik üretemedi: {url}"
@@ -206,13 +212,22 @@ def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
                 result = loop.run_until_complete(_fetch(url))
                 loop.close()
             if result and "Sayfa okunamadı" not in result:
+                # BORC-4-bis: Crawl4AI dönüş block-sig check
+                if _is_blocked_response(result):
+                    _log(f"[BLOCKED_RESPONSE] Crawl4AI donus blocked → Camoufox fallback")
+                    raise Exception("Crawl4AI blocked-response")
                 return result
             raise Exception("Crawl4AI boş döndü")
         except Exception as e2:
             _log(f"[CRAWLEE] Crawl4AI de başarısız ({e2}), Camoufox deneniyor...")
         # 3. Camoufox 3. fallback
         try:
-            return _camoufox_fetch(url)
+            cam_result = _camoufox_fetch(url)
+            # BORC-4-bis: Camoufox da CF interstitial dönebilir (58 char "Just a moment")
+            if _is_blocked_response(cam_result):
+                _log(f"[BLOCKED_RESPONSE] Camoufox donus blocked (chars={len(cam_result or '')}) → kuroshin_scraper fallback")
+                raise Exception("Camoufox blocked-response (Sahibinden tipi)")
+            return cam_result
         except Exception as e3:
             _log(f"[CRAWLEE] Camoufox da başarısız ({e3}), kuroshin_scraper son fallback deneniyor...")
         # 4. BORÇ-4 (2 Haz 2026) kuroshin_scraper son fallback — 8 anti-bot signature + UA rotate
