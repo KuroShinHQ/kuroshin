@@ -48,12 +48,18 @@ eval nohup "$BIN" -m "$MODEL" \
 
 echo "llama-server PID $! baslatildi, 8080 portu bekleniyor..."
 
-for i in $(seq 1 45); do
+# FIX-ALL A1 (3 Haz 2026): 35B+256K ctx ~150s normal, timeout 90s → 240s
+# Lord direktifi: timer sürekli görünsün, sessiz kalmasın
+for i in $(seq 1 120); do
     sleep 2
     if curl -s --max-time 2 http://127.0.0.1:8080/health | grep -q ok; then
         echo "llama-server HAZIR ($((i*2))s)"
         exit 0
     fi
+    # Her 20s'de bir progress (10 iter)
+    if [ $((i % 10)) -eq 0 ]; then
+        echo "  ... llama-server yukleniyor ($((i*2))s gectiti, max 240s)"
+    fi
 done
-echo "UYARI: 90s icinde yanit yok"
+echo "UYARI: 240s icinde yanit yok (35B+256K agir, bat ana akıştan devam)"
 exit 1

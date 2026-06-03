@@ -4616,12 +4616,26 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             })
             break
 
-    # ── DALGA-6 FAZ-1 MARKET MASTER explicit routing (2 Haz 2026) ──
+    # ── DALGA-6 MARKET MASTER explicit routing (2 Haz 2026 + 3 Haz FIX-ALL) ──
     # Lord doktrini: LLM tool routing guvenilmez → keyword + butce regex tetik
-    _market_triggers = ("market master", "alışveriş ara", "alisveris ara", "fiyat karşılaştır",
-                        "fiyat karsilastir", "ürün tara", "urun tara", "ürün ara", "urun ara",
-                        "market_master tool", "satın al")
-    if any(_trig in _text_lower for _trig in _market_triggers):
+    # FIX-ALL: Lord doğal yazıyor ("kondisyon bisikleti ... bütçem 3000 tl araştır")
+    # → bütçe + araştır/al + kategori anahtarları kombo tetik
+    _market_triggers_strong = ("market master", "alışveriş ara", "alisveris ara",
+                                "fiyat karşılaştır", "fiyat karsilastir", "ürün tara",
+                                "urun tara", "ürün ara", "urun ara", "market_master tool",
+                                "satın al", "satin al")
+    # Hafif tetik: mesajda "tl" + (araştır|al|bul|bütçe) varsa
+    _has_tl_budget = bool(_re_global.search(r"\d{2,}\s*(?:tl|₺|lira)", _text_lower))
+    _has_action_kw = any(kw in _text_lower for kw in ("araştır", "arastir", "al ", "alalım",
+                                                       "alacağ", "almak", "almay", "bul ",
+                                                       "bütçe", "butce", "tara", "karşılaştır",
+                                                       "karsilastir", "rapor"))
+    _market_triggers = _market_triggers_strong + (
+        ("kondisyon bisikleti",) if _has_tl_budget else ()
+    )
+    _market_match = any(_trig in _text_lower for _trig in _market_triggers) or \
+                    (_has_tl_budget and _has_action_kw)
+    if _market_match:
         # Butce regex: "5000 tl", "5000TL", "5.000 TL", "5,000tl"
         _budget_match = _re_global.search(
             r"(\d{1,3}(?:[.,]\d{3})*|\d+)\s*(?:tl|₺|lira)",
@@ -4638,17 +4652,19 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             if _m_kw in _text_lower:
                 _mod = _m_val
                 break
-        # top_n parse (varsayilan 3, "en iyi N" yakala)
+        # FIX-ALL B2: top_n cap 1-5 (model halüsinasyon 30 → 5 max)
         _topn_match = _re_global.search(r"en iyi\s*(\d+)", _text_lower)
         _top_n = int(_topn_match.group(1)) if _topn_match else 3
-        # Query temizle: tetikleyicileri ve butce/mod fragmentlerini cikar
+        _top_n = max(1, min(_top_n, 5))
+        # FIX-ALL B3: Query sanitize ÇOK agresif (sanitize_query market_master içinde de var)
         _q = text
         for _trig in _market_triggers:
             _q = _re_global.compile(_re_global.escape(_trig), _re_global.IGNORECASE).sub("", _q)
         _q = _re_global.sub(r"\d+(?:[.,]\d+)*\s*(?:tl|₺|lira)", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"en iyi\s*\d+", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"(bütçe|butce|güven|guven|performans|dengeli)\s*odaklı?", "", _q, flags=_re_global.IGNORECASE)
-        _q = _re_global.sub(r"(ara|araştır|arastir|bul|tara|göster|tool|kullan)[ıi]?", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"(ara|araştır|arastir|bul|tara|göster|tool|kullan|al(?:mak|may|ıcı)?|düşünüyor|dusunuyor|raporu sun|rapor)[ıiae]?", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"\b(bütçem|butcem|merhaba|lordum)\b", "", _q, flags=_re_global.IGNORECASE)
         _q = _re_global.sub(r"[:,\-—]+", " ", _q).strip()
         if not _q or len(_q) < 3:
             _q = "kondisyon bisikleti"  # safe fallback
@@ -4656,10 +4672,11 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
         _mm_result = run_tool("market_master", {
             "query": _q, "budget": _budget, "mod": _mod, "top_n": _top_n
         })
-        messages.append({
-            "role": "user",
-            "content": f"[Market Master araç sonucu: {_mm_result}]\n\nKısa onay mesajı yaz (1 cümle, '⚔️ Lordum' başla)."
-        })
+        # FIX-ALL E1+E3: post-tool LLM halüsinasyon engelleme
+        # Telegram'a 5 mesaj zaten gönderildi → ek model özet GEREKMİYOR
+        # messages.append YERİNE direkt return text (chancellor LLM round atlanır)
+        send_msg(_CURRENT_CHAT_ID or ALLOWED_ID, f"⚔️ Lordum, {_mm_result}")
+        return  # Chancellor ana akıştan çık — LLM özet yazmasın
 
     # ── DALGA 5.5 FULL POWER explicit routing ──────────────────────────
     # Lord'un komutu ne olursa olsun "full power", "tum gucle", "/full" prefix'i

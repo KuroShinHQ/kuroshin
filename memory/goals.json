@@ -1,6 +1,22 @@
 {
   "goals": [
     {
+      "id": "G-MMV2",
+      "baslik": "Market Master v2 (Otonom Alışveriş)",
+      "aciklama": "Pazar araştırması yapan ve en iyi fiyat/performans ürünlerini bulan otonom ajan",
+      "oncelik": 1,
+      "durum": "aktif",
+      "ilerleme": 10,
+      "alt_hedefler": [
+        "protokol_tasarimi",
+        "market_fetcher_crawling",
+        "merchant_reasoning"
+      ],
+      "olusturma_ts": "2026-06-02T16:45:00",
+      "son_guncelleme": "2026-06-02T16:45:00",
+      "notlar": "docs/OTONOM_ALISVERIS_PROTOKOLU.md"
+    },
+    {
       "id": "G-DOOM",
       "baslik": "OVERDRIVE Tam Güç Pipeline Testi",
       "aciklama": "16 araç, tüm güvenlik katmanları, HITL tetikleme",

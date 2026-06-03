@@ -100,6 +100,168 @@ KUSUR_RISK = {
 
 
 # ============================================================================
+# LISTING PARSER (3 Haz 2026 FIX-ALL): JSON-LD primary + CSS fallback
+# Lord direktifi: "prob testlerinde veri alabiliyorduk, dogru formul olmali"
+# JSON-LD universal — buyuk e-ticaret siteleri Product structured data ekliyor
+# ============================================================================
+def _is_product_ld(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    t = data.get("@type", "")
+    if isinstance(t, list):
+        return any(tt == "Product" for tt in t)
+    return t == "Product"
+
+
+def _ld_to_listing_dict(data: dict, site: str) -> Optional[Dict[str, Any]]:
+    """JSON-LD Product → ProductListing kwargs dict."""
+    if not _is_product_ld(data):
+        return None
+    offers = data.get("offers", {})
+    if isinstance(offers, list):
+        offers = offers[0] if offers else {}
+    price = 0.0
+    try:
+        raw_price = offers.get("price", 0) if isinstance(offers, dict) else 0
+        if raw_price in (None, "", 0):
+            raw_price = offers.get("lowPrice", 0) if isinstance(offers, dict) else 0
+        price = float(str(raw_price).replace(",", "."))
+    except (ValueError, TypeError):
+        pass
+    rating = None
+    review_count = 0
+    rating_obj = data.get("aggregateRating", {})
+    if isinstance(rating_obj, dict):
+        try:
+            rating = float(rating_obj.get("ratingValue") or 0) or None
+            review_count = int(float(rating_obj.get("reviewCount") or rating_obj.get("ratingCount") or 0))
+        except (ValueError, TypeError):
+            pass
+    url = data.get("url", "") or ""
+    if isinstance(offers, dict):
+        url = url or offers.get("url", "")
+    return {
+        "title": str(data.get("name", ""))[:200],
+        "price": price,
+        "url": str(url)[:500],
+        "site": site,
+        "rating": rating,
+        "review_count": review_count,
+        "description": str(data.get("description", ""))[:600],
+    }
+
+
+def _parse_listings_from_html(html: str, site: str, budget: float,
+                              limit: int = 10, log_fn=None) -> List[Dict[str, Any]]:
+    """Universal listing parser. JSON-LD primary + site-specific CSS fallback.
+    Returns: list of dict (ProductListing kwargs).
+    """
+    log = log_fn or (lambda m: None)
+    out: List[Dict[str, Any]] = []
+    if not html or BeautifulSoup is None:
+        return out
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return out
+
+    # 1. JSON-LD Product structured data (universal — sitelere bağımsız)
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            txt = script.string or script.get_text() or ""
+            if not txt.strip():
+                continue
+            data = json.loads(txt)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        # Tek Product
+        ld = _ld_to_listing_dict(data, site)
+        if ld:
+            out.append(ld)
+            continue
+        # ItemList içinde Product'lar
+        if isinstance(data, dict) and data.get("@type") == "ItemList":
+            for elem in data.get("itemListElement", []):
+                item = elem.get("item") if isinstance(elem, dict) else None
+                ld = _ld_to_listing_dict(item, site)
+                if ld:
+                    out.append(ld)
+        # Liste of dicts
+        if isinstance(data, list):
+            for item in data:
+                ld = _ld_to_listing_dict(item, site)
+                if ld:
+                    out.append(ld)
+        # @graph wrapper
+        if isinstance(data, dict) and "@graph" in data:
+            for item in data["@graph"]:
+                ld = _ld_to_listing_dict(item, site)
+                if ld:
+                    out.append(ld)
+    log(f"[PARSER {site}] JSON-LD'den {len(out)} urun")
+
+    # 2. CSS selectors site-spesifik fallback (JSON-LD yetmezse)
+    if len(out) < 3:
+        cards = []
+        if "trendyol" in site:
+            cards = soup.select(".p-card-wrppr, .product-card, .prdct-cntnr-wrppr")[:limit*2]
+        elif "hepsiburada" in site:
+            cards = soup.select('[data-test-id*="product"], .productListContent li, .hbus-product-card')[:limit*2]
+        elif "epey" in site:
+            cards = soup.select('.urun-listesi-blok, .listele-blok, .urun-item, article.urun')[:limit*2]
+        elif "cimri" in site:
+            cards = soup.select('[class*="product"], [class*="Product"], .item-card, .ProductCard')[:limit*2]
+        elif "akakce" in site:
+            cards = soup.select(".pl, .p_w_v, [class*='pl_v']")[:limit*2]
+        for card in cards:
+            try:
+                # Title
+                title_el = (card.select_one("a[title]") or
+                            card.select_one(".prdct-desc-cntnr-name, [data-test-id*='name'], .urun-isim, h2, h3, .title, [class*='title']"))
+                if not title_el:
+                    continue
+                title = title_el.get("title") or title_el.get_text(strip=True)
+                title = title[:200] if title else ""
+                if not title or len(title) < 5:
+                    continue
+                # Price
+                price_el = card.select_one(".prc-box-dscntd, [data-test-id*='price'], .fiyat, .price, [class*='price']")
+                price_text = price_el.get_text(strip=True) if price_el else ""
+                pm = re.search(r"([\d.,]+)", price_text.replace(".", "").replace(",", "."))
+                price = 0.0
+                if pm:
+                    try:
+                        price = float(pm.group(1))
+                    except ValueError:
+                        pass
+                # URL
+                a_el = card.select_one("a[href]")
+                url = a_el.get("href", "") if a_el else ""
+                if url.startswith("/"):
+                    url = f"https://www.{site}{url}"
+                out.append({
+                    "title": title, "price": price, "url": url, "site": site,
+                    "rating": None, "review_count": 0, "description": "",
+                })
+            except Exception:
+                continue
+        log(f"[PARSER {site}] CSS selector ile +{len(out) - (len([x for x in out if x.get('rating') is not None]))} ek urun (toplam {len(out)})")
+
+    # 3. Filtre: fiyat > 0 ve butce*2 sınırı (anormal degerleri at)
+    filtered = [x for x in out if x.get("title") and 0 < x.get("price", 0) <= budget * 2.5]
+    log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (budget*2.5 ust limit)")
+    # Tekil baslık (deduplicate)
+    seen = set()
+    unique = []
+    for x in filtered:
+        key = x["title"][:80].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(x)
+    return unique[:limit]
+
+
+# ============================================================================
 # DATA CLASSES
 # ============================================================================
 @dataclass
@@ -718,20 +880,42 @@ def _market_msg_fallback_zaman_asimi(found_n: int) -> str:
 # ============================================================================
 # ANA ENTRY — chancellor `market_master` tool buraya delegate eder
 # ============================================================================
+def _sanitize_query(query: str, max_words: int = 6) -> str:
+    """Lord direktifi FIX-ALL: model bazen query'yi sisirir (B3 bulgu).
+    Stop-words ve cumle uzunlugunu kirp: 'kondisyon bisikleti almayi dusunyorum' → 'kondisyon bisikleti'."""
+    if not query:
+        return "kondisyon bisikleti"
+    # URL slug temizle (model bazen ilan ID/slug ekler)
+    cleaned = re.sub(r"\b\d{6,}-?[a-z-]*\b", "", query, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[^\w\sıİğĞüÜşŞöÖçÇ]", " ", cleaned)
+    # Stop-word listesi
+    stop = {"almak", "almayi", "almayı", "almay", "dusunuyorum", "düşünüyorum", "düşünüyor",
+            "icin", "için", "olan", "olan", "tipi", "bana", "uygun", "ile", "ve", "veya",
+            "araştır", "arastir", "arastrir", "bul", "tara", "göster", "lutfen", "lütfen",
+            "alici", "alıcı", "merhaba", "lordum", "lordum", "kuroshin", "tl", "bütçem", "butcem"}
+    tokens = [t for t in cleaned.split() if t and t.lower() not in stop and len(t) > 2]
+    return " ".join(tokens[:max_words]).strip() or "kondisyon bisikleti"
+
+
+def _query_to_slug(query: str) -> str:
+    """Türkçe query → URL slug heuristic."""
+    s = query.lower()
+    tr_map = str.maketrans("ıİğĞüÜşŞöÖçÇ", "iiggUUssoocC")
+    s = s.translate(tr_map).lower()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"\s+", "-", s.strip())
+    return s[:60]  # Epey slug genelde 30-50 char
+
+
 def market_master_query(query: str, budget: float = 5000.0,
                         mod: str = "dengeli", top_n: int = 3,
-                        category_slug: str = "kondisyon-bisikleti") -> Dict[str, Any]:
-    """Kuroshin Market Master ana entry.
-
-    Args:
-      query: kullanıcı sorgusu (örn: "kondisyon bisikleti")
-      budget: TL (float)
-      mod: butce|guven|performans|dengeli
-      top_n: dönecek ürün sayısı (default 3)
-      category_slug: Epey URL slug (örn: "kondisyon-bisikleti")
-
-    Returns:
-      {"messages": [...], "listings": [...], "elapsed_sec": N, "meta": {...}}
+                        category_slug: str = "") -> Dict[str, Any]:
+    """Kuroshin Market Master ana entry. FIX-ALL (3 Haz 2026):
+    - query sanitize (model şişirmesi → 2-6 kelime)
+    - top_n cap 5 (model 30 verirse 5'e bastır)
+    - category_slug auto-derive query'den
+    - Listing parser gerçek (JSON-LD + CSS fallback)
+    - Referans fiyat fetched listing'lerin median'ından
     """
     t0 = time.time()
     log_lines: List[str] = []
@@ -739,64 +923,95 @@ def market_master_query(query: str, budget: float = 5000.0,
         log_lines.append(f"[MARKET_MASTER] {msg}")
         print(log_lines[-1])
 
-    _log(f"query={query!r} budget={budget} mod={mod} top_n={top_n} category={category_slug}")
+    # FIX-ALL B2: top_n cap 1-5 (model halüsinasyon 30 → 5)
+    top_n = max(1, min(int(top_n or 3), 5))
+    # FIX-ALL B3: query sanitize (model şişirmesi temizle)
+    query_raw = query
+    query = _sanitize_query(query)
+    # FIX-ALL B4: category_slug auto-derive
+    if not category_slug or len(category_slug) > 60:
+        category_slug = _query_to_slug(query)
+    _log(f"query_raw={query_raw[:80]!r} → query={query!r} budget={budget} mod={mod} top_n={top_n} slug={category_slug}")
 
     fetcher = MarketFetcher(log_fn=_log)
     kb = KnowledgeBase(fetcher, log_fn=_log)
     scorer = MerchantScorer(log_fn=_log)
 
-    # 1) Knowledge base — Epey kategori kriterleri
+    # 1) Knowledge base — Epey kategori kriterleri (sade slug)
     kb_entry = kb.get_or_build(category_slug)
     kritik = kb_entry.get("criteria", {}).get("kritik", [])
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
-    # 2) Referans fiyat (Epey listing min/max — placeholder şu an)
-    # FAZ-1 MVP: tek fetch'ten basit aralık tahmini. FAZ-1.1'de listing parser eklenecek.
-    ref_url = f"https://www.epey.com/{category_slug}/"
-    ref_fetch = fetcher.fetch(ref_url)
-    ref_price_min, ref_price_max = budget * 0.6, budget * 1.4  # geçici tahmin
-    _log(f"Epey ref fetch status={ref_fetch.status} chars={len(ref_fetch.text)}")
-
-    # 3) Telegram MESAJ 1: Başlangıç
+    # 2) Telegram MESAJ 1: Başlangıç (geçici fiyat aralığı; gerçek listing sonrası güncelleyebiliriz)
+    ref_price_min, ref_price_max = budget * 0.6, budget * 1.4
     msg1 = _market_msg_baslangic(query, budget, top_n, mod, len(kritik),
                                  ref_price_min, ref_price_max)
 
-    # 4) Multi-source crawl (Epey + Trendyol + HB direct, Sahibinden indirect FAZ-2 stub)
+    # 3) Multi-source crawl (FIX-ALL: gerçek JSON-LD + CSS parser)
     site_stats: Dict[str, Dict[str, Any]] = {}
     listings: List[ProductListing] = []
-
-    # FAZ-1 MVP: 3 site listing parser stubs (FAZ-1.1'de detaylanır)
-    for site_domain, listing_url in [
-        ("epey.com",        f"https://www.epey.com/{category_slug}/"),
-        ("trendyol.com",    f"https://www.trendyol.com/sr?q={query.replace(' ', '+')}"),
-        ("hepsiburada.com", f"https://www.hepsiburada.com/ara?q={query.replace(' ', '+')}"),
-    ]:
+    site_urls = [
+        ("epey.com",        f"https://www.epey.com/{category_slug}/", "epey"),
+        ("trendyol.com",    f"https://www.trendyol.com/sr?q={query.replace(' ', '+')}", "trendyol"),
+        ("hepsiburada.com", f"https://www.hepsiburada.com/ara?q={query.replace(' ', '+')}", "hepsiburada"),
+    ]
+    for site_domain, listing_url, site_short in site_urls:
         try:
             r = fetcher.fetch(listing_url)
+            if r.blocked or r.status != 200:
+                site_stats[site_domain] = {
+                    "n": 0, "durum": f"blocked ({r.status})", "tier": r.tier,
+                    "title": (r.title or "")[:60],
+                }
+                continue
+            # FIX-ALL: gerçek listing parser
+            parsed = _parse_listings_from_html(r.text, site_short, budget, limit=top_n*2, log_fn=_log)
             site_stats[site_domain] = {
-                "n": 0 if r.blocked else 1,  # FAZ-1.1: gerçek parse
-                "durum": "blocked" if r.blocked else "tamam",
+                "n": len(parsed),
+                "durum": "tamam" if parsed else "tamam (parse=0)",
                 "tier": r.tier,
-                "title": r.title[:60],
+                "title": (r.title or "")[:60],
+                "chars": len(r.text),
             }
-            if not r.blocked and r.status == 200:
-                # FAZ-1.1 placeholder: tek dummy listing (gerçek parse FAZ-1.1)
-                listings.append(ProductListing(
-                    title=f"[{site_domain}] {r.title or query}",
-                    price=budget * 0.85,  # geçici
-                    url=listing_url,
-                    site=site_domain.replace(".com", ""),
-                    rating=4.3, review_count=120,
-                    features={"epey_url": listing_url},
-                ))
+            for p in parsed:
+                listings.append(ProductListing(**p))
         except Exception as e:
-            site_stats[site_domain] = {"n": 0, "durum": f"hata: {str(e)[:30]}", "tier": "-"}
+            site_stats[site_domain] = {"n": 0, "durum": f"hata: {str(e)[:40]}", "tier": "-"}
+            _log(f"site {site_domain} hata: {e}")
 
-    # Sahibinden FAZ-2 stub
-    sahib_r = fetcher.fetch("https://www.sahibinden.com/")
-    site_stats["sahibinden.com"] = {
-        "n": 0, "durum": "indirect (FAZ-2)", "tier": sahib_r.tier,
-    }
+    # 4) Sahibinden indirect (FAZ-2): cimri/akakce → JSON-LD + CSS parser
+    try:
+        sahib_r = fetcher.fetch_sahibinden_indirect(query)
+        if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
+            sahib_parsed = _parse_listings_from_html(
+                sahib_r.text, "sahibinden_indirect", budget,
+                limit=top_n*2, log_fn=_log,
+            )
+            site_stats["sahibinden.com"] = {
+                "n": len(sahib_parsed),
+                "durum": f"indirect/{sahib_r.tier.split('/')[-1] if '/' in sahib_r.tier else 'fail'}",
+                "tier": sahib_r.tier,
+            }
+            for p in sahib_parsed:
+                listings.append(ProductListing(**p))
+        else:
+            site_stats["sahibinden.com"] = {
+                "n": 0, "durum": "indirect (boş)", "tier": sahib_r.tier,
+            }
+    except Exception as e:
+        site_stats["sahibinden.com"] = {"n": 0, "durum": f"indirect hata: {str(e)[:30]}", "tier": "-"}
+        _log(f"sahibinden indirect hata: {e}")
+
+    # 5) FIX-ALL: Referans fiyat gerçek listing'lerin median'ından
+    if listings:
+        sorted_prices = sorted(L.price for L in listings if L.price > 0)
+        if sorted_prices:
+            ref_price_min = sorted_prices[0]
+            ref_price_max = sorted_prices[-1]
+            _log(f"REF_PRICE_REAL min={ref_price_min} max={ref_price_max} (n={len(sorted_prices)})")
+            # Mesaj 1'i güncelle (yeni fiyat aralığı için)
+            msg1 = _market_msg_baslangic(query, budget, top_n, mod, len(kritik),
+                                         ref_price_min, ref_price_max)
 
     # 5) Telegram MESAJ 2: Canlı durum
     msg2 = _market_msg_canli_durum(site_stats, int(time.time() - t0))

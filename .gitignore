@@ -72,6 +72,9 @@ memory/tool_baseline_hashes.json
 memory/scraper_cookies.json
 memory/episodic.jsonl
 memory/chroma_mem0/
+memory/son_fact_batch.json
+memory/category_criteria.json
+memory/SYSTEM_PAUSED.flag
 memory/prompt_integrity.json
 memory/md_backups/
 memory/reflections/
