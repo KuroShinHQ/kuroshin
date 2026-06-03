@@ -3158,6 +3158,7 @@ def run_tool(name: str, args: dict) -> str:
         # DALGA-6 FAZ-1 — Otonom alışveriş master (2 Haz 2026)
         try:
             import sys as _sys_mm
+            import re as _re_mm  # local scope cakismasini önle (UnboundLocalError fix)
             if "/mnt/c/Kuroshin/scripts" not in _sys_mm.path:
                 _sys_mm.path.insert(0, "/mnt/c/Kuroshin/scripts")
             from kuroshin_market_master import market_master_query
@@ -3169,7 +3170,7 @@ def run_tool(name: str, args: dict) -> str:
             if not category_slug:
                 # Basit Türkçe → Epey URL slug heuristic
                 category_slug = query.lower().replace(" ", "-").replace("ı", "i").replace("ş", "s")
-                category_slug = re.sub(r"[^a-z0-9-]", "", category_slug)
+                category_slug = _re_mm.sub(r"[^a-z0-9-]", "", category_slug)
             _log(f"[MARKET_MASTER] query={query!r} budget={budget} mod={mod} top_n={top_n} slug={category_slug}")
             result = market_master_query(query, budget, mod, top_n, category_slug)
             # 4 mesajı sırayla gönder (chat_id = _CURRENT_CHAT_ID)
@@ -4603,6 +4604,51 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
                 )
             })
             break
+
+    # ── DALGA-6 FAZ-1 MARKET MASTER explicit routing (2 Haz 2026) ──
+    # Lord doktrini: LLM tool routing guvenilmez → keyword + butce regex tetik
+    _market_triggers = ("market master", "alışveriş ara", "alisveris ara", "fiyat karşılaştır",
+                        "fiyat karsilastir", "ürün tara", "urun tara", "ürün ara", "urun ara",
+                        "market_master tool", "satın al")
+    if any(_trig in _text_lower for _trig in _market_triggers):
+        # Butce regex: "5000 tl", "5000TL", "5.000 TL", "5,000tl"
+        _budget_match = _re_global.search(
+            r"(\d{1,3}(?:[.,]\d{3})*|\d+)\s*(?:tl|₺|lira)",
+            _text_lower, _re_global.IGNORECASE
+        )
+        _budget = 5000.0
+        if _budget_match:
+            _budget = float(_budget_match.group(1).replace(".", "").replace(",", ""))
+        # Mod parse
+        _mod = "dengeli"
+        for _m_kw, _m_val in [("bütçe odaklı", "butce"), ("butce odakli", "butce"),
+                               ("güven odaklı", "guven"), ("guven odakli", "guven"),
+                               ("performans odaklı", "performans"), ("performans odakli", "performans")]:
+            if _m_kw in _text_lower:
+                _mod = _m_val
+                break
+        # top_n parse (varsayilan 3, "en iyi N" yakala)
+        _topn_match = _re_global.search(r"en iyi\s*(\d+)", _text_lower)
+        _top_n = int(_topn_match.group(1)) if _topn_match else 3
+        # Query temizle: tetikleyicileri ve butce/mod fragmentlerini cikar
+        _q = text
+        for _trig in _market_triggers:
+            _q = _re_global.compile(_re_global.escape(_trig), _re_global.IGNORECASE).sub("", _q)
+        _q = _re_global.sub(r"\d+(?:[.,]\d+)*\s*(?:tl|₺|lira)", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"en iyi\s*\d+", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"(bütçe|butce|güven|guven|performans|dengeli)\s*odaklı?", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"(ara|araştır|arastir|bul|tara|göster|tool|kullan)[ıi]?", "", _q, flags=_re_global.IGNORECASE)
+        _q = _re_global.sub(r"[:,\-—]+", " ", _q).strip()
+        if not _q or len(_q) < 3:
+            _q = "kondisyon bisikleti"  # safe fallback
+        _log(f"[EXPLICIT_TOOL] market_master direkt cagriliyor: query='{_q[:60]}' budget={_budget} mod={_mod} top_n={_top_n}")
+        _mm_result = run_tool("market_master", {
+            "query": _q, "budget": _budget, "mod": _mod, "top_n": _top_n
+        })
+        messages.append({
+            "role": "user",
+            "content": f"[Market Master araç sonucu: {_mm_result}]\n\nKısa onay mesajı yaz (1 cümle, '⚔️ Lordum' başla)."
+        })
 
     # ── DALGA 5.5 FULL POWER explicit routing ──────────────────────────
     # Lord'un komutu ne olursa olsun "full power", "tum gucle", "/full" prefix'i
