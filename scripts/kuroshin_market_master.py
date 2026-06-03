@@ -67,7 +67,7 @@ KB_CACHE_TTL_HOURS = 24
 SITE_FETCHER: Dict[str, Tuple[str, str]] = {
     "epey.com":        ("playwright",    "chromium"),
     "trendyol.com":    ("playwright",    "chromium"),
-    "hepsiburada.com": ("curl_cffi",     "chrome124"),  # ironik — TLS impersonate Akamai aşıyor, headless yakalanıyor
+    "hepsiburada.com": ("curl_cffi",     "chrome124"),  # impersonate=chrome124 — TLS/JA3 Akamai bypass (headless yakalanıyor, ironik)
     "sahibinden.com":  ("indirect",      "google_snippet"),
     "_fallback":       ("cloudscraper",  "chrome/windows/desktop"),
 }
@@ -1096,12 +1096,16 @@ def _sanitize_query(query: str, max_words: int = 6) -> str:
         "icin", "için", "olan", "tipi", "bana", "uygun", "ile", "ve", "veya",
         "araştır", "arastir", "arastrir", "ara", "bul", "tara", "göster", "goster",
         "lutfen", "lütfen", "alici", "alıcı", "merhaba", "lordum",
-        # Sistem/hitap kelimeler (yeni)
+        # Sistem/hitap kelimeler
         "kuroshin", "master", "marketmaster",
-        # Para/butce kelimeleri (yeni — Lord canli inject bug)
-        "tl", "lira", "para", "para", "fiyat", "fiyatli", "fiyatlı",
+        # Para/butce kelimeleri (3 Haz — Lord canli inject bug)
+        "tl", "lira", "para", "fiyat", "fiyatli", "fiyatlı",
         "butce", "butçe", "bütçe", "bütçem", "butcem", "butcesi", "bütçesi",
         "budget", "budgetla", "fiyatla", "civari", "civarı", "kadar", "yaklasik", "yaklaşık",
+        # Yardimci fiil + edat (4 Haz — Task #10, runtime test FAIL fix)
+        "yap", "yapsin", "yapsın", "var", "yok", "gel", "git", "sun",
+        "bu", "şu", "su", "ona", "ondan", "burdan", "buradan",
+        "da", "de", "ile", "icin", "için", "olarak", "kadar",
     }
     tokens = [t for t in cleaned.split() if t and t.lower() not in stop and len(t) > 2]
     out = " ".join(tokens[:max_words]).strip()

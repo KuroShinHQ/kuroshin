@@ -452,5 +452,72 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "FAZ-4: 'butce uygun urun bulamadim' fallback metni"
+  },
+
+  {
+    "id": "verify-dalga6-runtime-sanitize-butce",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _sanitize_query; out = _sanitize_query('Kuroshin yap var'); assert out == 'kondisyon bisikleti', f'beklenen kondisyon bisikleti, alindi: {out!r}'; print('PASS')",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: _sanitize_query stop-only input ('Kuroshin yap var') → 'kondisyon bisikleti' fallback"
+  },
+  {
+    "id": "verify-dalga6-runtime-sanitize-kategori-korunur",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _sanitize_query; out = _sanitize_query('Kuroshin market master ile kondisyon bisikleti arastir 3000 TL butcem var'); assert 'kondisyon' in out and 'bisikleti' in out, f'kategori kayıp: {out!r}'; print('PASS:', out)",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: _sanitize_query kategori isim ('kondisyon bisikleti') KORUMALI"
+  },
+  {
+    "id": "verify-dalga6-runtime-parser-trendyol-fixture",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_listings_from_html; html='<html><body><div class=\"product-card\"><span class=\"product-brand\">Cosfer</span><span class=\"product-name\">Spinning Bike Kondisyon</span><div class=\"price-current\">3.990 TL</div></div><div class=\"product-card\"><span class=\"product-brand\">Reidan</span><span class=\"product-name\">Dikey Ev Bisikleti</span><div class=\"price-current\">2.544 TL</div></div><div class=\"product-card\"><span class=\"product-brand\">kochler</span><span class=\"product-name\">Spinning Aleti</span><div class=\"price-current\">6.080 TL</div></div></body></html>'; out=_parse_listings_from_html(html,'trendyol',3000.0,limit=5); assert len(out)>=3, f'trendyol fixture <3 urun: {len(out)} -> {out}'; print('PASS:', len(out), 'urun')",
+    "timeout": 15,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: Trendyol fixture HTML → parser min 3 ürün (brand+name+price extract)"
+  },
+  {
+    "id": "verify-dalga6-runtime-parser-placeholder-filter",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_listings_from_html; html='<html><body><div class=\"product-card\"><span class=\"product-brand\">Trendyol</span><span class=\"product-name\">Flas Urun</span><div class=\"price-current\">10 TL</div></div><div class=\"product-card\"><span class=\"product-brand\">Trendyol</span><span class=\"product-name\">En Cok Satan 1. Urun</span><div class=\"price-current\">10 TL</div></div></body></html>'; out=_parse_listings_from_html(html,'trendyol',3000.0,limit=5); assert len(out)==0, f'placeholder/min-fiyat filtre fail: {out}'; print('PASS: widget basliklari + 10 TL elendi')",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: Parser placeholder widget ('Flas Urun', 'En Cok Satan') + 10 TL min-fiyat filtre"
+  },
+  {
+    "id": "verify-dalga6-runtime-parser-hepsi-fixture",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_listings_from_html; html='<html><body><li class=\"productListContent-zAP0Y5\"><h3>Cosfer Spinning Bike Kondisyon</h3><div class=\"price-current\">3.990 TL</div></li><li class=\"productListContent-zAP0Y5\"><h3>Dynamic Mini Pedal</h3><div class=\"price-current\">1.999 TL</div></li><li class=\"productListContent-zAP0Y5\"><h3>Maxfit Eliptik Bisiklet</h3><div class=\"price-current\">3.770 TL</div></li></body></html>'; out=_parse_listings_from_html(html,'hepsiburada',3000.0,limit=5); assert len(out)>=3, f'hepsi fixture <3 urun: {len(out)}'; print('PASS:', len(out))",
+    "timeout": 15,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: HB fixture HTML li[class^=productListContent-] hash-prefix pin → 3 ürün"
+  },
+  {
+    "id": "verify-dalga6-runtime-no-login-keyword",
+    "category": "verify_dalga6_runtime",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import re; txt=open('scripts/kuroshin_market_master.py','r',encoding='utf-8').read(); bad=re.findall(r'(?:^|\\W)(login|password|auth_token|signin)\\s*=\\s*[\"\\\\\\']', txt); assert not bad, f'login/password atama bulundu: {bad[:3]}'; print('PASS: login/password atama YOK (Lord doktrini)')",
+    "timeout": 5,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME: Lord 'login YOK' doktrini — market_master kodunda login/password atama keyword'leri YOK"
   }
 ]

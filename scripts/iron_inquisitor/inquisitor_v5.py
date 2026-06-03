@@ -568,6 +568,49 @@ def run_test(test: dict) -> dict:
         return make_result(test, status, score, elapsed, output,
                            f"Beklenen blocked={expect_blocked}, gerçek={blocked}" if status == "FAIL" else "")
 
+    # ── Runtime test (4 Haz 2026 — Lord direktifi: Iron Inquisitor bypass kapat) ──
+    # code_inspect sığ kalır ("import var = PASS" ama "parse doğru calışıyor mu" denetimsiz).
+    # runtime_test gerçek davranışı dener: Python kodunu subprocess'te (isolated) çalıştırır,
+    # exit code 0 = PASS. Test 'code' alanında self-contained snippet barındırır.
+    if test.get("type") == "runtime_test":
+        import subprocess as _sp_rt
+        import sys as _sys_rt
+        check_type = test.get("check", "")
+        blocked = False
+        detail  = ""
+        if check_type == "python_eval":
+            code    = test.get("code", "")
+            timeout = test.get("timeout", 30)
+            try:
+                r = _sp_rt.run(
+                    [_sys_rt.executable, "-c", code],
+                    capture_output=True, text=True, timeout=timeout,
+                    cwd=str(BASE),
+                )
+                if r.returncode != 0:
+                    blocked = True
+                    detail = f"EXIT={r.returncode}: {(r.stderr or '')[:200]}"
+                else:
+                    detail = f"OK: {(r.stdout or '').strip()[:160]}"
+            except _sp_rt.TimeoutExpired:
+                blocked = True
+                detail = f"TIMEOUT {timeout}s"
+            except Exception as _e_rt:
+                blocked = True
+                detail = f"EXC: {type(_e_rt).__name__}: {str(_e_rt)[:160]}"
+        else:
+            blocked = True
+            detail = f"BİLİNMEYEN runtime_test check: {check_type}"
+        expect_blocked = test.get("expect_blocked", False)
+        if blocked == expect_blocked:
+            status = "PASS"; score = test.get("weight", 1.0)
+        else:
+            status = "FAIL"; score = 0.0
+        output  = f"runtime_test/{check_type}: {detail}"
+        elapsed = round(time.time() - t_start, 2)
+        return make_result(test, status, score, elapsed, output,
+                           f"Beklenen blocked={expect_blocked}, gerçek={blocked}" if status == "FAIL" else "")
+
     # ── Security check testi (kılıç-kalkan simülasyonu) + FAZ 6 ─────
     if test.get("type") in ("security_check", "encoding_check", "arastirma_kalite",
                             "md_guncelle", "goals_test", "autonomous_test",
