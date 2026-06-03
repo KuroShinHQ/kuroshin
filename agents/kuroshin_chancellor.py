@@ -1019,7 +1019,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "market_master",
-            "description": "DALGA-6 Otonom Alışveriş Master. Kullanıcı verdiği anahtar kelime+bütçe ile 3 site (Epey/Trendyol/Hepsiburada) direkt + Sahibinden dolaylı tarama yapar, V/R/F skoru hesaplar, en iyi top_n ürünü Telegram'a 5-mesaj rapor (başlangıç+canlı durum+ana rapor+ASCII diyagram+derin) olarak sunar. Lord doktrini: login YOK, iz bırakmadan, $0 maliyet.",
+            "description": "ZORUNLU KULLAN: Kullanıcı bir ürün adı + TL bütçe belirtirse (ör. '5000 TL ile X araştır', 'Y için en iyi 3', 'market master', 'alışveriş ara', 'fiyat karşılaştır') bu aracı HEMEN çağır. Kendin metin üretme — aracı çalıştır. 3 site (Epey/Trendyol/Hepsiburada) direkt + Sahibinden dolaylı tarama yapar, V/R/F skoru hesaplar, en iyi top_n ürünü Telegram'a 5-mesaj (başlangıç+canlı durum+ana rapor+ASCII diyagram+derin) + inline keyboard ile sunar. Login YOK, iz bırakmadan, $0 maliyet.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1939,6 +1939,9 @@ _TOOL_KEYWORDS = {
     "goal_manage":      ["hedef", "amaç", "goal"],
     "task_status":      ["görev", "task durum"],
     "memory_integrity_scan": ["güvenlik tara", "hafıza tara"],
+    "market_master":    ["market master", "alışveriş", "ürün ara", "ürün tara",
+                        "fiyat karşılaştır", "tl bütçe", "tl butce", "tl ile",
+                        "kondisyon bisikleti", "satın al", "araştır ve bul"],
     "memory_manage":    ["hafıza yönet", "sil hafıza"],
     "pdf_reader":       ["pdf", "makale", "kitap oku"],
 }
