@@ -913,6 +913,50 @@ def _llm_json_call(prompt: str, llama_url: str, max_tokens: int = 600,
         return {}, f"EXC: {type(e).__name__}: {str(e)[:120]}"
 
 
+def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
+                      llama_url: str = LLAMA_URL) -> Dict[str, Any]:
+    """FAZ-B (4 Haz 2026) — Aydinlama Bulgusu: LLM kategoriden alici icin
+    en kritik 3-5 ozelligi cikarir. Lord doktrini: 'model urunu tanimali'.
+
+    Epey detay sayfa lazy-load + CF korumali → statik tabandi yerine LLM
+    bilgisi kullan (35B Huihui yeterli kategori-bilgisi). Static fallback
+    de var (CATEGORY_CRITERIA_DEFAULTS) — LLM fail olursa kullanir.
+
+    Returns: {"kritik": ["volan_kg", "direnç_kademe", ...],
+              "aciklama": "Bu kategoride alici icin...",
+              "fiyat_aralik": "X-Y TL"}
+    """
+    if not query:
+        query = category_slug.replace("-", " ") or "ürün"
+
+    prompt = (
+        f'Sen bir Türkiye e-ticaret danışmanısın. Alıcı şu ürünü arıyor: "{query}" '
+        f'(bütçe: {budget:,.0f} TL).\n\n'
+        f'GÖREV: Bu kategoride alıcının BAKMASI GEREKEN en kritik 3-5 teknik '
+        f'özelliği listele. Genel kelimeler değil, ÖLÇÜLEBİLİR özellikler '
+        f'(örnek: "volan ağırlığı kg", "direnç kademe sayısı", "taşıma kapasitesi kg").\n\n'
+        f'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
+        f'{{"kritik": ["ozellik_1", "ozellik_2", "ozellik_3", "ozellik_4", "ozellik_5"], '
+        f'"aciklama": "1 cümle özet — neden bu özellikler önemli", '
+        f'"fiyat_aralik": "X-Y TL beklenti"}}\n\n'
+        f'JSON çıktı:'
+    )
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=400, temperature=0.1, timeout=60)
+    if not data or not data.get("kritik"):
+        # LLM fail → static fallback
+        return {
+            "kritik": _category_defaults(category_slug or _query_to_slug(query)),
+            "aciklama": "(statik fallback — LLM cevap vermedi)",
+            "fiyat_aralik": f"{budget*0.6:,.0f}-{budget*1.4:,.0f} TL",
+            "raw_preview": raw[:120] if raw else "",
+        }
+    return {
+        "kritik": data.get("kritik", [])[:5],
+        "aciklama": data.get("aciklama", "")[:200],
+        "fiyat_aralik": data.get("fiyat_aralik", "")[:60],
+    }
+
+
 def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any]:
     """FAZ-3: 2.el ilan açıklamasından kusur tipi çıkar (LLM JSON mode).
 
@@ -997,6 +1041,31 @@ def merchant_judge(listing: ProductListing, criteria: Dict[str, Any],
 # ============================================================================
 # Telegram 5-Mesaj Akışı (MD v3 şablonları)
 # ============================================================================
+def _market_msg_aydinlama(bulgu: Dict[str, Any], query: str) -> str:
+    """FAZ-B 4 Haz — Aydinlama Bulgusu Telegram mesaji.
+    Lord doktrini: 'model urunu tanimalı, dusunce surecini gorebiliriz'."""
+    kritik = bulgu.get("kritik", [])[:5]
+    aciklama = bulgu.get("aciklama", "")[:200]
+    fiyat = bulgu.get("fiyat_aralik", "")
+    src = "🧠 LLM" if "fallback" not in aciklama.lower() else "📚 statik bilgi"
+    lines = [
+        f"💡 <b>Aydınlama Bulgusu</b> ({src})",
+        "",
+        f"📋 Kategori: <b>{query[:60]}</b>",
+        "",
+        "🎯 <b>Bakman gereken kritik özellikler:</b>",
+    ]
+    for k in kritik:
+        lines.append(f"  • {k}")
+    if aciklama and "fallback" not in aciklama.lower():
+        lines.append("")
+        lines.append(f"💭 {aciklama}")
+    if fiyat:
+        lines.append("")
+        lines.append(f"💰 Beklenen fiyat: {fiyat}")
+    return "\n".join(lines)
+
+
 def _market_msg_baslangic(query: str, budget: float, top_n: int, mod: str,
                           n_kritik: int, ref_price_min: float, ref_price_max: float) -> str:
     return (
@@ -1197,6 +1266,14 @@ def market_master_query(query: str, budget: float = 5000.0,
     kritik = kb_entry.get("criteria", {}).get("kritik", [])
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
+    # 1.5) FAZ-B 4 Haz: Aydinlama Bulgusu — LLM kategoride kritik 3-5 ozellik
+    bulgu = aydinlama_bulgusu(query, category_slug, budget)
+    _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
+    # LLM cıktısı doluysa KB kritik listesini onunla genislet
+    if bulgu.get("kritik") and "fallback" not in bulgu.get("aciklama", "").lower():
+        kritik = list(dict.fromkeys(list(bulgu["kritik"]) + kritik))[:10]
+    msg_aydinlama = _market_msg_aydinlama(bulgu, query)
+
     # 2) Telegram MESAJ 1: Başlangıç (geçici fiyat aralığı; gerçek listing sonrası güncelleyebiliriz)
     ref_price_min, ref_price_max = budget * 0.6, budget * 1.4
     msg1 = _market_msg_baslangic(query, budget, top_n, mod, len(kritik),
@@ -1285,8 +1362,9 @@ def market_master_query(query: str, budget: float = 5000.0,
     elapsed = round(time.time() - t0, 1)
     _log(f"results={len(listings)} elapsed={elapsed}s top_score={listings[0].master_score if listings else 'N/A'}")
 
+    # FAZ-B 4 Haz: messages sıralı 5 mesaj — başlangıç, aydınlama, tarama durumu, ana rapor, ASCII
     return {
-        "messages": [msg1, msg2, msg3, msg4],
+        "messages": [msg1, msg_aydinlama, msg2, msg3, msg4],
         "listings": [
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
              "v": L.v_score, "r": L.r_score, "f": L.f_score, "master": L.master_score}
@@ -1296,6 +1374,7 @@ def market_master_query(query: str, budget: float = 5000.0,
         "meta": {
             "query": query, "budget": budget, "mod": mod, "top_n": top_n,
             "n_kritik": len(kritik),
+            "aydinlama": bulgu,
             "site_stats": site_stats,
         },
         "log_lines": log_lines,
