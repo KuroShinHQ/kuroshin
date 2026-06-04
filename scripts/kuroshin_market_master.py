@@ -343,11 +343,14 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                                 price = float(f"{int_part}.{dec_part}")
                             except ValueError:
                                 pass
-                    # URL
+                    # URL — FAZ-A 4 Haz fix: site "trendyol" gibi kisa form gelirse .com ekle
                     a_el = card.select_one("a[href]") if card.name != "a" else card
                     url = (a_el.get("href", "") if a_el else "") or ""
                     if url.startswith("/"):
-                        url = f"https://www.{site if not site.endswith('_indirect') else site.replace('_indirect','')}{url}"
+                        _site_base = site.replace('_indirect', '')
+                        if "." not in _site_base:
+                            _site_base = f"{_site_base}.com"
+                        url = f"https://www.{_site_base}{url}"
 
                 # Min fiyat sart — placeholder/widget genelde 0 veya cok kucuk
                 if price <= 0:
@@ -366,11 +369,16 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
     max_price = budget * 2.5
     filtered = [x for x in out if x.get("title") and min_price <= x.get("price", 0) <= max_price]
     log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (min={min_price:.0f} max={max_price:.0f} TL)")
-    # Tekil baslık (deduplicate)
+    # Tekil baslık (FAZ-A 4 Haz: normalize dedup — bosluk/case/noktalama temizle)
     seen = set()
     unique = []
     for x in filtered:
-        key = x["title"][:80].lower()
+        # marka + ana kelime + ikinci kelime → daha sağlam imza
+        title_norm = re.sub(r"[^\w\s]", " ", x["title"].lower())
+        title_norm = re.sub(r"\s+", " ", title_norm).strip()
+        # ilk 6 kelime — "Cosfer Spinning Bike Kondisyon Bisikleti Ve Kondisyon" → key
+        words = title_norm.split()[:6]
+        key = " ".join(words) if words else x["title"][:60].lower()
         if key not in seen:
             seen.add(key)
             unique.append(x)
@@ -1017,6 +1025,22 @@ def _market_msg_canli_durum(site_stats: Dict[str, Dict[str, Any]], elapsed_sec: 
     return "\n".join(lines)
 
 
+def _truncate_word_boundary(s: str, n: int) -> str:
+    """FAZ-A (4 Haz): kelime sınırında akıllı kesim — Lord 'baslik kirpik' bug fix.
+    n>=110 default. Son boslukta kes, '…' ekle."""
+    if not s:
+        return ""
+    s = s.strip()
+    if len(s) <= n:
+        return s
+    cut = s[:n]
+    last_space = cut.rfind(" ")
+    # eger son boşluk yeterince ileri ise oraya kadar
+    if last_space > n * 0.7:
+        cut = cut[:last_space]
+    return cut.rstrip(" ,.-—") + "…"
+
+
 def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
     if not listings:
         return _market_msg_fallback_hicsonuc(mod)
@@ -1024,13 +1048,18 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
     medals = ["🥇", "🥈", "🥉"]
     for i, L in enumerate(listings[:3]):
         m = medals[i] if i < len(medals) else f"#{i+1}"
+        # FAZ-A: tiklanabilir link (URL varsa) + baslik 110 char (kelime siniri)
+        title_clean = _truncate_word_boundary(L.title, 110)
+        # HTML kacis (Telegram parse_mode=HTML)
+        url_safe = (L.url or "").replace('"', '%22').replace('<', '%3C').replace('>', '%3E')
+        link_part = f' · <a href="{url_safe}">🔗 İncele</a>' if url_safe and url_safe.startswith("http") else ""
         lines.append(
             f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>\n"
-            f"📌 {L.title[:80]}\n"
+            f"📌 {title_clean}\n"
             f"🏷️ {L.price:,.0f} TL"
             + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})") + "\n"
             f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}\n"
-            f"🌐 Site: {L.site}\n"
+            f"🌐 Site: {L.site}{link_part}\n"
         )
     return "\n".join(lines)
 
@@ -1151,9 +1180,12 @@ def market_master_query(query: str, budget: float = 5000.0,
     # FIX-ALL B3: query sanitize (model şişirmesi temizle)
     query_raw = query
     query = _sanitize_query(query)
-    # FIX-ALL B4: category_slug auto-derive
-    if not category_slug or len(category_slug) > 60:
-        category_slug = _query_to_slug(query)
+    # FIX-ALL B4 + FAZ-A 4 Haz: category_slug HER ZAMAN sanitize'li query'den uret
+    # (chancellor pre-slug 'kuroshin--kondisyon-bisikleti---bte' gibi bozuk veriyor → Epey 404)
+    # Sanitize sonrasi query.lower() en saglam. Chancellor'dan gelen slug gozardi edilir.
+    derived_slug = _query_to_slug(query)
+    if not category_slug or category_slug != derived_slug:
+        category_slug = derived_slug
     _log(f"query_raw={query_raw[:80]!r} → query={query!r} budget={budget} mod={mod} top_n={top_n} slug={category_slug}")
 
     fetcher = MarketFetcher(log_fn=_log)
