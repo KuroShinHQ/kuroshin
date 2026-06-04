@@ -1312,6 +1312,10 @@ def market_master_query(query: str, budget: float = 5000.0,
             _log(f"site {site_domain} hata: {e}")
 
     # 4) Sahibinden indirect (FAZ-2): cimri/akakce → JSON-LD + CSS parser
+    # FAZ-E (4 Haz): Bot-Anomali Cift Filtre — Epey avg × 0.05/5 esiklerle Sahibinden
+    # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
+    epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
+    epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
     try:
         sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
@@ -1319,10 +1323,26 @@ def market_master_query(query: str, budget: float = 5000.0,
                 sahib_r.text, "sahibinden_indirect", budget,
                 limit=top_n*2, log_fn=_log,
             )
+            # FAZ-E Bot-Anomali Filter
+            bot_eliminated = 0
+            if epey_avg > 0:
+                alt_esik = max(50.0, epey_avg * 0.05)  # 50 TL hard minimum
+                ust_esik = epey_avg * 5
+                kept = []
+                for p in sahib_parsed:
+                    if alt_esik <= p.get("price", 0) <= ust_esik:
+                        kept.append(p)
+                    else:
+                        bot_eliminated += 1
+                _log(f"[BOT_ANOMALI] Sahibinden: Epey avg={epey_avg:.0f} TL | esik [{alt_esik:.0f}-{ust_esik:.0f}] | elenen={bot_eliminated}/{len(sahib_parsed)}")
+                sahib_parsed = kept
             site_stats["sahibinden.com"] = {
                 "n": len(sahib_parsed),
-                "durum": f"indirect/{sahib_r.tier.split('/')[-1] if '/' in sahib_r.tier else 'fail'}",
+                "durum": f"indirect/{sahib_r.tier.split('/')[-1] if '/' in sahib_r.tier else 'fail'}"
+                          + (f" (bot×{bot_eliminated})" if bot_eliminated else ""),
                 "tier": sahib_r.tier,
+                "bot_eliminated": bot_eliminated,
+                "epey_avg": int(epey_avg) if epey_avg else 0,
             }
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
