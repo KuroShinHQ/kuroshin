@@ -202,6 +202,37 @@ Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 
 3. `scripts/iron_inquisitor/test_suite_dalga6.json` — 38 test (FAZ-0×5 + FAZ-1×14 + FAZ-2×7 + FAZ-3×6 + FAZ-4×6) + `master_manifest.json` v6.2'ye dahil
 4. Live inject: `_live_test_solo.py 'Kuroshin Market Master: 5000 TL kondisyon bisikleti'` → Telegram 5-mesaj kanıt
 
+---
+
+## 🌊 DALGA-6 v2 — Lord Mantık Genişletme (4 Haz 2026 ~01:00)
+
+Lord direktifi: *"İlk kanıt alıcaz sonra entegre edicez."* Sprint 4 LLM-siz testler ile kanıtlar **alındı**:
+
+### Sprint 4 Kanıt Özeti (LLM-siz)
+- **HB rating SSR**: 4,5 / 4,6 / 4,5 — `[class*=rating]` ilk match
+- **HB foto sinyali**: `rate-module_photoReviewIcon_*` 32 kart (foto'lu yorum varlığı)
+- **Trendyol rating**: `.average-rating` 24 kart kategori sayfasında
+- **Akakce rating YOK** → Sahibinden için yıldız filter imkansız (Lord doktrini "uyanıklık" teyit)
+- **Epey detay özellikler**: Playwright 137K çekildi AMA `tr` 0 (lazy-load, `wait_for_selector` gerek)
+- **Akakce ürün detay**: 158K + spec table 24 tr → Hazine Avı kaynak hazır
+- **Bot-anomali matematik (LIVE)**: Epey avg 6.052 TL → bot eşik üst 30.262, alt 303. Akakce 10 ham → 2 bot elendi (40K + 72K), 1 hazine tespit (1.299 TL Walke %78↓)
+
+### FAZ-A → FAZ-F Plan (kanıt-güdümlü, atomik checkpoint'li)
+
+| Faz | İş | Süre | Kanıt önkoşulu | Kanıt geldi mi? |
+|---|---|---|---|---|
+| **A** | UX: Telegram `<a href>` link + başlık 110 char + parser dedup | ~30dk | Mevcut output bug | ✅ Hazır |
+| **B** | 💡 **Aydınlama Bulgusu**: Epey detay özellikler tablosu → LLM 3-5 anahtar özellik | ~3sa | Epey `tr` lazy-load fix gerek | 🟡 KISMI (137K HTML var, tr 0 — `wait_for_selector('.ozellikler')` gerek) |
+| **C** | 🧠 **Yorum Zekası**: ⭐ + foto + imla + şikayet pattern (5 alt-katman) | ~3-4sa | HB rating+foto SSR var | ✅ Hazır |
+| **D** | 🕵️ **Hazine Avı**: Akakce detay → eksik bilgi → web_search → Epey muadil | ~3-4sa | Akakce detay 158K+spec var | ✅ Hazır |
+| **E** | 🤖 **Bot-Anomali Çift Filtre**: Epey avg×0.05 alt + Epey avg×5 üst eşik | ~30dk | Matematik kanıt 2/10 elendi | ✅ Hazır |
+| **F** | ⚖️ Hiyerarşi: site ağırlık + hazine boost + şikayet cezası | ~30dk | E entegrasyonu sonrası | ⏳ |
+| **G** | 💭 Düşünce zinciri Telegram (5 ekstra mesaj — opsiyonel toggle) | ~1sa | A-F entegre sonrası | ⏳ |
+
+### Kanıtın bug listesi (FAZ-B-pre-iş):
+- **Epey detay sayfası `wait_for_selector('.ozellikler tr, .karsilastirma tr, table tr')`** → tablo yüklensin sonra parse. Şu an Playwright `wait_for_timeout(4500)` yetmiyor. Aydınlama Bulgusu için ŞART.
+- **Trendyol kategori rating** `.average-rating` pin'lensin — şu an `ProductListing.rating` field None geliyor
+
 ### 🧪 Iron Inquisitor DALGA-6 Test Planı (38 code_inspect + 5 live inject)
 
 | FAZ | Test | Live | Toplam | Kapsamlı dosya |
