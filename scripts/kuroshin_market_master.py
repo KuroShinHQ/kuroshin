@@ -459,6 +459,13 @@ class ProductListing:
     # Fix #4 (6 Haz): Cross-site dedup — aynı modelin alternatifleri
     alt_fiyat: float = 0.0  # en ucuz alternatif fiyat
     alt_site: str = ""  # en ucuz alternatif sitesi
+    # FAZ-B (6 Haz): Sahibinden ilan detay LLM analiz
+    aciklama_dolu: bool = False  # akakce/Sahibinden ilan aciklamasi dolu mu
+    ilan_spec: Dict[str, str] = field(default_factory=dict)  # LLM cikartti
+    eslesme_pct: int = 0  # Aydinlama kritikleri ile esleshme yuzdesi
+    # FAZ-C (6 Haz): 4-seviye hazine kategori
+    hazine_tier: str = ""  # 'onayli', 'supheli', 'potansiyel_elmas', 'normal'
+    hazine_not: str = ""  # Lord doktrini metaforu ("camurda elmas" gibi)
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -1060,6 +1067,125 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
     }
 
 
+def sahibinden_ilan_analiz(url: str, kritik_ozellikler: List[str],
+                            llama_url: str = LLAMA_URL,
+                            log_fn=None) -> Dict[str, Any]:
+    """FAZ-B (6 Haz 2026) — Sahibinden/akakce ilan detay LLM analiz.
+    Lord doktrini: 'EN KRİTİK: ilan AÇIKLAMASI'.
+
+    1. URL'den detay sayfa fetch (curl_cffi)
+    2. Açıklama metnini çıkar
+    3. LLM özet: Aydınlama kritikleri ile eşleşme + spec dict
+
+    Returns: {
+        "aciklama_dolu": bool (>50 char teknik içerik),
+        "aciklama_metin": str (max 600 char önizleme),
+        "ilan_spec": {"model": "...", "volan_kg": "...", ...},
+        "eslesme_pct": int (0-100, kritik kaçı geçti),
+    }
+    """
+    log = log_fn or (lambda m: None)
+    if not url or "http" not in url:
+        return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0}
+    # 1. Fetch — akakce/sahibinden için curl_cffi chrome124
+    if cc_requests is None:
+        return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
+                "hata": "curl_cffi YOK"}
+    try:
+        r = cc_requests.get(url, impersonate="chrome124", timeout=20)
+        if r.status_code != 200 or not r.text:
+            return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
+                    "hata": f"status {r.status_code}"}
+    except Exception as e:
+        return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
+                "hata": f"fetch: {type(e).__name__}"}
+    # 2. Açıklama çıkar (akakce + Sahibinden farklı yapılar)
+    aciklama = ""
+    if BeautifulSoup:
+        try:
+            soup = BeautifulSoup(r.text, "html.parser")
+            # akakce ürün detay: itemprop=description veya .product-description
+            for sel in ['[itemprop=description]', '.product-description', '.urun-bilgi',
+                        '#urunbilgi', '.product-info', '[class*=description]', '.aciklama',
+                        'div.classifiedDescription', '#classifiedDescription']:
+                el = soup.select_one(sel)
+                if el:
+                    txt = el.get_text(" ", strip=True)
+                    if len(txt) > len(aciklama):
+                        aciklama = txt[:1500]
+            # Eğer hiç yoksa table tr'lerden teknik bilgi
+            if not aciklama:
+                trs = soup.select("table tr")
+                parts = []
+                for tr in trs[:25]:
+                    cells = [c.get_text(" ", strip=True) for c in tr.find_all(["th", "td"])]
+                    if len(cells) >= 2 and 2 < len(cells[0]) < 50 and cells[1]:
+                        parts.append(f"{cells[0]}: {cells[1]}")
+                if parts:
+                    aciklama = " · ".join(parts)[:1500]
+        except Exception as e:
+            log(f"[ILAN_ANALIZ] BS4 hata: {e}")
+    # 3. Açıklama yetersizse erken çık (Lord "Potansiyel Elmas" durumu)
+    if not aciklama or len(aciklama) < 50:
+        return {"aciklama_dolu": False, "aciklama_metin": aciklama or "",
+                "ilan_spec": {}, "eslesme_pct": 0}
+    # 4. LLM özet (kritik özellik eşleşmesi + spec dict)
+    kritik_str = ", ".join(kritik_ozellikler[:5]) if kritik_ozellikler else "model, marka"
+    prompt = (
+        f'Aşağıdaki Türkçe ürün ilanı açıklamasını analiz et.\n\n'
+        f'KRİTİK ÖZELLİKLER (bunları arıyoruz): {kritik_str}\n\n'
+        f'İLAN AÇIKLAMASI:\n{aciklama[:1200]}\n\n'
+        f'GÖREV: 2 şey yap:\n'
+        f'1. Açıklamadan ürünün teknik özelliklerini SADECE açıklamada VARSA çıkar '
+        f'(uydurma YAPMA, sadece yazılanı al).\n'
+        f'2. Kritik özelliklerden kaçı açıklamada GÖZÜKÜYOR — yüzde olarak.\n\n'
+        f'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
+        f'{{"ilan_spec": {{"model": "...", "marka": "...", "ozellik1": "..."}}, '
+        f'"eslesme_pct": 0-100, "yorum": "1 cümle değerlendirme"}}\n\n'
+        f'JSON çıktı:'
+    )
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=400, temperature=0.0, timeout=45)
+    spec = data.get("ilan_spec", {}) if isinstance(data, dict) else {}
+    eslesme = int(data.get("eslesme_pct", 0)) if isinstance(data, dict) else 0
+    eslesme = max(0, min(100, eslesme))
+    log(f"[ILAN_ANALIZ] {url[-40:]} aciklama={len(aciklama)}ch spec={len(spec)} eslesme={eslesme}%")
+    return {
+        "aciklama_dolu": True,
+        "aciklama_metin": aciklama[:600],
+        "ilan_spec": spec if isinstance(spec, dict) else {},
+        "eslesme_pct": eslesme,
+    }
+
+
+def hazine_seviye_belirle(price: float, epey_avg: float, eslesme_pct: int,
+                          aciklama_dolu: bool) -> Tuple[str, str, float]:
+    """FAZ-C (6 Haz 2026) — Lord doktrini 4-seviye hazine kategori.
+
+    Returns: (tier, not_metafor, boost_ekstra)
+    """
+    if epey_avg <= 0 or price <= 0:
+        return ("", "", 0.0)
+    fiyat_oran = price / epey_avg  # 0.3 = %70 ucuz, 1.0 = denk
+    # 🔴 NORMAL — fiyat denk/yakın (uyanık satıcı, hazine değil)
+    if fiyat_oran > 0.8:
+        return ("normal", "satıcı değer biliyor — fırsat değil", 0.0)
+    # Ucuz mu (epey_avg × 0.5 alti)
+    cok_ucuz = fiyat_oran < 0.5
+    # 💎 POTANSİYEL ELMAS — açıklama BOŞ + ucuz (Lord metaforu)
+    if cok_ucuz and not aciklama_dolu:
+        return ("potansiyel_elmas",
+                "çamurda elmas olabilecek bir şey — risk + potansiyel",
+                1.0)
+    # 🟢 ONAYLI HAZİNE — ucuz + açıklama eşleşmesi yüksek
+    if cok_ucuz and eslesme_pct >= 60:
+        return ("onayli", "doğrulanmış, gerçek değer", 3.0)
+    # 🟡 ŞÜPHELİ HAZİNE — ucuz + açıklama eşleşmesi düşük
+    if cok_ucuz and eslesme_pct < 60:
+        return ("supheli", "model belirsiz, dikkatli al", 0.5)
+    # Orta fiyat (0.5-0.8) — boost yok
+    return ("normal", "", 0.0)
+
+
 def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any]:
     """FAZ-3: 2.el ilan açıklamasından kusur tipi çıkar (LLM JSON mode).
 
@@ -1253,20 +1379,37 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
-        # FAZ-D: hazine rozeti (varsa)
-        hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>" if L.is_hazine else ""
+        # FAZ-D + FAZ-C (6 Haz): 4-seviye hazine rozeti
+        _tier_rozet = {
+            "onayli": f" 🟢 <b>ONAYLI HAZİNE %{L.hazine_iskonto_pct}↓</b>",
+            "supheli": f" 🟡 <b>ŞÜPHELİ %{L.hazine_iskonto_pct}↓</b>",
+            "potansiyel_elmas": f" 💎 <b>POTANSİYEL ELMAS %{L.hazine_iskonto_pct}↓</b>",
+            "normal": "",  # normal fiyat — rozet gösterme
+        }
+        if L.hazine_tier:
+            hazine_rozet = _tier_rozet.get(L.hazine_tier, "")
+        elif L.is_hazine:
+            hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>"
+        else:
+            hazine_rozet = ""
         # FAZ-G optimize: site adı insan-okur
         site_disp = _SITE_DISPLAY.get(L.site, L.site.replace("_", " ").capitalize())
         # Fix #4: alt fiyat alternatifi varsa göster
         alt_line = ""
         if L.alt_fiyat and L.alt_site:
             alt_line = f"\n🔁 Alt fiyat: <b>{L.alt_fiyat:,.0f} TL</b> ({L.alt_site})"
+        # FAZ-B/C (6 Haz): Hazine analiz notu (Lord metaforu)
+        hazine_not_line = ""
+        if L.hazine_not:
+            hazine_not_line = f"\n📝 {L.hazine_not}"
+            if L.eslesme_pct:
+                hazine_not_line += f" · açıklama eşleşme %{L.eslesme_pct}"
         lines.append(
             f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>{hazine_rozet}\n"
             f"📌 {title_clean}\n"
             f"🏷️ {L.price:,.0f} TL"
             + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})")
-            + alt_line + "\n"
+            + alt_line + hazine_not_line + "\n"
             f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}"
             + yorum_line + "\n"
             f"🌐 {site_disp}{link_part}\n"
@@ -1630,6 +1773,43 @@ def market_master_query(query: str, budget: float = 5000.0,
             # FAZ-G optimize: tek mesaj (eski 3 mesajdan tek satira indirildi)
             _progress(f"✨ <b>{hazine_boost_n} hazine</b> top sıraya alındı (master +1.5 boost)")
 
+        # FAZ-B + FAZ-C (6 Haz): Top hazine adaylarinda derin analiz
+        # Lord doktrini: "EN KRİTİK ilan AÇIKLAMASI". TOP 3 hazine ilani için
+        # detay sayfa fetch + LLM ozet + 4-seviye karar.
+        hazine_adaylari = [L for L in listings if L.is_hazine and L.url][:3]
+        if hazine_adaylari:
+            _progress(f"🔍 <b>{len(hazine_adaylari)} hazine adayı</b> derin analiz başladı (ilan açıklaması inceleniyor)…")
+            tier_emoji = {"onayli": "🟢", "supheli": "🟡", "potansiyel_elmas": "💎", "normal": "🔴"}
+            for L in hazine_adaylari:
+                analiz = sahibinden_ilan_analiz(L.url, kritik, log_fn=_log)
+                L.aciklama_dolu = analiz.get("aciklama_dolu", False)
+                L.ilan_spec = analiz.get("ilan_spec", {})
+                L.eslesme_pct = analiz.get("eslesme_pct", 0)
+                # 4-seviye karar
+                tier, not_metafor, ekstra_boost = hazine_seviye_belirle(
+                    L.price, epey_avg, L.eslesme_pct, L.aciklama_dolu
+                )
+                L.hazine_tier = tier
+                L.hazine_not = not_metafor
+                if ekstra_boost:
+                    L.master_score = round(min(10.0, L.master_score + ekstra_boost), 2)
+                emo = tier_emoji.get(tier, "•")
+                short_title = L.title[:45]
+                # Stream mesaji
+                if tier == "onayli":
+                    _progress(f"🟢 <b>ONAYLI HAZİNE</b>: <i>{short_title}…</i> · açıklama eşleşmesi %{L.eslesme_pct} · +3 boost")
+                elif tier == "supheli":
+                    _progress(f"🟡 <b>ŞÜPHELİ</b>: <i>{short_title}…</i> · eşleşme %{L.eslesme_pct} — {not_metafor}")
+                elif tier == "potansiyel_elmas":
+                    _progress(f"💎 <b>POTANSİYEL ELMAS</b>: <i>{short_title}…</i> · {not_metafor}")
+                elif tier == "normal":
+                    _progress(f"🔴 <b>NORMAL FİYAT</b>: <i>{short_title}…</i> · {not_metafor}")
+            # 4-seviye sonrasi yeniden sirala
+            listings = sorted(listings, key=lambda x: (
+                -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
+                x.price if x.price > 0 else 999999,
+            ))
+
     # 7) Telegram MESAJ 3: Ana rapor (top_n)
     msg3 = _market_msg_ana_rapor(listings[:top_n], mod)
 
@@ -1648,6 +1828,10 @@ def market_master_query(query: str, budget: float = 5000.0,
              "rating": L.rating, "review_count": L.review_count,
              "has_photo_review": L.has_photo_review,
              "is_hazine": L.is_hazine, "hazine_iskonto_pct": L.hazine_iskonto_pct,
+             # FAZ-B/C: 4-seviye hazine + ilan analizi
+             "hazine_tier": L.hazine_tier, "hazine_not": L.hazine_not,
+             "aciklama_dolu": L.aciklama_dolu, "eslesme_pct": L.eslesme_pct,
+             "ilan_spec": L.ilan_spec,
              "v": L.v_score, "r": L.r_score, "f": L.f_score, "master": L.master_score}
             for L in listings[:top_n]
         ],
