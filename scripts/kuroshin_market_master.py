@@ -987,10 +987,27 @@ def _llm_json_call(prompt: str, llama_url: str, max_tokens: int = 600,
         return {}, f"EXC: {type(e).__name__}: {str(e)[:120]}"
 
 
+def _web_arama_snippet(query: str, max_chars: int = 1500, log_fn=None) -> str:
+    """FAZ-A (6 Haz 2026) — Aydinlama icin DDG web bilgi cek.
+    Lord doktrini: 'LLM cevabi + web bilgisi ile zenginlestir, statik fallback zayif'.
+    MarketFetcher._google_search_snippet'i bagimsiz cagri olarak yeniden kullan.
+    """
+    log = log_fn or (lambda m: None)
+    try:
+        fetcher = MarketFetcher(log_fn=log)
+        snippet = fetcher._google_search_snippet(query)
+        if snippet:
+            return snippet[:max_chars]
+    except Exception as e:
+        log(f"[WEB_ARAMA] hata: {e}")
+    return ""
+
+
 def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
-                      llama_url: str = LLAMA_URL) -> Dict[str, Any]:
+                      llama_url: str = LLAMA_URL, log_fn=None) -> Dict[str, Any]:
     """FAZ-B (4 Haz 2026) — Aydinlama Bulgusu: LLM kategoriden alici icin
     en kritik 3-5 ozelligi cikarir. Lord doktrini: 'model urunu tanimali'.
+    FAZ-A revize (6 Haz 2026): LLM cevabina web_search bağlamı eklendi.
 
     Epey detay sayfa lazy-load + CF korumali → statik tabandi yerine LLM
     bilgisi kullan (35B Huihui yeterli kategori-bilgisi). Static fallback
@@ -1003,31 +1020,43 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
     if not query:
         query = category_slug.replace("-", " ") or "ürün"
 
+    # FAZ-A (6 Haz): Web bağlamı çek — LLM cevabını zenginleştirmek için
+    web_baglam = _web_arama_snippet(f"{query} özellikleri fiyat aralık 2026 Türkiye",
+                                     max_chars=1200, log_fn=log_fn)
+    web_kismi = f'\n\nGüncel web bilgisi (Türkiye, 2026):\n{web_baglam[:1000]}\n' if web_baglam else ""
+
     prompt = (
         f'Sen bir Türkiye e-ticaret danışmanısın. Alıcı şu ürünü arıyor: "{query}" '
-        f'(bütçe: {budget:,.0f} TL).\n\n'
-        f'GÖREV: Bu kategoride alıcının BAKMASI GEREKEN en kritik 3-5 teknik '
+        f'(bütçe: {budget:,.0f} TL).'
+        + web_kismi +
+        f'\n\nGÖREV: Bu kategoride alıcının BAKMASI GEREKEN en kritik 3-5 teknik '
         f'özelliği listele. Genel kelimeler değil, ÖLÇÜLEBİLİR özellikler '
-        f'(örnek: "volan ağırlığı kg", "direnç kademe sayısı", "taşıma kapasitesi kg").\n\n'
+        f'(örnek: "volan ağırlığı kg", "direnç kademe sayısı", "taşıma kapasitesi kg").\n'
+        f'Eğer web bilgisi varsa GÜNCEL fiyat aralığını ve trend markaları dikkate al.\n\n'
         f'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
         f'{{"kritik": ["ozellik_1", "ozellik_2", "ozellik_3", "ozellik_4", "ozellik_5"], '
         f'"aciklama": "1 cümle özet — neden bu özellikler önemli", '
-        f'"fiyat_aralik": "X-Y TL beklenti"}}\n\n'
+        f'"fiyat_aralik": "X-Y TL beklenti", '
+        f'"populer_markalar": ["marka1", "marka2", "marka3"]}}\n\n'
         f'JSON çıktı:'
     )
-    data, raw = _llm_json_call(prompt, llama_url, max_tokens=400, temperature=0.1, timeout=60)
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=500, temperature=0.1, timeout=60)
     if not data or not data.get("kritik"):
         # LLM fail → static fallback
         return {
             "kritik": _category_defaults(category_slug or _query_to_slug(query)),
             "aciklama": "(statik fallback — LLM cevap vermedi)",
             "fiyat_aralik": f"{budget*0.6:,.0f}-{budget*1.4:,.0f} TL",
+            "populer_markalar": [],
+            "web_baglam": bool(web_baglam),
             "raw_preview": raw[:120] if raw else "",
         }
     return {
         "kritik": data.get("kritik", [])[:5],
         "aciklama": data.get("aciklama", "")[:200],
         "fiyat_aralik": data.get("fiyat_aralik", "")[:60],
+        "populer_markalar": data.get("populer_markalar", [])[:5],
+        "web_baglam": bool(web_baglam),  # web bilgisi mi kullanildi
     }
 
 
@@ -1117,11 +1146,21 @@ def merchant_judge(listing: ProductListing, criteria: Dict[str, Any],
 # ============================================================================
 def _market_msg_aydinlama(bulgu: Dict[str, Any], query: str) -> str:
     """FAZ-B 4 Haz — Aydinlama Bulgusu Telegram mesaji.
-    Lord doktrini: 'model urunu tanimalı, dusunce surecini gorebiliriz'."""
+    FAZ-A revize (6 Haz): web_baglam + populer_markalar eklendi (Lord 'web bilgisi')."""
     kritik = bulgu.get("kritik", [])[:5]
     aciklama = bulgu.get("aciklama", "")[:200]
     fiyat = bulgu.get("fiyat_aralik", "")
-    src = "🧠 LLM" if "fallback" not in aciklama.lower() else "📚 statik bilgi"
+    markalar = bulgu.get("populer_markalar", [])[:5]
+    web_var = bulgu.get("web_baglam", False)
+    is_fallback = "fallback" in aciklama.lower()
+    src_parts = []
+    if not is_fallback:
+        src_parts.append("🧠 LLM")
+    else:
+        src_parts.append("📚 statik bilgi")
+    if web_var:
+        src_parts.append("🌐 web")
+    src = " + ".join(src_parts)
     lines = [
         f"💡 <b>Aydınlama Bulgusu</b> ({src})",
         "",
@@ -1131,7 +1170,10 @@ def _market_msg_aydinlama(bulgu: Dict[str, Any], query: str) -> str:
     ]
     for k in kritik:
         lines.append(f"  • {k}")
-    if aciklama and "fallback" not in aciklama.lower():
+    if markalar:
+        lines.append("")
+        lines.append(f"🏷️ <b>Popüler markalar:</b> {' · '.join(markalar[:5])}")
+    if aciklama and not is_fallback:
         lines.append("")
         lines.append(f"💭 {aciklama}")
     if fiyat:
@@ -1383,8 +1425,9 @@ def market_master_query(query: str, budget: float = 5000.0,
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
     # 1.5) FAZ-B 4 Haz: Aydinlama Bulgusu — LLM kategoride kritik 3-5 ozellik
-    # Fix #2 (6 Haz): Aydinlama EN BAŞA — stream'in 1. mesajı (Lord doktrini "kademe kademe")
-    bulgu = aydinlama_bulgusu(query, category_slug, budget)
+    # Fix #2 (6 Haz): Aydinlama EN BAŞA — stream'in 1. mesajı
+    # FAZ-A (6 Haz revize): web_search bağlamı LLM cevabini zenginlestirir
+    bulgu = aydinlama_bulgusu(query, category_slug, budget, log_fn=_log)
     _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
     # LLM cıktısı doluysa KB kritik listesini onunla genislet
     if bulgu.get("kritik") and "fallback" not in bulgu.get("aciklama", "").lower():
