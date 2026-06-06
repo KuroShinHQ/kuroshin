@@ -37,6 +37,8 @@ outputs/
 .env*
 config/secrets*
 memory/thresholds.json
+# Lord cookies (6 Haz 2026): Sahibinden direkt erişim için, kişisel veri
+memory/sahibinden_session.json
 
 # Büyük veri dizinleri
 data/

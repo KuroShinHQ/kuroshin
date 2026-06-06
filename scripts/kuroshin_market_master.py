@@ -1072,6 +1072,92 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
     }
 
 
+# ============================================================================
+# Lord Cookie Aktarımı (6 Haz 2026) — Sahibinden direkt erişim
+# Lord doktrini: "benim Sahibinden hesabım var" → cookie ile yetkili erişim
+# ============================================================================
+SAHIBINDEN_SESSION_PATH = Path("/mnt/c/Kuroshin/memory/sahibinden_session.json")
+
+
+def _load_sahibinden_cookies() -> Dict[str, str]:
+    """Lord cookies.txt veya CookieEditor export → dict[name, value].
+    Format desteği:
+      1. CookieEditor: [{"name":"X", "value":"Y", "domain":".sahibinden.com", ...}]
+      2. Netscape cookies.txt: domain\tHTTP\tpath\tsecure\texpire\tname\tvalue
+    """
+    if not SAHIBINDEN_SESSION_PATH.exists():
+        return {}
+    try:
+        txt = SAHIBINDEN_SESSION_PATH.read_text(encoding="utf-8").strip()
+        # JSON formati (CookieEditor / Lord export)
+        if txt.startswith("[") or txt.startswith("{"):
+            data = json.loads(txt)
+            if isinstance(data, dict):
+                # Wrapper: {"cookies": [...]}
+                data = data.get("cookies", [])
+            if not isinstance(data, list):
+                return {}
+            out: Dict[str, str] = {}
+            for c in data:
+                if isinstance(c, dict):
+                    name = c.get("name", "")
+                    val = c.get("value", "")
+                    domain = c.get("domain", "")
+                    if name and val and ("sahibinden" in domain or not domain):
+                        out[name] = val
+            return out
+        # Netscape format
+        out2: Dict[str, str] = {}
+        for line in txt.splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) >= 7 and "sahibinden" in parts[0]:
+                out2[parts[5]] = parts[6]
+        return out2
+    except Exception:
+        return {}
+
+
+def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
+    """Lord cookies ile Sahibinden kategori listesi direkt fetch.
+    Returns: FetchResult veya None (cookies yoksa)."""
+    log = log_fn or (lambda m: None)
+    cookies = _load_sahibinden_cookies()
+    if not cookies:
+        log("[SAHIBINDEN_DIRECT] cookies YOK — akakce fallback'e geç")
+        return None
+    if cc_requests is None:
+        log("[SAHIBINDEN_DIRECT] curl_cffi YOK")
+        return None
+    # Sahibinden arama URL
+    safe_q = query.replace(" ", "+")
+    # Tipik Sahibinden arama: /arama?q=kondisyon+bisikleti
+    url = f"https://www.sahibinden.com/arama?q={safe_q}"
+    t0 = time.time()
+    try:
+        r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
+                            timeout=25, allow_redirects=False)
+        elapsed = round(time.time() - t0, 1)
+        # Login redirect kontrolü
+        if r.status_code in (301, 302):
+            loc = r.headers.get("Location", "")
+            log(f"[SAHIBINDEN_DIRECT] redirect → {loc[:80]} (cookies expired olabilir)")
+            return FetchResult(url=url, status=r.status_code, blocked=True,
+                               tier="sahibinden_cookie", elapsed_s=elapsed,
+                               error=f"redirect: {loc[:120]}")
+        log(f"[SAHIBINDEN_DIRECT] status={r.status_code} chars={len(r.text or '')} elapsed={elapsed}s")
+        return FetchResult(
+            url=url, status=r.status_code, text=r.text or "",
+            elapsed_s=elapsed, tier="sahibinden_cookie",
+            blocked=(r.status_code != 200) or "Just a moment" in (r.text or ""),
+        )
+    except Exception as e:
+        return FetchResult(url=url, status=0, tier="sahibinden_cookie",
+                           elapsed_s=round(time.time() - t0, 1),
+                           error=f"{type(e).__name__}: {str(e)[:120]}")
+
+
 def sahibinden_ilan_analiz(url: str, kritik_ozellikler: List[str],
                             llama_url: str = LLAMA_URL,
                             log_fn=None) -> Dict[str, Any]:
@@ -1644,15 +1730,30 @@ def market_master_query(query: str, budget: float = 5000.0,
     # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
     epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
     epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
-    # FAZ-G optimize + Yol A (6 Haz): "Sahibinden hazine avı" → "Akakce fiyat keşfi"
-    # Lord doktrini: akakce ≠ Sahibinden. Sahibinden direkt 2026'da login zorunlu.
-    # Akakce = fiyat karşılaştırma agregatörü, "alternatif aramak için iyi fırsat"
-    if epey_avg > 0:
-        _progress(f"🔍 <b>Akakce fiyat keşfi</b> (alternatif satıcı) — Epey avg {epey_avg:,.0f}₺ · bot eşik [{epey_avg*0.05:,.0f}–{epey_avg*5:,.0f}]₺")
+    # FAZ-Cookie (6 Haz): Lord cookies varsa Sahibinden direkt erişim, yoksa akakce
+    sahib_cookies = _load_sahibinden_cookies()
+    if sahib_cookies:
+        _progress(f"🔐 <b>Sahibinden direkt</b> erişim (Lord cookies aktif, {len(sahib_cookies)} cookie)")
+    elif epey_avg > 0:
+        _progress(f"🔍 <b>Akakce fiyat keşfi</b> (Sahibinden cookies yok — fallback) — Epey avg {epey_avg:,.0f}₺ · bot eşik [{epey_avg*0.05:,.0f}–{epey_avg*5:,.0f}]₺")
     else:
-        _progress(f"🔍 <b>Akakce fiyat keşfi</b> başladı (fiyat karşılaştırma agregatörü)")
+        _progress(f"🔍 <b>Akakce fiyat keşfi</b> başladı (Sahibinden cookies yok — fallback)")
+    # FAZ-Cookie: Sahibinden direkt önce dene (Lord cookies varsa)
+    sahib_r = None
+    sahib_direct_success = False
+    if sahib_cookies:
+        sahib_r = fetch_sahibinden_direct(query, log_fn=_log)
+        if sahib_r and sahib_r.status == 200 and not sahib_r.blocked:
+            sahib_direct_success = True
+            _log("[SAHIBINDEN_DIRECT] PASS — direkt erişim")
+        else:
+            # Cookies expired / fail → akakce fallback
+            _log(f"[SAHIBINDEN_DIRECT] FAIL ({sahib_r.error if sahib_r else 'None'}) → akakce'ye düş")
+            _progress(f"⚠️ Sahibinden cookies süresi dolmuş veya hata — akakce fallback")
+            sahib_r = None
     try:
-        sahib_r = fetcher.fetch_sahibinden_indirect(query)
+        if not sahib_r:
+            sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
             sahib_parsed = _parse_listings_from_html(
                 sahib_r.text, "sahibinden_indirect", budget,
@@ -1692,14 +1793,20 @@ def market_master_query(query: str, budget: float = 5000.0,
             # Yol A (6 Haz): "💎 HAZINE" → "💰 EN UCUZ" akakce fiyat keşif
             bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
             ucuzlar = [p for p in sahib_parsed if p.get("is_hazine")]  # field adı sabit, anlam degisti
+            # FAZ-Cookie: direkt erişim sonucu "💎 HAZINE" gerçek olur, akakce "💰 EN UCUZ"
+            src_label = "Sahibinden" if sahib_direct_success else "Akakce"
+            hazine_emoji = "💎" if sahib_direct_success else "💰"
+            hazine_label = "HAZINE" if sahib_direct_success else "EN UCUZ"
+            n_label = "ilan" if sahib_direct_success else "alternatif"
+            kesif_emoji = "🕵️" if sahib_direct_success else "🔍"
             if ucuzlar:
                 ornek = max(ucuzlar, key=lambda x: x.get("hazine_iskonto_pct", 0))
                 extra = f" · +{len(ucuzlar)-1} daha" if len(ucuzlar) > 1 else ""
-                _progress(f"🔍 <b>Akakce</b>: {len(sahib_parsed)} alternatif{bot_part}\n"
-                          f"💰 <b>EN UCUZ</b>: <i>{ornek.get('title','')[:50]}</i> → "
+                _progress(f"{kesif_emoji} <b>{src_label}</b>: {len(sahib_parsed)} {n_label}{bot_part}\n"
+                          f"{hazine_emoji} <b>{hazine_label}</b>: <i>{ornek.get('title','')[:50]}</i> → "
                           f"<b>{ornek['price']:,.0f}₺</b> · Epey avg'dan ~%{ornek['hazine_iskonto_pct']}↓{extra}")
             else:
-                _progress(f"🔍 <b>Akakce</b>: {len(sahib_parsed)} alternatif{bot_part} · belirgin ucuzluk yok")
+                _progress(f"{kesif_emoji} <b>{src_label}</b>: {len(sahib_parsed)} {n_label}{bot_part} · belirgin ucuzluk yok")
         else:
             site_stats["sahibinden.com"] = {
                 "n": 0, "durum": "akakce (boş)", "tier": sahib_r.tier,
