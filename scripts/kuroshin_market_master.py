@@ -1359,9 +1359,10 @@ def _truncate_word_boundary(s: str, n: int) -> str:
 
 _SITE_DISPLAY = {
     "epey": "Epey", "trendyol": "Trendyol", "hepsiburada": "Hepsiburada",
-    # 6 Haz fix: link akakce.com → display de akakce yap (Lord URL şeffaflık)
-    # "Sahibinden (akakce)" → Lord tıkladığında sahibinden.com'a gidiyor sandı, 404 aldı
-    "sahibinden_indirect": "akakce (Sahibinden satıcı)",
+    # 6 Haz Yol A: akakce ≠ Sahibinden. Akakce fiyat karşılaştırma agregatörü.
+    # Lord doktrini: "akakce alternatif aramak için iyi fırsatlar sunabilir"
+    # Gerçek Sahibinden hazine (2.el) için CF Turnstile bypass/Google search gerek
+    "sahibinden_indirect": "akakce (fiyat keşif)",
     "cimri": "cimri.com", "akakce": "akakce.com",
 }
 
@@ -1386,17 +1387,10 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
-        # FAZ-D + FAZ-C (6 Haz): 4-seviye hazine rozeti
-        _tier_rozet = {
-            "onayli": f" 🟢 <b>ONAYLI HAZİNE %{L.hazine_iskonto_pct}↓</b>",
-            "supheli": f" 🟡 <b>ŞÜPHELİ %{L.hazine_iskonto_pct}↓</b>",
-            "potansiyel_elmas": f" 💎 <b>POTANSİYEL ELMAS %{L.hazine_iskonto_pct}↓</b>",
-            "normal": "",  # normal fiyat — rozet gösterme
-        }
-        if L.hazine_tier:
-            hazine_rozet = _tier_rozet.get(L.hazine_tier, "")
-        elif L.is_hazine:
-            hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>"
+        # Yol A (6 Haz): akakce ucuz satıcı rozet ("hazine" terminolojisi kaldırıldı)
+        # Gerçek Sahibinden hazine (CF Turnstile bypass) ileride yapılacak
+        if L.is_hazine and L.hazine_iskonto_pct >= 30:
+            hazine_rozet = f" 💰 <b>EN UCUZ %{L.hazine_iskonto_pct}↓</b>"
         else:
             hazine_rozet = ""
         # FAZ-G optimize: site adı insan-okur
@@ -1650,11 +1644,13 @@ def market_master_query(query: str, budget: float = 5000.0,
     # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
     epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
     epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
-    # FAZ-G optimize: hazine avı + bot eşik tek mesajda birleştirildi (Sahibinden öncesi)
+    # FAZ-G optimize + Yol A (6 Haz): "Sahibinden hazine avı" → "Akakce fiyat keşfi"
+    # Lord doktrini: akakce ≠ Sahibinden. Sahibinden direkt 2026'da login zorunlu.
+    # Akakce = fiyat karşılaştırma agregatörü, "alternatif aramak için iyi fırsat"
     if epey_avg > 0:
-        _progress(f"🕵️ <b>Sahibinden</b> hazine avı (akakce · login YOK) — Epey avg {epey_avg:,.0f}₺ · bot eşik [{epey_avg*0.05:,.0f}–{epey_avg*5:,.0f}]₺")
+        _progress(f"🔍 <b>Akakce fiyat keşfi</b> (alternatif satıcı) — Epey avg {epey_avg:,.0f}₺ · bot eşik [{epey_avg*0.05:,.0f}–{epey_avg*5:,.0f}]₺")
     else:
-        _progress(f"🕵️ <b>Sahibinden</b> hazine avı başladı (akakce indirect, login YOK)")
+        _progress(f"🔍 <b>Akakce fiyat keşfi</b> başladı (fiyat karşılaştırma agregatörü)")
     try:
         sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
@@ -1693,27 +1689,26 @@ def market_master_query(query: str, budget: float = 5000.0,
                     p["hazine_iskonto_pct"] = int((1 - pr / epey_avg) * 100)
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
-            # FAZ-G optimize: Sahibinden sonuc + hazine listesi TEK MESAJ
+            # Yol A (6 Haz): "💎 HAZINE" → "💰 EN UCUZ" akakce fiyat keşif
             bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
-            hazineler = [p for p in sahib_parsed if p.get("is_hazine")]
-            if hazineler:
-                # En iyi hazine baslığa, kalanları sayım
-                ornek = max(hazineler, key=lambda x: x.get("hazine_iskonto_pct", 0))
-                extra = f" · +{len(hazineler)-1} daha" if len(hazineler) > 1 else ""
-                _progress(f"🕵️ <b>Sahibinden</b>: {len(sahib_parsed)} ilan{bot_part}\n"
-                          f"💎 <b>HAZINE</b>: <i>{ornek.get('title','')[:50]}</i> → "
-                          f"<b>{ornek['price']:,.0f}₺</b> · ~%{ornek['hazine_iskonto_pct']}↓{extra}")
+            ucuzlar = [p for p in sahib_parsed if p.get("is_hazine")]  # field adı sabit, anlam degisti
+            if ucuzlar:
+                ornek = max(ucuzlar, key=lambda x: x.get("hazine_iskonto_pct", 0))
+                extra = f" · +{len(ucuzlar)-1} daha" if len(ucuzlar) > 1 else ""
+                _progress(f"🔍 <b>Akakce</b>: {len(sahib_parsed)} alternatif{bot_part}\n"
+                          f"💰 <b>EN UCUZ</b>: <i>{ornek.get('title','')[:50]}</i> → "
+                          f"<b>{ornek['price']:,.0f}₺</b> · Epey avg'dan ~%{ornek['hazine_iskonto_pct']}↓{extra}")
             else:
-                _progress(f"🕵️ <b>Sahibinden</b>: {len(sahib_parsed)} ilan{bot_part} · hazine tespit edilmedi")
+                _progress(f"🔍 <b>Akakce</b>: {len(sahib_parsed)} alternatif{bot_part} · belirgin ucuzluk yok")
         else:
             site_stats["sahibinden.com"] = {
-                "n": 0, "durum": "indirect (boş)", "tier": sahib_r.tier,
+                "n": 0, "durum": "akakce (boş)", "tier": sahib_r.tier,
             }
-            _progress(f"🕵️ Sahibinden: boş döndü ({sahib_r.tier})")
+            _progress(f"🔍 Akakce: boş döndü ({sahib_r.tier})")
     except Exception as e:
-        site_stats["sahibinden.com"] = {"n": 0, "durum": f"indirect hata: {str(e)[:30]}", "tier": "-"}
-        _log(f"sahibinden indirect hata: {e}")
-        _progress(f"🕵️ Sahibinden: ❌ hata — {str(e)[:60]}")
+        site_stats["sahibinden.com"] = {"n": 0, "durum": f"akakce hata: {str(e)[:30]}", "tier": "-"}
+        _log(f"akakce indirect hata: {e}")
+        _progress(f"🔍 Akakce: ❌ hata — {str(e)[:60]}")
 
     # 5) FIX-ALL: Referans fiyat gerçek listing'lerin median'ından
     if listings:
@@ -1774,44 +1769,35 @@ def market_master_query(query: str, budget: float = 5000.0,
                 L.master_score = round(min(10.0, L.master_score + 1.5), 2)
                 hazine_boost_n += 1
         if hazine_boost_n:
-            _log(f"HAZINE BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi")
+            _log(f"UCUZ BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi (akakce en ucuz)")
             # Sırala YENIDEN — boost sonrasi hazineler ust siralara çıkabilir
             listings = sorted(listings, key=lambda x: x.master_score, reverse=True)
-            # FAZ-G optimize: tek mesaj (eski 3 mesajdan tek satira indirildi)
-            _progress(f"✨ <b>{hazine_boost_n} hazine</b> top sıraya alındı (master +1.5 boost)")
+            # Yol A: "hazine" → "en ucuz satıcı" (Lord doktrini)
+            _progress(f"💰 <b>{hazine_boost_n} ucuz alternatif</b> üst sıraya alındı (akakce fiyat avantajı)")
 
-        # FAZ-B + FAZ-C (6 Haz): Top hazine adaylarinda derin analiz
-        # Lord doktrini: "EN KRİTİK ilan AÇIKLAMASI". TOP 3 hazine ilani için
-        # detay sayfa fetch + LLM ozet + 4-seviye karar.
-        hazine_adaylari = [L for L in listings if L.is_hazine and L.url][:3]
-        if hazine_adaylari:
-            _progress(f"🔍 <b>{len(hazine_adaylari)} hazine adayı</b> derin analiz başladı (ilan açıklaması inceleniyor)…")
-            tier_emoji = {"onayli": "🟢", "supheli": "🟡", "potansiyel_elmas": "💎", "normal": "🔴"}
-            for L in hazine_adaylari:
+        # FAZ-B (6 Haz Yol A): Akakce ilan açıklama LLM analizi — fiyat keşfi için değerli
+        # 4-seviye karar AKAKCE için anlamsız (Onaylı/Şüpheli/Elmas sadece gerçek Sahibinden)
+        # Akakce için sadece "açıklama incelendi" + spec özet, hazine terminolojisi YOK
+        ucuz_adaylari = [L for L in listings if L.is_hazine and L.url][:3]
+        if ucuz_adaylari:
+            _progress(f"🔍 <b>{len(ucuz_adaylari)} ucuz adayı</b> akakce açıklaması inceleniyor…")
+            for L in ucuz_adaylari:
                 analiz = sahibinden_ilan_analiz(L.url, kritik, log_fn=_log)
                 L.aciklama_dolu = analiz.get("aciklama_dolu", False)
                 L.ilan_spec = analiz.get("ilan_spec", {})
                 L.eslesme_pct = analiz.get("eslesme_pct", 0)
-                # 4-seviye karar
-                tier, not_metafor, ekstra_boost = hazine_seviye_belirle(
-                    L.price, epey_avg, L.eslesme_pct, L.aciklama_dolu
-                )
-                L.hazine_tier = tier
-                L.hazine_not = not_metafor
-                if ekstra_boost:
-                    L.master_score = round(min(10.0, L.master_score + ekstra_boost), 2)
-                emo = tier_emoji.get(tier, "•")
                 short_title = L.title[:45]
-                # Stream mesaji
-                if tier == "onayli":
-                    _progress(f"🟢 <b>ONAYLI HAZİNE</b>: <i>{short_title}…</i> · açıklama eşleşmesi %{L.eslesme_pct} · +3 boost")
-                elif tier == "supheli":
-                    _progress(f"🟡 <b>ŞÜPHELİ</b>: <i>{short_title}…</i> · eşleşme %{L.eslesme_pct} — {not_metafor}")
-                elif tier == "potansiyel_elmas":
-                    _progress(f"💎 <b>POTANSİYEL ELMAS</b>: <i>{short_title}…</i> · {not_metafor}")
-                elif tier == "normal":
-                    _progress(f"🔴 <b>NORMAL FİYAT</b>: <i>{short_title}…</i> · {not_metafor}")
-            # 4-seviye sonrasi yeniden sirala
+                # Yol A: "Onaylı/Şüpheli/Elmas" yerine sadece bilgilendirme
+                if L.aciklama_dolu and L.eslesme_pct >= 60:
+                    _progress(f"✓ <i>{short_title}…</i> — akakce açıklamasında özellikler tutuyor (%{L.eslesme_pct})")
+                    L.hazine_not = f"akakce açıklama eşleşmesi yüksek %{L.eslesme_pct}"
+                elif L.aciklama_dolu:
+                    _progress(f"⚠️ <i>{short_title}…</i> — akakce açıklamada özellikler kısıtlı (%{L.eslesme_pct})")
+                    L.hazine_not = f"akakce açıklama eşleşme düşük %{L.eslesme_pct}"
+                else:
+                    _progress(f"📭 <i>{short_title}…</i> — akakce sayfasında detaylı açıklama yok")
+                    L.hazine_not = "akakce sayfasında detay yok — alternatif fiyat olarak değerlendir"
+            # Yeniden sırala (skor + ucuz)
             listings = sorted(listings, key=lambda x: (
                 -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
                 x.price if x.price > 0 else 999999,
