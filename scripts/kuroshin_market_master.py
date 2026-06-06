@@ -348,12 +348,17 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                             except ValueError:
                                 pass
                     # URL — FAZ-A 4 Haz fix: site "trendyol" gibi kisa form gelirse .com ekle
+                    # 6 Haz fix: Sahibinden indirect → akakce.com (parser akakce'den cekiyor,
+                    # URL akakce slug'i — sahibinden.com ile birlestirince 404 NOT FOUND)
                     a_el = card.select_one("a[href]") if card.name != "a" else card
                     url = (a_el.get("href", "") if a_el else "") or ""
                     if url.startswith("/"):
-                        _site_base = site.replace('_indirect', '')
-                        if "." not in _site_base:
-                            _site_base = f"{_site_base}.com"
+                        if "sahibinden_indirect" in site or "akakce" in site:
+                            _site_base = "akakce.com"  # gerçek akakce slug
+                        else:
+                            _site_base = site.replace('_indirect', '')
+                            if "." not in _site_base:
+                                _site_base = f"{_site_base}.com"
                         url = f"https://www.{_site_base}{url}"
 
                 # Min fiyat sart — placeholder/widget genelde 0 veya cok kucuk
@@ -1354,7 +1359,9 @@ def _truncate_word_boundary(s: str, n: int) -> str:
 
 _SITE_DISPLAY = {
     "epey": "Epey", "trendyol": "Trendyol", "hepsiburada": "Hepsiburada",
-    "sahibinden_indirect": "Sahibinden (akakce)",
+    # 6 Haz fix: link akakce.com → display de akakce yap (Lord URL şeffaflık)
+    # "Sahibinden (akakce)" → Lord tıkladığında sahibinden.com'a gidiyor sandı, 404 aldı
+    "sahibinden_indirect": "akakce (Sahibinden satıcı)",
     "cimri": "cimri.com", "akakce": "akakce.com",
 }
 
