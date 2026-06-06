@@ -3178,7 +3178,18 @@ def run_tool(name: str, args: dict) -> str:
                 category_slug = query.lower().replace(" ", "-").replace("ı", "i").replace("ş", "s")
                 category_slug = _re_mm.sub(r"[^a-z0-9-]", "", category_slug)
             _log(f"[MARKET_MASTER] query={query!r} budget={budget} mod={mod} top_n={top_n} slug={category_slug}")
-            result = market_master_query(query, budget, mod, top_n, category_slug)
+            # FAZ-G Stream (4 Haz 2026): her aşamada Telgrama anlık update.
+            # Lord doktrini: "kademe kademe akış, model düşünce sürecini göstersin"
+            _stream_chat_id = _CURRENT_CHAT_ID or 0
+            def _market_progress(_msg):
+                if _stream_chat_id:
+                    try:
+                        send_msg(_stream_chat_id, _msg)
+                        time.sleep(0.4)  # Telegram rate-limit (~5 msg/sec güvenli)
+                    except Exception:
+                        pass
+            result = market_master_query(query, budget, mod, top_n, category_slug,
+                                         progress_callback=_market_progress)
             # 4 mesajı sırayla gönder (chat_id = _CURRENT_CHAT_ID)
             chat_id = _CURRENT_CHAT_ID or 0
             if chat_id:

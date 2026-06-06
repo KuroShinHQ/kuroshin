@@ -1230,19 +1230,27 @@ def _query_to_slug(query: str) -> str:
 
 def market_master_query(query: str, budget: float = 5000.0,
                         mod: str = "dengeli", top_n: int = 3,
-                        category_slug: str = "") -> Dict[str, Any]:
-    """Kuroshin Market Master ana entry. FIX-ALL (3 Haz 2026):
-    - query sanitize (model şişirmesi → 2-6 kelime)
-    - top_n cap 5 (model 30 verirse 5'e bastır)
-    - category_slug auto-derive query'den
-    - Listing parser gerçek (JSON-LD + CSS fallback)
-    - Referans fiyat fetched listing'lerin median'ından
+                        category_slug: str = "",
+                        progress_callback=None) -> Dict[str, Any]:
+    """Kuroshin Market Master ana entry. FIX-ALL (3 Haz 2026) + FAZ-G stream (4 Haz):
+    - query sanitize, top_n cap 5, category_slug auto-derive
+    - Listing parser gerçek (JSON-LD + CSS), median referans fiyat
+    - FAZ-G: progress_callback(msg) — her aşamada Telgram'a anlık update
+      ('🏪 Epey araştırılıyor...', '🛒 Trendyol 6 ürün', '🕵️ Sahibinden hazine avı')
     """
     t0 = time.time()
     log_lines: List[str] = []
     def _log(msg: str):
         log_lines.append(f"[MARKET_MASTER] {msg}")
         print(log_lines[-1])
+
+    def _progress(msg: str):
+        """FAZ-G Stream: her aşamada Telgrama anlık akış. Hata yoksay."""
+        if progress_callback:
+            try:
+                progress_callback(msg)
+            except Exception as _e:
+                _log(f"progress_callback err: {_e}")
 
     # FIX-ALL B2: top_n cap 1-5 (model halüsinasyon 30 → 5)
     top_n = max(1, min(int(top_n or 3), 5))
@@ -1267,6 +1275,7 @@ def market_master_query(query: str, budget: float = 5000.0,
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
     # 1.5) FAZ-B 4 Haz: Aydinlama Bulgusu — LLM kategoride kritik 3-5 ozellik
+    _progress(f"🔎 <b>{query}</b> için aydınlama bulgusu çıkartılıyor (LLM düşünüyor)…")
     bulgu = aydinlama_bulgusu(query, category_slug, budget)
     _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
     # LLM cıktısı doluysa KB kritik listesini onunla genislet
@@ -1280,14 +1289,19 @@ def market_master_query(query: str, budget: float = 5000.0,
                                  ref_price_min, ref_price_max)
 
     # 3) Multi-source crawl (FIX-ALL: gerçek JSON-LD + CSS parser)
+    # FAZ-G Stream: her sitenin oncesinde ve sonrasinda Telgrama anlik update.
+    # Lord doktrini: "kademe kademe akar, model dusunce surecini gosterir"
     site_stats: Dict[str, Dict[str, Any]] = {}
     listings: List[ProductListing] = []
+    site_emoji = {"epey": "🏪", "trendyol": "🛒", "hepsiburada": "🛍️"}
     site_urls = [
         ("epey.com",        f"https://www.epey.com/{category_slug}/", "epey"),
         ("trendyol.com",    f"https://www.trendyol.com/sr?q={query.replace(' ', '+')}", "trendyol"),
         ("hepsiburada.com", f"https://www.hepsiburada.com/ara?q={query.replace(' ', '+')}", "hepsiburada"),
     ]
     for site_domain, listing_url, site_short in site_urls:
+        emo = site_emoji.get(site_short, "•")
+        _progress(f"{emo} <b>{site_short.capitalize()}</b> taranıyor…")
         try:
             r = fetcher.fetch(listing_url)
             if r.blocked or r.status != 200:
@@ -1295,8 +1309,8 @@ def market_master_query(query: str, budget: float = 5000.0,
                     "n": 0, "durum": f"blocked ({r.status})", "tier": r.tier,
                     "title": (r.title or "")[:60],
                 }
+                _progress(f"{emo} {site_short.capitalize()}: ⚠️ erişim engellendi ({r.status})")
                 continue
-            # FIX-ALL: gerçek listing parser
             parsed = _parse_listings_from_html(r.text, site_short, budget, limit=top_n*2, log_fn=_log)
             site_stats[site_domain] = {
                 "n": len(parsed),
@@ -1307,15 +1321,26 @@ def market_master_query(query: str, budget: float = 5000.0,
             }
             for p in parsed:
                 listings.append(ProductListing(**p))
+            # Stream — bu sitenin sonuc ozeti
+            if parsed:
+                # Ornek bir baslik (ilk urun) — Lord "kademe kademe akış" doktrini
+                ornek = parsed[0].get("title", "")[:50]
+                _progress(f"{emo} {site_short.capitalize()}: ✅ <b>{len(parsed)} ürün</b> bulundu (örnek: <i>{ornek}…</i>)")
+            else:
+                _progress(f"{emo} {site_short.capitalize()}: parse=0 (sayfa içeriği uygun değil)")
         except Exception as e:
             site_stats[site_domain] = {"n": 0, "durum": f"hata: {str(e)[:40]}", "tier": "-"}
             _log(f"site {site_domain} hata: {e}")
+            _progress(f"{emo} {site_short.capitalize()}: ❌ hata — {str(e)[:60]}")
 
     # 4) Sahibinden indirect (FAZ-2): cimri/akakce → JSON-LD + CSS parser
     # FAZ-E (4 Haz): Bot-Anomali Cift Filtre — Epey avg × 0.05/5 esiklerle Sahibinden
     # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
     epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
     epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
+    _progress(f"🕵️ <b>Sahibinden hazine avı</b> başladı (akakce dolaylı, login YOK)…")
+    if epey_avg > 0:
+        _progress(f"💡 Bot-anomali eşik: Epey avg {epey_avg:,.0f} TL → [{epey_avg*0.05:,.0f} – {epey_avg*5:,.0f}] TL aralığı")
     try:
         sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
@@ -1346,13 +1371,28 @@ def market_master_query(query: str, budget: float = 5000.0,
             }
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
+            # FAZ-G Stream: Sahibinden sonuc ozeti + hazine on-bakislari
+            bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
+            _progress(f"🕵️ Sahibinden: ✅ <b>{len(sahib_parsed)} ilan</b> (akakce indirect){bot_part}")
+            # Hazine on-bakislari: epey_avg < %60 altinda olan akakce ilanlari
+            if epey_avg > 0:
+                hazine_esik = epey_avg * 0.6
+                hazineler = [p for p in sahib_parsed if 0 < p.get("price", 0) < hazine_esik]
+                if hazineler:
+                    ornek = hazineler[0]
+                    onaylanan = ornek.get("price", 0)
+                    iskonto_pct = int((1 - onaylanan / epey_avg) * 100) if epey_avg else 0
+                    _progress(f"💎 <b>HAZINE on-bakisi:</b> {ornek.get('title','')[:60]} → <b>{onaylanan:,.0f} TL</b> "
+                              f"(Epey muadil ortalaması {epey_avg:,.0f} TL · ~%{iskonto_pct} ucuz)")
         else:
             site_stats["sahibinden.com"] = {
                 "n": 0, "durum": "indirect (boş)", "tier": sahib_r.tier,
             }
+            _progress(f"🕵️ Sahibinden: boş döndü ({sahib_r.tier})")
     except Exception as e:
         site_stats["sahibinden.com"] = {"n": 0, "durum": f"indirect hata: {str(e)[:30]}", "tier": "-"}
         _log(f"sahibinden indirect hata: {e}")
+        _progress(f"🕵️ Sahibinden: ❌ hata — {str(e)[:60]}")
 
     # 5) FIX-ALL: Referans fiyat gerçek listing'lerin median'ından
     if listings:
