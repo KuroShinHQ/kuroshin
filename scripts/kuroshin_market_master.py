@@ -355,13 +355,43 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                 # Min fiyat sart — placeholder/widget genelde 0 veya cok kucuk
                 if price <= 0:
                     continue
+                # FAZ-C Yorum Zekası — rating + has_photo_review extract (HB+Trendyol)
+                _rating = None
+                _photo = False
+                if "trendyol" in site:
+                    # Trendyol .product-card icinde .average-rating veya .rating-stars
+                    r_el = card.select_one(".average-rating, .ratings-summary [class*=value], [class*=rating-score]")
+                    if r_el:
+                        r_txt = r_el.get_text(" ", strip=True)
+                        pm_r = re.search(r"(\d[\.,]\d)", r_txt)
+                        if pm_r:
+                            try:
+                                _rating = float(pm_r.group(1).replace(",", "."))
+                            except ValueError:
+                                pass
+                elif "hepsiburada" in site:
+                    # HB li[productListContent-]: rate-module_rating__19oVu (hash uçucu)
+                    r_el = card.select_one('[class^="rate-module_rating"]')
+                    if r_el:
+                        r_txt = r_el.get_text(" ", strip=True)
+                        pm_r = re.search(r"(\d[\.,]\d)", r_txt)
+                        if pm_r:
+                            try:
+                                _rating = float(pm_r.group(1).replace(",", "."))
+                            except ValueError:
+                                pass
+                    # rate-module_photoReviewIcon sinyali
+                    if card.select_one('[class^="rate-module_photoReviewIcon"]'):
+                        _photo = True
                 out.append({
                     "title": title, "price": price, "url": url, "site": site,
-                    "rating": None, "review_count": 0, "description": "",
+                    "rating": _rating, "review_count": 0, "description": "",
+                    "has_photo_review": _photo,
                 })
             except Exception:
                 continue
-        log(f"[PARSER {site}] CSS site-spesifik: toplam {len(out)} urun")
+        log(f"[PARSER {site}] CSS site-spesifik: toplam {len(out)} urun (ratingli: "
+            f"{sum(1 for x in out if x.get('rating'))} · fotolu: {sum(1 for x in out if x.get('has_photo_review'))})")
 
     # 3. Filtre: makul fiyat araligi (3 Haz 2026 FIX: HB "3 TL" parse hatasi engellendi)
     # Min: budget*5% (50-150 TL altı sahte parse), Max: budget*2.5 (anormal yuksek)
@@ -403,7 +433,8 @@ class FetchResult:
 
 @dataclass
 class ProductListing:
-    """Tek bir ürün ilanı (3 siteden veya Sahibinden indirect)."""
+    """Tek bir ürün ilanı (3 siteden veya Sahibinden indirect).
+    FAZ-C (4 Haz 2026): has_photo_review (HB) + yorum_kalitesi (LLM analiz)."""
     title: str
     price: float          # TL
     url: str              # HTTPS only
@@ -414,6 +445,10 @@ class ProductListing:
     features: Dict[str, str] = field(default_factory=dict)
     is_second_hand: bool = False
     kondisyon: str = "sifir_kutulu"
+    # FAZ-C Yorum Zekası
+    has_photo_review: bool = False  # HB rate-module_photoReviewIcon sinyali
+    yorum_kalitesi: float = 0.0  # 0-10 LLM analiz (ileride)
+    sikayet_pattern: List[str] = field(default_factory=list)  # LLM cikartma
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -1122,12 +1157,21 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
         # HTML kacis (Telegram parse_mode=HTML)
         url_safe = (L.url or "").replace('"', '%22').replace('<', '%3C').replace('>', '%3E')
         link_part = f' · <a href="{url_safe}">🔗 İncele</a>' if url_safe and url_safe.startswith("http") else ""
+        # FAZ-C: yorum sinyali (rating + foto) — varsa ek satir
+        yorum_line = ""
+        if L.rating:
+            yorum_line = f"\n💬 ⭐ {L.rating}/5"
+            if L.has_photo_review:
+                yorum_line += " · 📸 fotolu yorum"
+        elif L.has_photo_review:
+            yorum_line = "\n💬 📸 fotolu yorum"
         lines.append(
             f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>\n"
             f"📌 {title_clean}\n"
             f"🏷️ {L.price:,.0f} TL"
             + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})") + "\n"
-            f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}\n"
+            f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}"
+            + yorum_line + "\n"
             f"🌐 Site: {L.site}{link_part}\n"
         )
     return "\n".join(lines)
@@ -1321,11 +1365,19 @@ def market_master_query(query: str, budget: float = 5000.0,
             }
             for p in parsed:
                 listings.append(ProductListing(**p))
-            # Stream — bu sitenin sonuc ozeti
+            # Stream — bu sitenin sonuc ozeti + FAZ-C yorum sinyali
             if parsed:
-                # Ornek bir baslik (ilk urun) — Lord "kademe kademe akış" doktrini
                 ornek = parsed[0].get("title", "")[:50]
-                _progress(f"{emo} {site_short.capitalize()}: ✅ <b>{len(parsed)} ürün</b> bulundu (örnek: <i>{ornek}…</i>)")
+                # FAZ-C: rating + foto sinyali ozet
+                ratings = [x.get("rating") for x in parsed if x.get("rating")]
+                foto_n = sum(1 for x in parsed if x.get("has_photo_review"))
+                yorum_part = ""
+                if ratings:
+                    avg_r = sum(ratings) / len(ratings)
+                    yorum_part = f" · ⭐ ort. {avg_r:.1f} ({len(ratings)}/{len(parsed)} üründe)"
+                if foto_n:
+                    yorum_part += f" · 📸 {foto_n} fotolu yorum"
+                _progress(f"{emo} {site_short.capitalize()}: ✅ <b>{len(parsed)} ürün</b> (örnek: <i>{ornek}…</i>){yorum_part}")
             else:
                 _progress(f"{emo} {site_short.capitalize()}: parse=0 (sayfa içeriği uygun değil)")
         except Exception as e:
@@ -1427,6 +1479,8 @@ def market_master_query(query: str, budget: float = 5000.0,
         "messages": [msg1, msg_aydinlama, msg2, msg3, msg4],
         "listings": [
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
+             "rating": L.rating, "review_count": L.review_count,
+             "has_photo_review": L.has_photo_review,
              "v": L.v_score, "r": L.r_score, "f": L.f_score, "master": L.master_score}
             for L in listings[:top_n]
         ],
