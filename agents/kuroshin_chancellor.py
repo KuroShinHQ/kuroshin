@@ -3201,10 +3201,17 @@ def run_tool(name: str, args: dict) -> str:
                      {"text": "🔍 Derin Analiz", "callback_data": "market_derin"}],
                     [{"text": "🛒 Tüm Linkler", "callback_data": "market_tum_linkler"}],
                 ]
-                # FAZ-G optimize (6 Haz): 3 mesaj — Aydinlama(0) + Ana Rapor(1) + ASCII(2)
-                # Eski 5 mesaj akisi geriye uyumlu (5'lik: ana rapor idx 3, 3'luk: idx 1)
+                # Fix #2 (6 Haz): 2 mesaj — Ana Rapor(0) + ASCII(1) — Aydınlama stream'e taşındı
+                # Eski 3/5 mesaj akisi geriye uyumlu
                 _n_msg = len(result.get("messages", []))
-                ana_rapor_idx = 1 if _n_msg == 3 else (3 if _n_msg >= 5 else 2)
+                if _n_msg == 2:
+                    ana_rapor_idx = 0
+                elif _n_msg == 3:
+                    ana_rapor_idx = 1
+                elif _n_msg >= 5:
+                    ana_rapor_idx = 3
+                else:
+                    ana_rapor_idx = 2
                 for i, msg in enumerate(result["messages"]):
                     if i == ana_rapor_idx:
                         send_msg_keyboard(chat_id, msg, kb_buttons)

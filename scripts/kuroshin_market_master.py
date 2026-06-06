@@ -44,6 +44,10 @@ try:
     from playwright.sync_api import sync_playwright
 except ImportError:
     sync_playwright = None
+try:
+    from playwright_stealth import Stealth
+except ImportError:
+    Stealth = None
 
 # Local llama-server endpoint (kuroshin standard)
 LLAMA_URL = "http://127.0.0.1:8080/v1/chat/completions"
@@ -452,6 +456,9 @@ class ProductListing:
     # FAZ-D Hazine Avi
     is_hazine: bool = False  # Sahibinden + epey_avg*0.6 alti + makul
     hazine_iskonto_pct: int = 0  # 0-99 (epey muadil ortalamasina gore)
+    # Fix #4 (6 Haz): Cross-site dedup — aynı modelin alternatifleri
+    alt_fiyat: float = 0.0  # en ucuz alternatif fiyat
+    alt_site: str = ""  # en ucuz alternatif sitesi
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -558,9 +565,20 @@ class MarketFetcher:
                     locale='tr-TR',
                 )
                 page = ctx.new_page()
+                # 6 Haz fix: playwright-stealth ile CF interstitial bypass
+                # Bat 5+1 sonrasi yeni Chromium process'te CF cookie yok → challenge sayfa
+                if Stealth is not None:
+                    try:
+                        Stealth().apply_stealth_sync(page)
+                    except Exception:
+                        pass
                 page.goto(url, wait_until='domcontentloaded', timeout=30000)
-                # JS lazy-load icin DOM bekle (Trendyol/Epey kartlari ~3-4s sonra dolar)
-                page.wait_for_timeout(4500)
+                # CF challenge için ekstra 3s + DOM lazy-load
+                page.wait_for_timeout(7000)
+                # CF interstitial hala duruyorsa biraz daha bekle
+                _t = page.title() or ""
+                if "just a moment" in _t.lower() or "checking" in _t.lower():
+                    page.wait_for_timeout(5000)
                 html = page.content() or ""
                 title = page.title() or ""
                 browser.close()
@@ -873,7 +891,9 @@ class MerchantScorer:
         return max(0.0, min(10.0, round(r, 2)))
 
     def calc_f_score(self, listing: ProductListing, kritik_ozellikler: List[str]) -> float:
-        """Feature/Özellik uygunluğu 0-10."""
+        """Feature/Özellik uygunluğu 0-10.
+        Fix #5 (6 Haz): Sahibinden gibi başlığı kısa + açıklama yok ürünlerde
+        f_score=0 haksızlık. 'Bilinmiyor' durumu = neutral 5.0 (Lord doktrini)."""
         if not kritik_ozellikler:
             return 5.0
         toplam = len(kritik_ozellikler)
@@ -881,10 +901,18 @@ class MerchantScorer:
         listing_features_str = " ".join(
             [str(v).lower() for v in listing.features.values()] +
             [listing.description.lower(), listing.title.lower()]
-        )
+        ).strip()
+        # Fix #5: corpus çok az ise (Sahibinden ilan: başlık+description birlikte <80 char)
+        # bilgi YOK durumudur, sıfır demek haksız → neutral 5.0
+        if len(listing_features_str) < 80:
+            return 5.0
         for kriter in kritik_ozellikler:
             if kriter.lower() in listing_features_str:
                 karsilanan += 1
+        # Hiç kriter eşleşmediyse + corpus mevcut → yine de düşük puan (3.0 minimum)
+        # Mevcut: 0 eşleşme → 0 (çok sert). Yeni: 0 eşleşme + corpus var → 3.0
+        if karsilanan == 0:
+            return 3.0
         return round((karsilanan / toplam) * 10.0, 2)
 
     def calc_master_score(self, listing: ProductListing, mod: str = "dengeli") -> float:
@@ -897,13 +925,21 @@ class MerchantScorer:
 
     def score_all(self, listings: List[ProductListing], ref_price: float,
                   kritik_ozellikler: List[str], mod: str = "dengeli") -> List[ProductListing]:
-        """Tüm ürünleri puanla + master_score'a göre sırala (büyükten küçüğe)."""
+        """Tüm ürünleri puanla + sırala.
+        Fix #3 (6 Haz): Tie-break — master_score eşitse hazine_iskonto_pct DESC,
+        sonra rating DESC, sonra price ASC. Lord doktrini: aynı puanda hazine üst."""
         for L in listings:
             L.v_score = self.calc_v_score(L, ref_price, L.is_second_hand)
             L.r_score = self.calc_r_score(L)
             L.f_score = self.calc_f_score(L, kritik_ozellikler)
             L.master_score = self.calc_master_score(L, mod)
-        return sorted(listings, key=lambda x: x.master_score, reverse=True)
+        # Sort key: master DESC, hazine_iskonto DESC, rating DESC, price ASC
+        return sorted(listings, key=lambda x: (
+            -x.master_score,
+            -x.hazine_iskonto_pct,
+            -(x.rating or 0),
+            x.price if x.price > 0 else 999999,
+        ))
 
 
 # ============================================================================
@@ -1179,11 +1215,16 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
         hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>" if L.is_hazine else ""
         # FAZ-G optimize: site adı insan-okur
         site_disp = _SITE_DISPLAY.get(L.site, L.site.replace("_", " ").capitalize())
+        # Fix #4: alt fiyat alternatifi varsa göster
+        alt_line = ""
+        if L.alt_fiyat and L.alt_site:
+            alt_line = f"\n🔁 Alt fiyat: <b>{L.alt_fiyat:,.0f} TL</b> ({L.alt_site})"
         lines.append(
             f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>{hazine_rozet}\n"
             f"📌 {title_clean}\n"
             f"🏷️ {L.price:,.0f} TL"
-            + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})") + "\n"
+            + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})")
+            + alt_line + "\n"
             f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}"
             + yorum_line + "\n"
             f"🌐 {site_disp}{link_part}\n"
@@ -1342,13 +1383,15 @@ def market_master_query(query: str, budget: float = 5000.0,
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
     # 1.5) FAZ-B 4 Haz: Aydinlama Bulgusu — LLM kategoride kritik 3-5 ozellik
-    # FAZ-G optimize (6 Haz): "LLM dusunuyor" stream'i silindi — final 💡 mesajini bekle
+    # Fix #2 (6 Haz): Aydinlama EN BAŞA — stream'in 1. mesajı (Lord doktrini "kademe kademe")
     bulgu = aydinlama_bulgusu(query, category_slug, budget)
     _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
     # LLM cıktısı doluysa KB kritik listesini onunla genislet
     if bulgu.get("kritik") and "fallback" not in bulgu.get("aciklama", "").lower():
         kritik = list(dict.fromkeys(list(bulgu["kritik"]) + kritik))[:10]
     msg_aydinlama = _market_msg_aydinlama(bulgu, query)
+    # Aydinlama hemen şimdi yolla (stream içinde 1. sıra — Lord "Epey önce, sonra Trendyol")
+    _progress(msg_aydinlama)
 
     # 2) Telegram MESAJ 1: Başlangıç (geçici fiyat aralığı; gerçek listing sonrası güncelleyebiliriz)
     ref_price_min, ref_price_max = budget * 0.6, budget * 1.4
@@ -1493,6 +1536,38 @@ def market_master_query(query: str, budget: float = 5000.0,
     # 5) Telegram MESAJ 2: Canlı durum
     msg2 = _market_msg_canli_durum(site_stats, int(time.time() - t0))
 
+    # Fix #4 (6 Haz): Cross-site dedup — aynı marka+model farklı sitelerde tek satır
+    # Imza: title'ın ilk 3 anlamlı kelimesi (noktalama/case temizle, stop-word at)
+    def _model_imza(t: str) -> str:
+        t = re.sub(r"[^\w\s]", " ", t.lower())
+        # generic kelimeler at — marka+model anlamlı
+        stop_words = {"ev", "tipi", "dikey", "yatay", "spin", "bike", "egzersiz", "bisiklet", "bisikleti",
+                      "kondisyon", "fitness", "kardiyo", "mini", "küçük", "kucuk", "boy", "ve"}
+        words = [w for w in t.split() if len(w) > 2 and w not in stop_words][:3]
+        return " ".join(words)
+    if len(listings) > 1:
+        gruplar: Dict[str, List[ProductListing]] = {}
+        for L in listings:
+            imza = _model_imza(L.title)
+            gruplar.setdefault(imza, []).append(L)
+        merged: List[ProductListing] = []
+        for imza, grup in gruplar.items():
+            if len(grup) == 1 or not imza:
+                merged.extend(grup)
+                continue
+            # En ucuz olanı SECME — score sonra hesaplanacak; şimdilik ilk geleni baz al
+            grup_by_price = sorted(grup, key=lambda x: x.price)
+            ana = grup_by_price[0]  # en ucuz, master ile sıralanacak sonra
+            alt = grup_by_price[1] if len(grup_by_price) > 1 else None
+            if alt and alt.price > ana.price:
+                ana.alt_fiyat = alt.price
+                ana.alt_site = _SITE_DISPLAY.get(alt.site, alt.site).split(" ")[0]
+            merged.append(ana)
+            _log(f"[DEDUP] '{imza}' → {len(grup)} ilan → 1 (alt: {alt.price if alt else '-'}₺ {alt.site if alt else '-'})")
+        if len(merged) < len(listings):
+            _log(f"[DEDUP] toplam {len(listings)} → {len(merged)} ürün (cross-site)")
+            listings = merged
+
     # 6) Puanla + sırala
     if listings:
         ref_price = (ref_price_min + ref_price_max) / 2
@@ -1521,11 +1596,10 @@ def market_master_query(query: str, budget: float = 5000.0,
     elapsed = round(time.time() - t0, 1)
     _log(f"results={len(listings)} elapsed={elapsed}s top_score={listings[0].master_score if listings else 'N/A'}")
 
-    # FAZ-G optimize (6 Haz): 5 → 3 mesaj — Aydinlama + Ana Rapor + ASCII
-    # Lord doktrini "okumasi guzeligi artir" → duplicate baslangic ve tarama_durumu kaldirildi
-    # (stream zaten her site icin anlik bilgi veriyor)
+    # FAZ-G optimize + Fix #2 (6 Haz): Aydinlama stream'in başına alındı.
+    # Final messages = 2 mesaj (Ana Rapor + ASCII) — Aydınlama stream içinde 1. sıraya
     return {
-        "messages": [msg_aydinlama, msg3, msg4],
+        "messages": [msg3, msg4],
         "listings": [
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
              "rating": L.rating, "review_count": L.review_count,
