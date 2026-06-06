@@ -1148,6 +1148,13 @@ def _truncate_word_boundary(s: str, n: int) -> str:
     return cut.rstrip(" ,.-—") + "…"
 
 
+_SITE_DISPLAY = {
+    "epey": "Epey", "trendyol": "Trendyol", "hepsiburada": "Hepsiburada",
+    "sahibinden_indirect": "Sahibinden (akakce)",
+    "cimri": "cimri.com", "akakce": "akakce.com",
+}
+
+
 def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
     if not listings:
         return _market_msg_fallback_hicsonuc(mod)
@@ -1155,8 +1162,8 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
     medals = ["🥇", "🥈", "🥉"]
     for i, L in enumerate(listings[:3]):
         m = medals[i] if i < len(medals) else f"#{i+1}"
-        # FAZ-A: tiklanabilir link (URL varsa) + baslik 110 char (kelime siniri)
-        title_clean = _truncate_word_boundary(L.title, 110)
+        # FAZ-A optimize (E, 6 Haz): baslik 110 → 80 (mobil okunabilir, 2 satir)
+        title_clean = _truncate_word_boundary(L.title, 80)
         # HTML kacis (Telegram parse_mode=HTML)
         url_safe = (L.url or "").replace('"', '%22').replace('<', '%3C').replace('>', '%3E')
         link_part = f' · <a href="{url_safe}">🔗 İncele</a>' if url_safe and url_safe.startswith("http") else ""
@@ -1170,6 +1177,8 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
             yorum_line = "\n💬 📸 fotolu yorum"
         # FAZ-D: hazine rozeti (varsa)
         hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>" if L.is_hazine else ""
+        # FAZ-G optimize: site adı insan-okur
+        site_disp = _SITE_DISPLAY.get(L.site, L.site.replace("_", " ").capitalize())
         lines.append(
             f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>{hazine_rozet}\n"
             f"📌 {title_clean}\n"
@@ -1177,27 +1186,36 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
             + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})") + "\n"
             f"⭐ Değer: {L.v_score} | Güven: {L.r_score} | Özellik: {L.f_score}"
             + yorum_line + "\n"
-            f"🌐 Site: {L.site}{link_part}\n"
+            f"🌐 {site_disp}{link_part}\n"
         )
     return "\n".join(lines)
 
 
 def _market_render_ascii_chart(listings: List[ProductListing]) -> str:
-    """ASCII puan diyagramı (Unicode block characters)."""
+    """FAZ-G optimize (6 Haz) — mobil-uyumlu 10-blok progress bar + master rozet.
+    Eski sutunlu tabloda mobil ekranda kayma vardı."""
     if not listings:
         return "📊 (puan diyagramı için ürün yok)"
-    lines = ["📊 <b>PUAN KARŞILAŞTIRMASI (1-10)</b>", ""]
-    lines.append(f"{'Ürün':<22} {'Değer':>7} {'Güven':>7} {'Özellik':>8}  MASTER")
+    lines = ["📊 <b>SKOR KARŞILAŞTIRMASI</b>", ""]
     medals = ["🥇", "🥈", "🥉"]
+
+    def _bar10(score: float) -> str:
+        # 0-10 → 10 birim. ▰ dolu, ▱ boş — Telegram font'ta hizalı
+        full = max(0, min(10, int(round(score))))
+        return "▰" * full + "▱" * (10 - full)
+
     for i, L in enumerate(listings[:3]):
         m = medals[i] if i < len(medals) else "•"
-        name = (L.title[:18] + "…") if len(L.title) > 18 else L.title.ljust(20)
-        def bar(score: float) -> str:
-            full = int(score // 1)
-            half = "▌" if (score - full) >= 0.5 else ""
-            return ("█" * full + half).ljust(7)
-        lines.append(f"{m} {name:<19} {bar(L.v_score)} {bar(L.r_score)} {bar(L.f_score)}  <b>{L.master_score}</b>")
-    return "\n".join(lines)
+        title = L.title[:32] + ("…" if len(L.title) > 32 else "")
+        # Hazine rozeti varsa goster
+        hzn = " 💎" if L.is_hazine else ""
+        lines.append(f"{m} <b>{title}</b>{hzn}")
+        lines.append(f"   Master  {_bar10(L.master_score)} <b>{L.master_score}</b>/10")
+        lines.append(f"   Değer   {_bar10(L.v_score)}  {L.v_score:.1f}")
+        lines.append(f"   Güven   {_bar10(L.r_score)}  {L.r_score:.1f}")
+        lines.append(f"   Özellik {_bar10(L.f_score)}  {L.f_score:.1f}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def _market_msg_derin_analiz(listing: ProductListing, judge_result: Dict[str, Any]) -> str:
@@ -1324,7 +1342,7 @@ def market_master_query(query: str, budget: float = 5000.0,
     _log(f"KB n_kritik={len(kritik)} sample={kritik[:5]}")
 
     # 1.5) FAZ-B 4 Haz: Aydinlama Bulgusu — LLM kategoride kritik 3-5 ozellik
-    _progress(f"🔎 <b>{query}</b> için aydınlama bulgusu çıkartılıyor (LLM düşünüyor)…")
+    # FAZ-G optimize (6 Haz): "LLM dusunuyor" stream'i silindi — final 💡 mesajini bekle
     bulgu = aydinlama_bulgusu(query, category_slug, budget)
     _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
     # LLM cıktısı doluysa KB kritik listesini onunla genislet
@@ -1342,7 +1360,9 @@ def market_master_query(query: str, budget: float = 5000.0,
     # Lord doktrini: "kademe kademe akar, model dusunce surecini gosterir"
     site_stats: Dict[str, Dict[str, Any]] = {}
     listings: List[ProductListing] = []
+    # FAZ-G optimize: site adi insan-okur + her sitenin başlangic mesaji silindi
     site_emoji = {"epey": "🏪", "trendyol": "🛒", "hepsiburada": "🛍️"}
+    site_display = {"epey": "Epey", "trendyol": "Trendyol", "hepsiburada": "Hepsiburada"}
     site_urls = [
         ("epey.com",        f"https://www.epey.com/{category_slug}/", "epey"),
         ("trendyol.com",    f"https://www.trendyol.com/sr?q={query.replace(' ', '+')}", "trendyol"),
@@ -1350,7 +1370,7 @@ def market_master_query(query: str, budget: float = 5000.0,
     ]
     for site_domain, listing_url, site_short in site_urls:
         emo = site_emoji.get(site_short, "•")
-        _progress(f"{emo} <b>{site_short.capitalize()}</b> taranıyor…")
+        disp = site_display.get(site_short, site_short.capitalize())
         try:
             r = fetcher.fetch(listing_url)
             if r.blocked or r.status != 200:
@@ -1358,7 +1378,7 @@ def market_master_query(query: str, budget: float = 5000.0,
                     "n": 0, "durum": f"blocked ({r.status})", "tier": r.tier,
                     "title": (r.title or "")[:60],
                 }
-                _progress(f"{emo} {site_short.capitalize()}: ⚠️ erişim engellendi ({r.status})")
+                _progress(f"{emo} <b>{disp}</b>: ⚠️ erişim engellendi ({r.status})")
                 continue
             parsed = _parse_listings_from_html(r.text, site_short, budget, limit=top_n*2, log_fn=_log)
             site_stats[site_domain] = {
@@ -1370,34 +1390,35 @@ def market_master_query(query: str, budget: float = 5000.0,
             }
             for p in parsed:
                 listings.append(ProductListing(**p))
-            # Stream — bu sitenin sonuc ozeti + FAZ-C yorum sinyali
+            # Stream — tek mesaj her site icin (FAZ-G optimize): X taraniyor + sonuc → birlestir
             if parsed:
-                ornek = parsed[0].get("title", "")[:50]
-                # FAZ-C: rating + foto sinyali ozet
+                ornek = parsed[0].get("title", "")[:45]
                 ratings = [x.get("rating") for x in parsed if x.get("rating")]
                 foto_n = sum(1 for x in parsed if x.get("has_photo_review"))
                 yorum_part = ""
                 if ratings:
                     avg_r = sum(ratings) / len(ratings)
-                    yorum_part = f" · ⭐ ort. {avg_r:.1f} ({len(ratings)}/{len(parsed)} üründe)"
+                    yorum_part = f" · ⭐ {avg_r:.1f}"
                 if foto_n:
-                    yorum_part += f" · 📸 {foto_n} fotolu yorum"
-                _progress(f"{emo} {site_short.capitalize()}: ✅ <b>{len(parsed)} ürün</b> (örnek: <i>{ornek}…</i>){yorum_part}")
+                    yorum_part += f" · 📸 {foto_n}"
+                _progress(f"{emo} <b>{disp}</b>: {len(parsed)} ürün{yorum_part} — <i>{ornek}…</i>")
             else:
-                _progress(f"{emo} {site_short.capitalize()}: parse=0 (sayfa içeriği uygun değil)")
+                _progress(f"{emo} <b>{disp}</b>: parse=0 (içerik uygun değil)")
         except Exception as e:
             site_stats[site_domain] = {"n": 0, "durum": f"hata: {str(e)[:40]}", "tier": "-"}
             _log(f"site {site_domain} hata: {e}")
-            _progress(f"{emo} {site_short.capitalize()}: ❌ hata — {str(e)[:60]}")
+            _progress(f"{emo} <b>{disp}</b>: ❌ hata — {str(e)[:60]}")
 
     # 4) Sahibinden indirect (FAZ-2): cimri/akakce → JSON-LD + CSS parser
     # FAZ-E (4 Haz): Bot-Anomali Cift Filtre — Epey avg × 0.05/5 esiklerle Sahibinden
     # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
     epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
     epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
-    _progress(f"🕵️ <b>Sahibinden hazine avı</b> başladı (akakce dolaylı, login YOK)…")
+    # FAZ-G optimize: hazine avı + bot eşik tek mesajda birleştirildi (Sahibinden öncesi)
     if epey_avg > 0:
-        _progress(f"💡 Bot-anomali eşik: Epey avg {epey_avg:,.0f} TL → [{epey_avg*0.05:,.0f} – {epey_avg*5:,.0f}] TL aralığı")
+        _progress(f"🕵️ <b>Sahibinden</b> hazine avı (akakce · login YOK) — Epey avg {epey_avg:,.0f}₺ · bot eşik [{epey_avg*0.05:,.0f}–{epey_avg*5:,.0f}]₺")
+    else:
+        _progress(f"🕵️ <b>Sahibinden</b> hazine avı başladı (akakce indirect, login YOK)")
     try:
         sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
@@ -1436,17 +1457,18 @@ def market_master_query(query: str, budget: float = 5000.0,
                     p["hazine_iskonto_pct"] = int((1 - pr / epey_avg) * 100)
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
-            # FAZ-G Stream: Sahibinden sonuc ozeti + hazine durumu
+            # FAZ-G optimize: Sahibinden sonuc + hazine listesi TEK MESAJ
             bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
-            _progress(f"🕵️ Sahibinden: ✅ <b>{len(sahib_parsed)} ilan</b> (akakce indirect){bot_part}")
-            # Hazine listesi: tum eslesen ilanlar
             hazineler = [p for p in sahib_parsed if p.get("is_hazine")]
             if hazineler:
+                # En iyi hazine baslığa, kalanları sayım
                 ornek = max(hazineler, key=lambda x: x.get("hazine_iskonto_pct", 0))
-                _progress(f"💎 <b>HAZINE on-bakisi:</b> {ornek.get('title','')[:60]} → <b>{ornek['price']:,.0f} TL</b> "
-                          f"(Epey muadil ortalaması {epey_avg:,.0f} TL · ~%{ornek['hazine_iskonto_pct']} ucuz)")
-                if len(hazineler) > 1:
-                    _progress(f"💎 Toplam <b>{len(hazineler)} hazine adayı</b> tespit edildi (master_score +1.5 boost uygulanacak)")
+                extra = f" · +{len(hazineler)-1} daha" if len(hazineler) > 1 else ""
+                _progress(f"🕵️ <b>Sahibinden</b>: {len(sahib_parsed)} ilan{bot_part}\n"
+                          f"💎 <b>HAZINE</b>: <i>{ornek.get('title','')[:50]}</i> → "
+                          f"<b>{ornek['price']:,.0f}₺</b> · ~%{ornek['hazine_iskonto_pct']}↓{extra}")
+            else:
+                _progress(f"🕵️ <b>Sahibinden</b>: {len(sahib_parsed)} ilan{bot_part} · hazine tespit edilmedi")
         else:
             site_stats["sahibinden.com"] = {
                 "n": 0, "durum": "indirect (boş)", "tier": sahib_r.tier,
@@ -1487,7 +1509,8 @@ def market_master_query(query: str, budget: float = 5000.0,
             _log(f"HAZINE BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi")
             # Sırala YENIDEN — boost sonrasi hazineler ust siralara çıkabilir
             listings = sorted(listings, key=lambda x: x.master_score, reverse=True)
-            _progress(f"💎 <b>{hazine_boost_n} hazine</b> doğrulandı, master_score boost uygulandı — top listeye çıktı")
+            # FAZ-G optimize: tek mesaj (eski 3 mesajdan tek satira indirildi)
+            _progress(f"✨ <b>{hazine_boost_n} hazine</b> top sıraya alındı (master +1.5 boost)")
 
     # 7) Telegram MESAJ 3: Ana rapor (top_n)
     msg3 = _market_msg_ana_rapor(listings[:top_n], mod)
@@ -1498,9 +1521,11 @@ def market_master_query(query: str, budget: float = 5000.0,
     elapsed = round(time.time() - t0, 1)
     _log(f"results={len(listings)} elapsed={elapsed}s top_score={listings[0].master_score if listings else 'N/A'}")
 
-    # FAZ-B 4 Haz: messages sıralı 5 mesaj — başlangıç, aydınlama, tarama durumu, ana rapor, ASCII
+    # FAZ-G optimize (6 Haz): 5 → 3 mesaj — Aydinlama + Ana Rapor + ASCII
+    # Lord doktrini "okumasi guzeligi artir" → duplicate baslangic ve tarama_durumu kaldirildi
+    # (stream zaten her site icin anlik bilgi veriyor)
     return {
-        "messages": [msg1, msg_aydinlama, msg2, msg3, msg4],
+        "messages": [msg_aydinlama, msg3, msg4],
         "listings": [
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
              "rating": L.rating, "review_count": L.review_count,
