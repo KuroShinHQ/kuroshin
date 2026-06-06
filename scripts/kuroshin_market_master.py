@@ -449,6 +449,9 @@ class ProductListing:
     has_photo_review: bool = False  # HB rate-module_photoReviewIcon sinyali
     yorum_kalitesi: float = 0.0  # 0-10 LLM analiz (ileride)
     sikayet_pattern: List[str] = field(default_factory=list)  # LLM cikartma
+    # FAZ-D Hazine Avi
+    is_hazine: bool = False  # Sahibinden + epey_avg*0.6 alti + makul
+    hazine_iskonto_pct: int = 0  # 0-99 (epey muadil ortalamasina gore)
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -1165,8 +1168,10 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
+        # FAZ-D: hazine rozeti (varsa)
+        hazine_rozet = f" 💎 <b>HAZINE %{L.hazine_iskonto_pct} ucuz</b>" if L.is_hazine else ""
         lines.append(
-            f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>\n"
+            f"\n{m} <b>{i+1}. SIRA — Master Score: {L.master_score}/10</b>{hazine_rozet}\n"
             f"📌 {title_clean}\n"
             f"🏷️ {L.price:,.0f} TL"
             + (f" (sıfır referans var)" if not L.is_second_hand else f" (2.el · {L.kondisyon})") + "\n"
@@ -1421,21 +1426,27 @@ def market_master_query(query: str, budget: float = 5000.0,
                 "bot_eliminated": bot_eliminated,
                 "epey_avg": int(epey_avg) if epey_avg else 0,
             }
+            # FAZ-D Hazine Avi: epey_avg*0.6 altinda + makul (epey_avg*0.05 ustu)
+            # Lord doktrini: "Sahibinden = hazine madeni, ucuz pahali muadil bul"
+            hazine_esik = epey_avg * 0.6 if epey_avg > 0 else 0
+            for p in sahib_parsed:
+                pr = p.get("price", 0)
+                if hazine_esik and 0 < pr < hazine_esik:
+                    p["is_hazine"] = True
+                    p["hazine_iskonto_pct"] = int((1 - pr / epey_avg) * 100)
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
-            # FAZ-G Stream: Sahibinden sonuc ozeti + hazine on-bakislari
+            # FAZ-G Stream: Sahibinden sonuc ozeti + hazine durumu
             bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
             _progress(f"🕵️ Sahibinden: ✅ <b>{len(sahib_parsed)} ilan</b> (akakce indirect){bot_part}")
-            # Hazine on-bakislari: epey_avg < %60 altinda olan akakce ilanlari
-            if epey_avg > 0:
-                hazine_esik = epey_avg * 0.6
-                hazineler = [p for p in sahib_parsed if 0 < p.get("price", 0) < hazine_esik]
-                if hazineler:
-                    ornek = hazineler[0]
-                    onaylanan = ornek.get("price", 0)
-                    iskonto_pct = int((1 - onaylanan / epey_avg) * 100) if epey_avg else 0
-                    _progress(f"💎 <b>HAZINE on-bakisi:</b> {ornek.get('title','')[:60]} → <b>{onaylanan:,.0f} TL</b> "
-                              f"(Epey muadil ortalaması {epey_avg:,.0f} TL · ~%{iskonto_pct} ucuz)")
+            # Hazine listesi: tum eslesen ilanlar
+            hazineler = [p for p in sahib_parsed if p.get("is_hazine")]
+            if hazineler:
+                ornek = max(hazineler, key=lambda x: x.get("hazine_iskonto_pct", 0))
+                _progress(f"💎 <b>HAZINE on-bakisi:</b> {ornek.get('title','')[:60]} → <b>{ornek['price']:,.0f} TL</b> "
+                          f"(Epey muadil ortalaması {epey_avg:,.0f} TL · ~%{ornek['hazine_iskonto_pct']} ucuz)")
+                if len(hazineler) > 1:
+                    _progress(f"💎 Toplam <b>{len(hazineler)} hazine adayı</b> tespit edildi (master_score +1.5 boost uygulanacak)")
         else:
             site_stats["sahibinden.com"] = {
                 "n": 0, "durum": "indirect (boş)", "tier": sahib_r.tier,
@@ -1464,6 +1475,19 @@ def market_master_query(query: str, budget: float = 5000.0,
     if listings:
         ref_price = (ref_price_min + ref_price_max) / 2
         listings = scorer.score_all(listings, ref_price, kritik, mod)
+        # FAZ-D Hazine Boost: Sahibinden ilanlarinda epey_avg*0.6 alti = HAZINE
+        # master_score'a +1.5 boost (max 10). Lord doktrini "cam gibi cikar".
+        hazine_boost_n = 0
+        for L in listings:
+            if L.is_hazine:
+                old = L.master_score
+                L.master_score = round(min(10.0, L.master_score + 1.5), 2)
+                hazine_boost_n += 1
+        if hazine_boost_n:
+            _log(f"HAZINE BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi")
+            # Sırala YENIDEN — boost sonrasi hazineler ust siralara çıkabilir
+            listings = sorted(listings, key=lambda x: x.master_score, reverse=True)
+            _progress(f"💎 <b>{hazine_boost_n} hazine</b> doğrulandı, master_score boost uygulandı — top listeye çıktı")
 
     # 7) Telegram MESAJ 3: Ana rapor (top_n)
     msg3 = _market_msg_ana_rapor(listings[:top_n], mod)
@@ -1481,6 +1505,7 @@ def market_master_query(query: str, budget: float = 5000.0,
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
              "rating": L.rating, "review_count": L.review_count,
              "has_photo_review": L.has_photo_review,
+             "is_hazine": L.is_hazine, "hazine_iskonto_pct": L.hazine_iskonto_pct,
              "v": L.v_score, "r": L.r_score, "f": L.f_score, "master": L.master_score}
             for L in listings[:top_n]
         ],
