@@ -408,6 +408,16 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
     max_price = budget * 2.5
     filtered = [x for x in out if x.get("title") and min_price <= x.get("price", 0) <= max_price]
     log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (min={min_price:.0f} max={max_price:.0f} TL)")
+    # FAZ-A (7 Haz): Mini pedal tespiti — masa altı el/ayak pedal, tam boy bisiklet DEĞİL
+    # Sinyal: "el ve ayak" veya "el ayak" VARSA + "dikey"/"sele"/"t-222" yoksa → mini
+    _MINI_SINYAL = ("el ve ayak", "el ayak", "mini pedal", "mini el ayak")
+    _MINI_ISTISNALAR = ("dikey", "sele", "t-222", "t-245", "upright", "tam boy")
+    for x in filtered:
+        tl = x.get("title", "").lower()
+        if any(s in tl for s in _MINI_SINYAL) and not any(s in tl for s in _MINI_ISTISNALAR):
+            x["is_mini_pedal"] = True
+            log(f"[MINI_PEDAL] tespit: {x['title'][:55]}")
+
     # Tekil baslık (FAZ-A 4 Haz: normalize dedup — bosluk/case/noktalama temizle)
     seen = set()
     unique = []
@@ -471,6 +481,11 @@ class ProductListing:
     # FAZ-C (6 Haz): 4-seviye hazine kategori
     hazine_tier: str = ""  # 'onayli', 'supheli', 'potansiyel_elmas', 'normal'
     hazine_not: str = ""  # Lord doktrini metaforu ("camurda elmas" gibi)
+    # FAZ-A (7 Haz): Mini pedal tespiti — masa altı el/ayak pedal, tam boy bisiklet DEĞİL
+    is_mini_pedal: bool = False
+    # FAZ-C v2 (7 Haz): Gizli Hazine Dedektörü
+    gizli_hazine_skoru: int = 0   # 0-10 (LLM sinyal analizi)
+    gizli_hazine_tier: str = ""   # 'gizli_hazine' | 'riskli' | 'belirsiz'
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -924,8 +939,13 @@ class MerchantScorer:
         # Hiç kriter eşleşmediyse + corpus mevcut → yine de düşük puan (3.0 minimum)
         # Mevcut: 0 eşleşme → 0 (çok sert). Yeni: 0 eşleşme + corpus var → 3.0
         if karsilanan == 0:
-            return 3.0
-        return round((karsilanan / toplam) * 10.0, 2)
+            score = 3.0
+        else:
+            score = round((karsilanan / toplam) * 10.0, 2)
+        # FAZ-A (7 Haz): Mini pedal cezası — tam boy bisiklet değil, F_score yarıya iner
+        if listing.is_mini_pedal:
+            score = round(score * 0.5, 2)
+        return score
 
     def calc_master_score(self, listing: ProductListing, mod: str = "dengeli") -> float:
         """MASTER = (V * Wv) + (R * Wr) + (F * Wf)."""
@@ -1536,6 +1556,82 @@ def hazine_seviye_belirle(price: float, epey_avg: float, eslesme_pct: int,
     return ("normal", "", 0.0)
 
 
+def gizli_hazine_dedektoru(title: str, description: str, price: float,
+                            ref_price: float, llama_url: str = LLAMA_URL,
+                            log_fn=None) -> Dict[str, Any]:
+    """FAZ-C v2 (7 Haz 2026) — Gizli Hazine Dedektörü.
+
+    Lord direktifi: Aşırı ucuz ilan = otomatik çöp DEĞİL.
+    LLM pozitif/negatif sinyal tarar → hazine_skoru (0-10) üretir.
+    Karar:
+      skor >= 7  → tier='gizli_hazine'  → 🔮 üst sıraya
+      skor <= 3  → tier='riskli'        → ⚠️ alt sıra
+      skor 4-6  → tier='belirsiz'       → normal değerlendirme
+    """
+    log = log_fn or (lambda m: None)
+    # Hızlı kural tabanlı ön tarama (LLM çağrısı öncesi)
+    text = (title + " " + description).lower()
+    poz_kelimeler = ("az kullanıldı", "sıfır gibi", "temiz", "garantili",
+                     "kutusunda", "acil satılık", "elden teslim", "az kullandım",
+                     "tertemiz", "bakımlı", "sağlam", "hasarsız")
+    neg_kelimeler = ("arızalı", "parça eksik", "eskimiş", "bozuk",
+                     "çalışmıyor", "sıkıntılı", "hasarlı", "değer biçilmez")
+    poz_hit = sum(1 for k in poz_kelimeler if k in text)
+    neg_hit = sum(1 for k in neg_kelimeler if k in text)
+    # Hızlı karar: güçlü sinyal varsa LLM çağrısı atla
+    if neg_hit >= 2 and poz_hit == 0:
+        log(f"[HAZINE_DED] hızlı riskli (neg={neg_hit} poz=0): {title[:40]}")
+        return {"tier": "riskli", "skor": 2, "poz_hit": poz_hit, "neg_hit": neg_hit,
+                "not": f"olumsuz sinyal ({neg_hit} adet)"}
+    if poz_hit >= 3 and neg_hit == 0 and ref_price > 0 and price < ref_price * 0.55:
+        log(f"[HAZINE_DED] hızlı gizli_hazine (poz={poz_hit} neg=0 fiyat={price:.0f}<{ref_price*0.55:.0f}): {title[:40]}")
+        return {"tier": "gizli_hazine", "skor": 8, "poz_hit": poz_hit, "neg_hit": neg_hit,
+                "not": f"güçlü pozitif sinyal ({poz_hit} adet) + düşük fiyat"}
+    # LLM analizi (hızlı kararla çözülemeyen durumlar)
+    if not description or len(description.strip()) < 10:
+        # Açıklama yok — fiyata göre karar
+        if ref_price > 0 and price < ref_price * 0.45:
+            return {"tier": "belirsiz", "skor": 5, "poz_hit": poz_hit, "neg_hit": neg_hit,
+                    "not": "açıklama yok, fiyat çok düşük — incelemeye değer"}
+        return {"tier": "belirsiz", "skor": 4, "poz_hit": poz_hit, "neg_hit": neg_hit,
+                "not": "açıklama yok"}
+    iskonto_pct = int((1 - price / ref_price) * 100) if ref_price > 0 else 0
+    prompt = (
+        'Bir 2.el ürün ilanını analiz ediyorsun. Pozitif ve negatif sinyalleri değerlendir.\n\n'
+        'POZİTİF SİNYALLER (ürün gerçekten iyi olduğunu gösterir): '
+        '"az kullanıldı", "sıfır gibi", "temiz", "garantili", "kutusunda", '
+        '"acil satılık", "elden teslim", "tertemiz", "bakımlı", "hasarsız"\n\n'
+        'NEGATİF SİNYALLER (risk işareti): '
+        '"arızalı", "parça eksik", "eskimiş", "bozuk", "çalışmıyor", "sıkıntılı", "hasarlı"\n\n'
+        f'İLAN BAŞLIĞI: {title[:100]}\n'
+        f'AÇIKLAMA: {description[:800]}\n'
+        f'FİYAT: {price:,.0f} TL (referans piyasa: {ref_price:,.0f} TL, %{iskonto_pct} ucuz)\n\n'
+        'SADECE şu JSON yapısında yanıt ver (markdown YOK):\n'
+        '{"skor": 7, "poz_sinyaller": ["az kullanıldı"], "neg_sinyaller": [], '
+        '"karar": "gizli_hazine", "not": "kısa gerekçe"}\n'
+        'skor 0-10 (10=mükemmel hazine, 0=kesinlikle riskli)\n'
+        'karar: "gizli_hazine" (skor>=7) veya "riskli" (skor<=3) veya "belirsiz"\n\n'
+        'JSON çıktı:'
+    )
+    data, raw = _llm_json_call(prompt, llama_url, max_tokens=300, timeout=60)
+    if not data:
+        log(f"[HAZINE_DED] LLM başarısız, kural tabanlı karar: poz={poz_hit} neg={neg_hit}")
+        skor = max(1, min(9, 5 + poz_hit * 2 - neg_hit * 3))
+        tier = "gizli_hazine" if skor >= 7 else ("riskli" if skor <= 3 else "belirsiz")
+        return {"tier": tier, "skor": skor, "poz_hit": poz_hit, "neg_hit": neg_hit,
+                "not": f"kural tabanlı (LLM fail) poz={poz_hit} neg={neg_hit}"}
+    skor = max(0, min(10, int(data.get("skor", 5))))
+    karar = data.get("karar", "belirsiz")
+    if karar not in ("gizli_hazine", "riskli", "belirsiz"):
+        karar = "gizli_hazine" if skor >= 7 else ("riskli" if skor <= 3 else "belirsiz")
+    not_metin = data.get("not", "")
+    log(f"[HAZINE_DED] LLM skor={skor} karar={karar}: {title[:40]}")
+    return {"tier": karar, "skor": skor,
+            "poz_sinyaller": data.get("poz_sinyaller", []),
+            "neg_sinyaller": data.get("neg_sinyaller", []),
+            "not": not_metin}
+
+
 def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any]:
     """FAZ-3: 2.el ilan açıklamasından kusur tipi çıkar (LLM JSON mode).
 
@@ -1732,9 +1828,14 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
-        # Yol A (6 Haz): akakce ucuz satıcı rozet ("hazine" terminolojisi kaldırıldı)
-        # Gerçek Sahibinden hazine (CF Turnstile bypass) ileride yapılacak
-        if L.is_hazine and L.hazine_iskonto_pct >= 30:
+        # Rozet: Gizli Hazine > mini pedal > normal hazine
+        if L.gizli_hazine_tier == "gizli_hazine":
+            hazine_rozet = f" 🔮 <b>GİZLİ HAZİNE skor={L.gizli_hazine_skoru}/10</b>"
+        elif L.gizli_hazine_tier == "riskli":
+            hazine_rozet = f" ⚠️ <b>DÜŞÜK FİYATLI RİSKLİ skor={L.gizli_hazine_skoru}/10</b>"
+        elif L.is_mini_pedal:
+            hazine_rozet = " ⚠️ <b>TAM BOY DEĞİL (masa altı pedal)</b>"
+        elif L.is_hazine and L.hazine_iskonto_pct >= 30:
             hazine_rozet = f" 💰 <b>EN UCUZ %{L.hazine_iskonto_pct}↓</b>"
         else:
             hazine_rozet = ""
@@ -1779,8 +1880,16 @@ def _market_render_ascii_chart(listings: List[ProductListing]) -> str:
     for i, L in enumerate(listings[:3]):
         m = medals[i] if i < len(medals) else "•"
         title = L.title[:32] + ("…" if len(L.title) > 32 else "")
-        # Hazine rozeti varsa goster
-        hzn = " 💎" if L.is_hazine else ""
+        if L.gizli_hazine_tier == "gizli_hazine":
+            hzn = " 🔮"
+        elif L.gizli_hazine_tier == "riskli":
+            hzn = " ⚠️"
+        elif L.is_mini_pedal:
+            hzn = " ⚠️"
+        elif L.is_hazine:
+            hzn = " 💎"
+        else:
+            hzn = ""
         lines.append(f"{m} <b>{title}</b>{hzn}")
         lines.append(f"   Master  {_bar10(L.master_score)} <b>{L.master_score}</b>/10")
         lines.append(f"   Değer   {_bar10(L.v_score)}  {L.v_score:.1f}")
@@ -2069,18 +2178,42 @@ def market_master_query(query: str, budget: float = 5000.0,
                 if hazine_esik and 0 < pr < hazine_esik:
                     p["is_hazine"] = True
                     p["hazine_iskonto_pct"] = int((1 - pr / ref_for_iskonto) * 100) if ref_for_iskonto > 0 else 0
+            # FAZ-C v2 (7 Haz): Gizli Hazine Dedektörü — ucuz ilan = çöp DEĞİL, LLM tara
+            # Lord direktifi: aşırı ucuz ilan için pozitif/negatif sinyal analizi → tier
+            hazine_adaylari = [p for p in sahib_parsed if p.get("is_hazine")]
+            if hazine_adaylari and sahib_direct_success:
+                _progress(f"🔮 <b>Gizli Hazine Dedektörü</b>: {len(hazine_adaylari)} ucuz ilan taranıyor…")
+                for p in hazine_adaylari:
+                    ded = gizli_hazine_dedektoru(
+                        title=p.get("title", ""),
+                        description=p.get("description", ""),
+                        price=p.get("price", 0),
+                        ref_price=ref_for_iskonto,
+                        log_fn=_log,
+                    )
+                    p["gizli_hazine_skoru"] = ded.get("skor", 0)
+                    p["gizli_hazine_tier"] = ded.get("tier", "belirsiz")
+                    p["hazine_not"] = ded.get("not", "")
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
-            # Yol A (6 Haz): "💎 HAZINE" → "💰 EN UCUZ" akakce fiyat keşif
+            # Progress mesajı — Gizli Hazine sonuçları
             bot_part = f" · bot×{bot_eliminated} elendi" if bot_eliminated else ""
-            ucuzlar = [p for p in sahib_parsed if p.get("is_hazine")]  # field adı sabit, anlam degisti
-            # FAZ-Cookie: direkt erişim sonucu "💎 HAZINE" gerçek olur, akakce "💰 EN UCUZ"
             src_label = "Sahibinden" if sahib_direct_success else "Akakce"
+            kesif_emoji = "🕵️" if sahib_direct_success else "🔍"
+            gizli_hazineler = [p for p in sahib_parsed if p.get("gizli_hazine_tier") == "gizli_hazine"]
+            riskli_ilanlar = [p for p in sahib_parsed if p.get("gizli_hazine_tier") == "riskli"]
             hazine_emoji = "💎" if sahib_direct_success else "💰"
             hazine_label = "HAZINE" if sahib_direct_success else "EN UCUZ"
             n_label = "ilan" if sahib_direct_success else "alternatif"
-            kesif_emoji = "🕵️" if sahib_direct_success else "🔍"
-            if ucuzlar:
+            ucuzlar = [p for p in sahib_parsed if p.get("is_hazine")]
+            if gizli_hazineler:
+                ornek = max(gizli_hazineler, key=lambda x: x.get("gizli_hazine_skoru", 0))
+                extra = f" · +{len(gizli_hazineler)-1} daha" if len(gizli_hazineler) > 1 else ""
+                riskli_part = f" · {len(riskli_ilanlar)} riskli" if riskli_ilanlar else ""
+                _progress(f"{kesif_emoji} <b>{src_label}</b>: {len(sahib_parsed)} {n_label}{bot_part}{riskli_part}\n"
+                          f"🔮 <b>Gizli Hazine</b>: <i>{ornek.get('title','')[:50]}</i> → "
+                          f"<b>{ornek['price']:,.0f}₺</b> · skor {ornek.get('gizli_hazine_skoru',0)}/10{extra}")
+            elif ucuzlar:
                 ornek = max(ucuzlar, key=lambda x: x.get("hazine_iskonto_pct", 0))
                 extra = f" · +{len(ucuzlar)-1} daha" if len(ucuzlar) > 1 else ""
                 _progress(f"{kesif_emoji} <b>{src_label}</b>: {len(sahib_parsed)} {n_label}{bot_part}\n"
@@ -2168,10 +2301,28 @@ def market_master_query(query: str, budget: float = 5000.0,
                 hazine_boost_n += 1
         if hazine_boost_n:
             _log(f"UCUZ BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi (akakce en ucuz)")
-            # Sırala YENIDEN — boost sonrasi hazineler ust siralara çıkabilir
             listings = sorted(listings, key=lambda x: x.master_score, reverse=True)
-            # Yol A: "hazine" → "en ucuz satıcı" (Lord doktrini)
             _progress(f"💰 <b>{hazine_boost_n} ucuz alternatif</b> üst sıraya alındı (akakce fiyat avantajı)")
+        # FAZ-C v2 (7 Haz): Gizli Hazine boost (+2.0) / Riskli ceza (sıralamada aşağı)
+        gizli_h_boost_n = 0
+        riskli_n = 0
+        for L in listings:
+            if L.gizli_hazine_tier == "gizli_hazine":
+                L.master_score = round(min(10.0, L.master_score + 2.0), 2)
+                gizli_h_boost_n += 1
+            elif L.gizli_hazine_tier == "riskli":
+                # Ceza değil — sadece sıralamada aşağı çekeriz (is_riskli sort key)
+                riskli_n += 1
+        if gizli_h_boost_n or riskli_n:
+            _log(f"[HAZINE_DED] gizli_hazine boost={gizli_h_boost_n} riskli={riskli_n}")
+            # Riskli ilanlar en alta — (is_riskli=True) sort key sona atar
+            listings = sorted(listings, key=lambda x: (
+                x.gizli_hazine_tier == "riskli",  # riskli = True → sona
+                -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
+                x.price if x.price > 0 else 999999,
+            ))
+            if gizli_h_boost_n:
+                _progress(f"🔮 <b>{gizli_h_boost_n} Gizli Hazine</b> üst sıraya alındı (+2.0 boost)")
 
         # FAZ-B (6 Haz Yol A): Akakce ilan açıklama LLM analizi — fiyat keşfi için değerli
         # 4-seviye karar AKAKCE için anlamsız (Onaylı/Şüpheli/Elmas sadece gerçek Sahibinden)
