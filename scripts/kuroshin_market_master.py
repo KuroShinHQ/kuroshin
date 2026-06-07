@@ -408,6 +408,22 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
     max_price = budget * 2.5
     filtered = [x for x in out if x.get("title") and min_price <= x.get("price", 0) <= max_price]
     log(f"[PARSER {site}] filtrelendi: {len(filtered)}/{len(out)} (min={min_price:.0f} max={max_price:.0f} TL)")
+    # FAZ-D (7 Haz): HB + Trendyol bisiklet aramasında yedek parça/aksesuar filtresi.
+    # Sele, ayna, garter, stepper gibi ürünler bisiklet aramasına karışıyor.
+    # Sadece "hepsiburada" veya "trendyol" sitesinde aktif (bisiklet kategorisi).
+    _PARCA_KELIMELER = ("sele kılıfı", "sele minderi", "bisiklet aynası", "gidon aynası",
+                        "gidon tutucu", "pedal takımı", "zincir kilit", "bisiklet kilidi",
+                        "su matarası", "bottle holder", "su şişesi tutucu",
+                        "el pompası", "bisiklet pompası", "tamir seti")
+    if "hepsiburada" in site or "trendyol" in site:
+        parca_oncesi = len(filtered)
+        filtered = [
+            x for x in filtered
+            if not any(k in x.get("title", "").lower() for k in _PARCA_KELIMELER)
+        ]
+        if len(filtered) < parca_oncesi:
+            log(f"[FAZ-D PARCA] {parca_oncesi - len(filtered)} yedek parça/aksesuar atlandı")
+
     # FAZ-A (7 Haz): Mini pedal tespiti — masa altı el/ayak pedal, tam boy bisiklet DEĞİL
     # Sinyal: "el ve ayak" veya "el ayak" VARSA + "dikey"/"sele"/"t-222" yoksa → mini
     _MINI_SINYAL = ("el ve ayak", "el ayak", "mini pedal", "mini el ayak")
@@ -2096,8 +2112,21 @@ def market_master_query(query: str, budget: float = 5000.0,
     # 4) Sahibinden indirect (FAZ-2): cimri/akakce → JSON-LD + CSS parser
     # FAZ-E (4 Haz): Bot-Anomali Cift Filtre — Epey avg × 0.05/5 esiklerle Sahibinden
     # bot/sahte ilanları ele. Lord doktrini: "1000 TL urunu 10 TL'ye atmaz".
-    epey_listings_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
-    epey_avg = sum(epey_listings_prices) / len(epey_listings_prices) if epey_listings_prices else 0
+    # FAZ-B (7 Haz): Epey avg = sadece budget dahili ürünlerden hesapla.
+    # Eski: tüm Epey ürünleri → 5232₺ (pahalı bisikletler şişiriyor).
+    # Yeni: budget*0.3 ile budget*1.5 arası → gerçek piyasa referansı.
+    _epey_all_prices = [L.price for L in listings if L.site == "epey" and L.price > 0]
+    _budget_low = budget * 0.3
+    _budget_high = budget * 1.5
+    _epey_budgetli = [p for p in _epey_all_prices if _budget_low <= p <= _budget_high]
+    if _epey_budgetli:
+        epey_avg = sum(_epey_budgetli) / len(_epey_budgetli)
+        _log(f"[FAZ-B] epey_avg = {epey_avg:,.0f}₺ (budget dahili {len(_epey_budgetli)}/{len(_epey_all_prices)} ürün, [{_budget_low:.0f}-{_budget_high:.0f}₺])")
+    elif _epey_all_prices:
+        epey_avg = sum(_epey_all_prices) / len(_epey_all_prices)
+        _log(f"[FAZ-B] epey_avg = {epey_avg:,.0f}₺ (budget filtresi boş, tümü {len(_epey_all_prices)} ürün)")
+    else:
+        epey_avg = 0
     # FAZ-Cookie (6 Haz): Lord cookies varsa Sahibinden direkt erişim, yoksa akakce
     sahib_cookies = _load_sahibinden_cookies()
     if sahib_cookies:
