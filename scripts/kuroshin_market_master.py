@@ -80,7 +80,7 @@ SITE_FETCHER: Dict[str, Tuple[str, str]] = {
 RATE_LIMIT_MIN_SEC = 5    # min 5s (random.uniform(5, 15) min sınır)
 RATE_LIMIT_MAX_SEC = 15
 # Sahibinden bot tespiti / bütçe aşımı → retry süresi
-SAHIB_RETRY_SEC = 120     # 2 dk bekle (Sahibinden rate-limit genellikle 5-10 dk ama ilk denemede 2 dk)
+SAHIB_RETRY_SEC = 300     # 5 dk bekle (Sahibinden IP rate-limit genellikle 10-30 dk, 5 dk ilk deneme)
 
 # Telegram 5-mesaj akışı: _market_msg_baslangic + _market_msg_canli_durum + _market_msg_ana_rapor + _market_render_ascii_chart + _market_msg_derin_analiz
 # Inline keyboard callback'leri: market_yeniden_ara, market_mod_degistir, market_tablo, market_derin, market_tum_linkler
