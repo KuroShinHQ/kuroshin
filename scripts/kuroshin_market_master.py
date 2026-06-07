@@ -1,5 +1,5 @@
 """
-Kuroshin Market Master v1.0 — DALGA-6 FAZ-1 (2 Haziran 2026)
+Kuroshin Market Master v1.0 — DALGA-6 FAZ-F+Fix-5b (7 Haziran 2026)
 ==============================================================
 Otonom alışveriş protokolü ana modülü. Lord direktifi:
   "Ben saatlerce manuel filtreleyip tek tek ilan incelemeyeyim, Kuroshin tüm
@@ -165,8 +165,10 @@ def _ld_to_listing_dict(data: dict, site: str) -> Optional[Dict[str, Any]]:
 
 
 def _parse_listings_from_html(html: str, site: str, budget: float,
-                              limit: int = 10, log_fn=None) -> List[Dict[str, Any]]:
+                              limit: int = 10, log_fn=None,
+                              negatif_tipler: tuple = ()) -> List[Dict[str, Any]]:
     """Universal listing parser. JSON-LD primary + site-specific CSS fallback.
+    negatif_tipler: FAZ-F — LLM'den gelen istenmeyen tip sinyalleri (yatay/eliptik gibi).
     Returns: list of dict (ProductListing kwargs).
     """
     log = log_fn or (lambda m: None)
@@ -436,6 +438,21 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
             x["is_mini_pedal"] = True
             log(f"[MINI_PEDAL] tespit: {x['title'][:55]}")
 
+    # Fix-5 / FAZ-F (7 Haz): Yatay/Eliptik bisiklet tespiti — LLM negatif tipler + statik fallback
+    # negatif_tipler: aydinlama'dan gelir (bisiklet→yatay/eliptik); yoksa statik sabit kullan
+    _YATAY_ELIPTIK_STATIK = ("yatay bisiklet", "recumbent", "sirt yaslama", "sırt yaslama",
+                              "backrest bisiklet", "koltuklu bisiklet",
+                              "eliptik bisiklet", "elliptical")
+    _negatif = negatif_tipler if negatif_tipler else _YATAY_ELIPTIK_STATIK
+    _DIKEY_ISTISNALAR = ("dikey", "upright", "spinning", "spin bike")
+    for x in filtered:
+        if x.get("is_mini_pedal"):
+            continue
+        tl = x.get("title", "").lower()
+        if any(s in tl for s in _negatif) and not any(s in tl for s in _DIKEY_ISTISNALAR):
+            x["is_yatay_eliptik"] = True
+            log(f"[YATAY_ELIPTİK] tespit: {x['title'][:55]}")
+
     # Tekil baslık (FAZ-A 4 Haz: normalize dedup — bosluk/case/noktalama temizle)
     seen = set()
     unique = []
@@ -507,6 +524,8 @@ class ProductListing:
     # Fix-1 (7 Haz): Bütçe aşımı — price > budget → V_score cezası + rozet
     butce_asimi: bool = False
     butce_asimi_pct: int = 0
+    # Fix-5 / FAZ-F (7 Haz): Yatay/eliptik bisiklet tespiti — Lord dikey istiyor
+    is_yatay_eliptik: bool = False
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -994,8 +1013,10 @@ class MerchantScorer:
             L.r_score = self.calc_r_score(L)
             L.f_score = self.calc_f_score(L, kritik_ozellikler)
             L.master_score = self.calc_master_score(L, mod)
-        # Sort key: master DESC, hazine_iskonto DESC, rating DESC, price ASC
+        # Fix-6: bütçe uyumlu ürünler DAIMA önce (butce_asimi=False < True)
+        # sonra master DESC, hazine_iskonto DESC, rating DESC, price ASC
         return sorted(listings, key=lambda x: (
+            x.butce_asimi,        # 0=uyumlu önce, 1=aşan sona
             -x.master_score,
             -x.hazine_iskonto_pct,
             -(x.rating or 0),
@@ -1098,7 +1119,10 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
         f'{{"kritik": ["ozellik_1", "ozellik_2", "ozellik_3", "ozellik_4", "ozellik_5"], '
         f'"aciklama": "1 cümle özet — neden bu özellikler önemli", '
         f'"fiyat_aralik": "X-Y TL beklenti", '
-        f'"populer_markalar": ["marka1", "marka2", "marka3"]}}\n\n'
+        f'"populer_markalar": ["marka1", "marka2", "marka3"], '
+        f'"tercih_tipler": {{"pozitif": ["bu kategoride alici istenen tip/stil kelimeleri"], '
+        f'"negatif": ["bu kategoride alicinin ISTEMEYECEĞI tip/stil kelimeleri"]}}}}\n'
+        f'Örnek bisiklet: pozitif=["dikey","upright","spinning"], negatif=["yatay","eliptik","recumbent","kol ve bacak"]\n\n'
         f'JSON çıktı:'
     )
     data, raw = _llm_json_call(prompt, llama_url, max_tokens=500, temperature=0.1, timeout=60)
@@ -1112,12 +1136,20 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
             "web_baglam": bool(web_baglam),
             "raw_preview": raw[:120] if raw else "",
         }
+    tercih_tipler = data.get("tercih_tipler", {})
+    if not isinstance(tercih_tipler, dict):
+        tercih_tipler = {}
     return {
         "kritik": data.get("kritik", [])[:5],
         "aciklama": data.get("aciklama", "")[:200],
         "fiyat_aralik": data.get("fiyat_aralik", "")[:60],
         "populer_markalar": data.get("populer_markalar", [])[:5],
-        "web_baglam": bool(web_baglam),  # web bilgisi mi kullanildi
+        "web_baglam": bool(web_baglam),
+        # FAZ-F: LLM kategori filtre kararı — hangi tipler isteniyor/istenmiyor
+        "tercih_tipler": {
+            "pozitif": [s.lower() for s in tercih_tipler.get("pozitif", [])[:6]],
+            "negatif": [s.lower() for s in tercih_tipler.get("negatif", [])[:6]],
+        },
     }
 
 
@@ -1272,8 +1304,10 @@ def _load_sahibinden_cookies() -> Dict[str, str]:
 
 
 def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
-                                log_fn=None, query: str = "") -> List[Dict[str, Any]]:
+                                log_fn=None, query: str = "",
+                                negatif_tipler: tuple = ()) -> List[Dict[str, Any]]:
     """Sahibinden direkt listing HTML parser (Lord cookies erişimi sonrası).
+    negatif_tipler: FAZ-F — yatay/eliptik gibi istenmeyen tip sinyalleri.
     Selector: tr.searchResultsItem[data-id] + a.classifiedTitle + searchResultsPriceValue
     """
     log = log_fn or (lambda m: None)
@@ -1369,31 +1403,39 @@ def _sahib_bot_mu(html: str) -> bool:
     return any(s.lower() in sample for s in _SAHIB_BOT_SINYALLER)
 
 
-def _sahib_find_filter_params(html: str, log_fn=None) -> str:
-    """İlk sayfa HTML'inden Dikey filtre URL parametresini dinamik keşfet.
+def _sahib_find_filter_params(html: str, log_fn=None,
+                              pozitif_tipler: tuple = ()) -> str:
+    """İlk sayfa HTML'inden istenen tip filtre URL parametresini dinamik keşfet.
+    FAZ-F: pozitif_tipler LLM'den gelir (["dikey","upright",...]).
+    Yoksa statik "Dikey" arar.
     Sahibinden filtre linkleri: href="...filter_attribute_XXX=Dikey..."
     Returns: '&filter_attribute_XXX=Dikey' veya '' bulunamazsa."""
     log = log_fn or (lambda m: None)
-    # Filtre linklerinde Dikey opsiyonunu ara
-    pattern = r'href="[^"]*?(filter_attribute_\d+)=([^&"]*[Dd]ikey[^&"]*)'
-    m = re.search(pattern, html or "")
-    if m:
-        param_name = m.group(1)
-        param_val = m.group(2)
-        log(f"[SAHIB_FILTER] Dinamik keşif: {param_name}={param_val}")
-        return f"&{param_name}={param_val}"
+    # Aranacak terimler: LLM pozitif tipler önce, sonra statik "Dikey"
+    arama_terimleri = list(pozitif_tipler) if pozitif_tipler else ["Dikey", "dikey"]
+    for terim in arama_terimleri:
+        # Filtre linklerinde bu terimi ara
+        pattern = rf'href="[^"]*?(filter_attribute_\d+)=([^&"]*{re.escape(terim)}[^&"]*)"'
+        m = re.search(pattern, html or "", re.IGNORECASE)
+        if m:
+            param_name = m.group(1)
+            param_val = m.group(2)
+            log(f"[SAHIB_FILTER] Dinamik keşif ({terim}): {param_name}={param_val}")
+            return f"&{param_name}={param_val}"
     # Alternatif: JavaScript veya hidden input araması
-    pattern2 = r'"(filter_attribute_\d+)"[^>]*value="([^"]*[Dd]ikey[^"]*)"'
-    m2 = re.search(pattern2, html or "")
-    if m2:
-        log(f"[SAHIB_FILTER] input keşfi: {m2.group(1)}={m2.group(2)}")
-        return f"&{m2.group(1)}={m2.group(2)}"
+    for terim in arama_terimleri:
+        pattern2 = rf'"(filter_attribute_\d+)"[^>]*value="([^"]*{re.escape(terim)}[^"]*)"'
+        m2 = re.search(pattern2, html or "", re.IGNORECASE)
+        if m2:
+            log(f"[SAHIB_FILTER] input keşfi ({terim}): {m2.group(1)}={m2.group(2)}")
+            return f"&{m2.group(1)}={m2.group(2)}"
     return ""
 
 
 def fetch_sahibinden_direct(query: str, log_fn=None,
                              apply_dikey_filter: bool = False,
-                             budget: float = 0.0) -> Optional["FetchResult"]:
+                             budget: float = 0.0,
+                             pozitif_tipler: tuple = ()) -> Optional["FetchResult"]:
     """Lord cookies ile Sahibinden kategori listesi direkt fetch.
     apply_dikey_filter: True ise HTML'den Dikey filtre URL'si dinamik keşfedilir.
     budget: >0 ise URL'ye priceMax parametresi eklenir.
@@ -1485,8 +1527,9 @@ def fetch_sahibinden_direct(query: str, log_fn=None,
         # Fix-Bot/Dikey: URL filtre parametreleri oluştur
         extra_qs = ""
         if apply_dikey_filter:
-            # İlk sayfa HTML'inden Dikey filtre parametresini keşfet
-            dikey_param = _sahib_find_filter_params(r.text, log_fn=log)
+            # İlk sayfa HTML'inden Dikey filtre parametresini keşfet (LLM pozitif tipler ile)
+            dikey_param = _sahib_find_filter_params(r.text, log_fn=log,
+                                                     pozitif_tipler=pozitif_tipler)
             if dikey_param:
                 extra_qs += dikey_param
                 log(f"[SAHIBINDEN_DIRECT] Dikey filtre aktif: {dikey_param}")
@@ -1948,13 +1991,15 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
-        # Rozet: Gizli Hazine > bütçe aşımı > mini pedal > normal hazine
+        # Rozet: Gizli Hazine > bütçe aşımı > yatay/eliptik > mini pedal > normal hazine
         if L.gizli_hazine_tier == "gizli_hazine":
             hazine_rozet = f" 🔮 <b>GİZLİ HAZİNE skor={L.gizli_hazine_skoru}/10</b>"
         elif L.gizli_hazine_tier == "riskli":
             hazine_rozet = f" ⚠️ <b>DÜŞÜK FİYATLI RİSKLİ skor={L.gizli_hazine_skoru}/10</b>"
         elif L.butce_asimi:
             hazine_rozet = f" 💰 <b>BÜTÇE AŞIMI +%{L.butce_asimi_pct}</b>"
+        elif L.is_yatay_eliptik:
+            hazine_rozet = " ↔️ <b>YATAY/ELİPTİK (dikey değil)</b>"
         elif L.is_mini_pedal:
             hazine_rozet = " ⚠️ <b>TAM BOY DEĞİL (masa altı pedal)</b>"
         elif L.is_hazine and L.hazine_iskonto_pct >= 30:
@@ -2151,6 +2196,12 @@ def market_master_query(query: str, budget: float = 5000.0,
     # FAZ-A (6 Haz revize): web_search bağlamı LLM cevabini zenginlestirir
     bulgu = aydinlama_bulgusu(query, category_slug, budget, log_fn=_log)
     _log(f"AYDINLAMA kritik={bulgu.get('kritik',[])[:5]} src={'fallback' if 'fallback' in bulgu.get('aciklama','').lower() else 'LLM'}")
+    # FAZ-F: LLM'den gelen kategori tip filtresi (yatay/eliptik gibi istenmeyen tipler)
+    _tercih = bulgu.get("tercih_tipler", {})
+    _negatif_tipler: tuple = tuple(s.lower() for s in _tercih.get("negatif", []) if s)
+    _pozitif_tipler: tuple = tuple(s.lower() for s in _tercih.get("pozitif", []) if s)
+    if _negatif_tipler:
+        _log(f"[FAZ-F] LLM filtre kararı — negatif: {list(_negatif_tipler)} · pozitif: {list(_pozitif_tipler)}")
     # LLM cıktısı doluysa KB kritik listesini onunla genislet
     if bulgu.get("kritik") and "fallback" not in bulgu.get("aciklama", "").lower():
         kritik = list(dict.fromkeys(list(bulgu["kritik"]) + kritik))[:10]
@@ -2188,7 +2239,8 @@ def market_master_query(query: str, budget: float = 5000.0,
                 }
                 _progress(f"{emo} <b>{disp}</b>: ⚠️ erişim engellendi ({r.status})")
                 continue
-            parsed = _parse_listings_from_html(r.text, site_short, budget, limit=top_n*2, log_fn=_log)
+            parsed = _parse_listings_from_html(r.text, site_short, budget, limit=top_n*2, log_fn=_log,
+                                               negatif_tipler=_negatif_tipler)
             site_stats[site_domain] = {
                 "n": len(parsed),
                 "durum": "tamam" if parsed else "tamam (parse=0)",
@@ -2252,7 +2304,8 @@ def market_master_query(query: str, budget: float = 5000.0,
         _bisiklet_sinyal = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
         sahib_r = fetch_sahibinden_direct(query, log_fn=_log,
                                           apply_dikey_filter=_bisiklet_sinyal,
-                                          budget=budget)
+                                          budget=budget,
+                                          pozitif_tipler=_pozitif_tipler)
         if sahib_r and sahib_r.status == 200 and not sahib_r.blocked:
             sahib_direct_success = True
             _log("[SAHIBINDEN_DIRECT] PASS — direkt erişim")
@@ -2279,12 +2332,13 @@ def market_master_query(query: str, budget: float = 5000.0,
             # Sahibinden direkt veya akakce'ye göre parser seç
             if sahib_direct_success:
                 sahib_parsed = _parse_sahibinden_listings(
-                    sahib_r.text, budget, limit=12, log_fn=_log, query=query
+                    sahib_r.text, budget, limit=12, log_fn=_log, query=query,
+                    negatif_tipler=_negatif_tipler,
                 )
             else:
                 sahib_parsed = _parse_listings_from_html(
                     sahib_r.text, "sahibinden_indirect", budget,
-                    limit=12, log_fn=_log,
+                    limit=12, log_fn=_log, negatif_tipler=_negatif_tipler,
                 )
             # FAZ-E Bot-Anomali Filter
             bot_eliminated = 0
@@ -2430,6 +2484,26 @@ def market_master_query(query: str, budget: float = 5000.0,
         _progress(f"⚠️ <b>{len(mini_pedal_isimleri)} ürün mini pedal</b> sayıldı, elendi "
                   f"(masa altı el/ayak pedal — tam boy bisiklet değil)")
 
+    # Fix-5 / FAZ-F (7 Haz): Yatay/eliptik eleme + Telegram log
+    # Fix-5b: _parse_sahibinden_listings negatif_tipler kullanmıyor → post-processing title check
+    _YATAY_STATIC_POST = ("yatay bisiklet", "recumbent", "sirt yaslama", "sırt yaslama",
+                          "backrest bisiklet", "koltuklu bisiklet", "eliptik bisiklet", "elliptical")
+    _nc = _negatif_tipler if _negatif_tipler else _YATAY_STATIC_POST
+    _di = ("dikey", "upright", "spinning", "spin bike")
+    for L in listings:
+        if not L.is_yatay_eliptik and not L.is_mini_pedal:
+            tl = L.title.lower()
+            if any(s in tl for s in _nc) and not any(s in tl for s in _di):
+                L.is_yatay_eliptik = True
+                _log(f"[YATAY_ELIPTİK_POST] tespit (Sahibinden/kaçan): {L.title[:55]}")
+    yatay_isimleri = [L.title[:50] for L in listings if L.is_yatay_eliptik]
+    if yatay_isimleri:
+        listings = [L for L in listings if not L.is_yatay_eliptik]
+        _log(f"[YATAY_ELIPTİK] {len(yatay_isimleri)} ürün elendi: {yatay_isimleri}")
+        tip_aciklama = f"({', '.join(list(_negatif_tipler)[:3])})" if _negatif_tipler else "(yatay/eliptik/recumbent)"
+        _progress(f"↔️ <b>{len(yatay_isimleri)} ürün yatay/eliptik</b> sayıldı, elendi "
+                  f"{tip_aciklama} — Lord dikey kondisyon bisikleti istiyor")
+
     # 6) Puanla + sırala
     if listings:
         ref_price = (ref_price_min + ref_price_max) / 2
@@ -2439,10 +2513,10 @@ def market_master_query(query: str, budget: float = 5000.0,
         if lord_profil:
             _progress(f"👤 <b>Lord profili aktif</b> — Sahibinden öncelikli, min ⭐{lord_profil.get('yorum_bot_esik',{}).get('min_yildiz',4.0)}, marka tercihi {len(lord_profil.get('marka_tercih',{}).get('tanidik_markalar',[]))}")
             listings = _lord_skor_ayarla(listings, log_fn=_log)
-            # Yeniden sırala (Lord ayarı sonrası)
+            # Fix-6: bütçe uyumlu ürünler DAIMA önce
             listings = sorted(listings, key=lambda x: (
-                -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
-                x.price if x.price > 0 else 999999,
+                x.butce_asimi, -x.master_score, -x.hazine_iskonto_pct,
+                -(x.rating or 0), x.price if x.price > 0 else 999999,
             ))
         # FAZ-D Hazine Boost: Sahibinden ilanlarinda epey_avg*0.6 alti = HAZINE
         # master_score'a +1.5 boost (max 10). Lord doktrini "cam gibi cikar".
@@ -2454,7 +2528,8 @@ def market_master_query(query: str, budget: float = 5000.0,
                 hazine_boost_n += 1
         if hazine_boost_n:
             _log(f"UCUZ BOOST: {hazine_boost_n} ilana +1.5 master_score uygulandi (akakce en ucuz)")
-            listings = sorted(listings, key=lambda x: x.master_score, reverse=True)
+            # Fix-6: bütçe uyumlu önce, sonra master DESC
+            listings = sorted(listings, key=lambda x: (x.butce_asimi, -x.master_score))
             _progress(f"💰 <b>{hazine_boost_n} ucuz alternatif</b> üst sıraya alındı (akakce fiyat avantajı)")
         # FAZ-C v2 (7 Haz): Gizli Hazine boost (+2.0) / Riskli ceza (sıralamada aşağı)
         gizli_h_boost_n = 0
@@ -2468,9 +2543,10 @@ def market_master_query(query: str, budget: float = 5000.0,
                 riskli_n += 1
         if gizli_h_boost_n or riskli_n:
             _log(f"[HAZINE_DED] gizli_hazine boost={gizli_h_boost_n} riskli={riskli_n}")
-            # Riskli ilanlar en alta — (is_riskli=True) sort key sona atar
+            # Fix-6: bütçe uyumlu önce, riskli sona
             listings = sorted(listings, key=lambda x: (
-                x.gizli_hazine_tier == "riskli",  # riskli = True → sona
+                x.butce_asimi,
+                x.gizli_hazine_tier == "riskli",
                 -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
                 x.price if x.price > 0 else 999999,
             ))
@@ -2499,10 +2575,10 @@ def market_master_query(query: str, budget: float = 5000.0,
                 else:
                     _progress(f"📭 <i>{short_title}…</i> — akakce sayfasında detaylı açıklama yok")
                     L.hazine_not = "akakce sayfasında detay yok — alternatif fiyat olarak değerlendir"
-            # Yeniden sırala (skor + ucuz)
+            # Fix-6: bütçe uyumlu önce, sonra master DESC
             listings = sorted(listings, key=lambda x: (
-                -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
-                x.price if x.price > 0 else 999999,
+                x.butce_asimi, -x.master_score, -x.hazine_iskonto_pct,
+                -(x.rating or 0), x.price if x.price > 0 else 999999,
             ))
 
     # 7) Sahibinden Ping-Pong Retry (7 Haz 2026)
@@ -2527,10 +2603,12 @@ def market_master_query(query: str, budget: float = 5000.0,
         _bisiklet_sinyal2 = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
         sahib_r2 = fetch_sahibinden_direct(query, log_fn=_log,
                                            apply_dikey_filter=_bisiklet_sinyal2,
-                                           budget=budget)
+                                           budget=budget,
+                                           pozitif_tipler=_pozitif_tipler)
         if sahib_r2 and sahib_r2.status == 200 and not sahib_r2.blocked and sahib_r2.text:
             sahib2_parsed = _parse_sahibinden_listings(
-                sahib_r2.text, budget, limit=12, log_fn=_log, query=query)
+                sahib_r2.text, budget, limit=12, log_fn=_log, query=query,
+                negatif_tipler=_negatif_tipler)
             # Hazine tespiti
             if epey_avg > 0:
                 _hazine_esik2 = epey_avg * 0.6
@@ -2550,7 +2628,9 @@ def market_master_query(query: str, budget: float = 5000.0,
                 listings = scorer.score_all(listings, ref_price2, kritik, mod, budget=budget)
                 if _load_lord_profil():
                     listings = _lord_skor_ayarla(listings, log_fn=_log)
+                # Fix-6: bütçe uyumlu önce, sonra riskli sona, sonra master DESC
                 listings = sorted(listings, key=lambda x: (
+                    x.butce_asimi,
                     x.gizli_hazine_tier == "riskli",
                     -x.master_score, -x.hazine_iskonto_pct,
                     -(x.rating or 0), x.price if x.price > 0 else 999999,
