@@ -204,46 +204,47 @@ Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 
 
 ---
 
-## 🌊 DALGA-6 v3 — Sahibinden Direkt + Lord Profili TAMAM (7 Haz 2026)
+## 🌊 DALGA-6 v4 — Mini Pedal + Gizli Hazine + Pipeline Fix (7 Haz 2026)
 
-Lord direktifi (6 Haz revize): *"benim Sahibinden hesabım var → cookie ile yetkili erişim OK"* + *"akakce ≠ Sahibinden, ana odak gerçek 2.el hazineler"*.
+Lord direktifi: *"En ucuzu değil, en değerlisi. Masa altı pedal bisiklet değil. Açıklamasını oku, hazineyi bul."*
 
 ### Tamamlanan Fazlar (6-7 Haz 2026)
 
 | Faz | Commit | İş |
 |---|---|---|
-| **A** | `bc9407f` | Aydınlama web_search (DDG + populer_markalar) — "🧠 LLM + 🌐 web" |
-| **B** | `49753b4` | Sahibinden ilan detay LLM özet (`sahibinden_ilan_analiz()`) |
-| **C** | `49753b4` | 4-seviye hazine karar (`hazine_seviye_belirle()`) 🟢/🟡/💎/🔴 + Lord metafor |
-| **E** | `de2b151` | Bot-Anomali çift filtre (Epey avg × 0.05/5 eşik) |
-| **G** | `c93bbfe`+`4080a4e` | Stream framework + optimize (Telgram 19→10 mesaj, ASCII ▰▱) |
-| Düzeltmeler | `dbda6f9` | 5 fix: Aydınlama EN BAŞA, tie-break, dedup, f_score neutral, URL .com + Playwright CF stealth |
-| Yol A | `30837b2` | Akakce etiket dürüstlük — "Sahibinden hazine" → "akakce fiyat keşif" |
-| **Cookie** | `5c87ce3`+`08e34e0` | Lord cookies altyapısı + Sahibinden direkt erişim (21 gerçek 2.el ilan) |
-| **D** | `90d3ffb` | Lord düşünce profili — site önceliği + marka tercih + bot ceza + foto bonus |
+| **A (Aydınlama)** | `bc9407f` | Aydınlama web_search (DDG + populer_markalar) — "🧠 LLM + 🌐 web" |
+| **B (Sahibinden LLM)** | `49753b4` | Sahibinden ilan detay LLM özet (`sahibinden_ilan_analiz()`) |
+| **C (4-seviye hazine)** | `49753b4` | `hazine_seviye_belirle()` 🟢/🟡/💎/🔴 + Lord metafor |
+| **E (Bot-Anomali)** | `de2b151` | Epey avg × 0.05/5 eşik filtresi |
+| **G (Stream)** | `c93bbfe`+`4080a4e` | 19→10 mesaj, ASCII ▰▱ |
+| Düzeltmeler | `dbda6f9` | 5 fix: Aydınlama EN BAŞA, tie-break, dedup, f_score neutral, URL |
+| Yol A | `30837b2` | Akakce etiket dürüstlük |
+| **Cookie** | `5c87ce3`+`08e34e0` | Lord cookies + Sahibinden direkt erişim |
+| **D (Lord Profil)** | `90d3ffb` | Site önceliği + marka tercih + bot ceza + foto bonus |
+| **v11.32.24** | `e6752bd` | Sahibinden 11 sayfa / 225 row + aksesuar filtresi + bütçe hazine fallback |
+| **FAZ-A v2 (Mini Pedal)** | `fda6dcb` | `is_mini_pedal` tespit + `f_score×0.5` + ⚠️ rozet — Trendyol/HB kirliliği giderildi |
+| **FAZ-C v2 (Gizli Hazine)** | `fda6dcb` | `gizli_hazine_dedektoru()` — kural+LLM, pozitif/negatif sinyal, 🔮/⚠️ tier, +2.0 boost |
 
-### Live Kanıt Zinciri (7 Haz 05:05)
-- 🔐 Sahibinden direkt erişim (44 cookie, rememberedUserName=kuroshin_user)
-- 🕵️ 6 gerçek 2.el ilan ("temiz sağlam kaliteli bisiklet" 3500₺, vs)
-- 👤 Lord profili aktif (12 marka tercihi, min ⭐4.0)
-- Triathlon (Epey) "marka+0.5" bonus
-- Aydınlama: 5 kritik özellik + Kochler/Kipsta/Decathlon (web bilgi)
-- Telgrama 13 kademeli mesaj akışı
+### Live Kanıt Zinciri
+- **7 Haz 10:03** — Sahibinden 11 sayfa 5.0MB 225 row, results=23 top=7.36 ✅
+- **7 Haz 05:05** — 🔐 Sahibinden direkt (44 cookie, kuroshin_user), 6 gerçek 2.el ilan ✅
+- **7 Haz 11:00** — FAZ-A 4/4 PASS + FAZ-C 4/4 PASS + Iron Inquisitor 45/45 PASS ✅
 
 ### Veri kaynakları (4 site DOLU)
-- **Epey** (Playwright Chromium + stealth) — kategori kriter + referans fiyat
-- **Trendyol** (Playwright) — fiyat + ⭐ + foto sinyali
-- **Hepsiburada** (curl_cffi chrome124) — Akamai bypass + SSR rating
-- **Sahibinden direkt** (Lord cookies → curl_cffi yetkili erişim) — gerçek 2.el
-- **Akakce yedek** (Sahibinden cookies expire ise fallback)
+- **Epey** (Playwright + stealth) — kategori kriter + referans fiyat
+- **Trendyol** (Playwright) — fiyat + ⭐ + foto sinyali; mini pedal ayıklanıyor
+- **Hepsiburada** (curl_cffi chrome124) — Akamai bypass + SSR rating; mini pedal ayıklanıyor
+- **Sahibinden direkt** (Lord cookies) — gerçek 2.el; Gizli Hazine Dedektörü aktif
+- **Akakce yedek** (cookies expire ise)
 
-### Açık iş (sıradaki)
-- **Push** 76 commit (Lord onay bekler)
-- **Telegram callback live test** (🔄 Yeniden Ara / ⚖️ Mod Değiştir / 💎 Sadece Hazine)
-- **Başka kategori test** (telefon/laptop/kulaklık) — Lord profili evrensel mi
-- **Cookies refresh otomasyon** — expire tespiti + Telgrama uyarı
-- **Marka çıkartma LLM** — Aydınlama popüler markalar Lord profiline otomatik ekle
-- **Iron Inquisitor DALGA-6 v3 runtime testleri** — FAZ-A/B/C/D/E/G fixture testleri
+### Açık iş (öncelik sırasıyla)
+- ☐ **FAZ-B: Epey avg şişik fix** — budget dahili ürünlerden hesapla (satır ~1975)
+- ☐ **FAZ-D: HB parça filtresi** — sele/ayna/yedek parça bisiklet aramasında çıkmasın
+- ☐ **Push** — 78 commit önde (Lord onay bekler)
+- ☐ **Telegram callback live test** (🔄 Yeniden Ara / ⚖️ Mod Değiştir)
+- ☐ **Başka kategori test** — telefon/laptop → Lord profili evrensel mi
+- ☐ **Cookies refresh otomasyon** — expire tespiti + Telgrama uyarı
+- ☐ **Iron Inquisitor DALGA-6 v4** — mini pedal + gizli hazine fixture testleri
 
 ---
 
