@@ -224,6 +224,8 @@ Lord direktifi: *"En ucuzu değil, en değerlisi. Masa altı pedal bisiklet değ
 | **v11.32.24** | `e6752bd` | Sahibinden 11 sayfa / 225 row + aksesuar filtresi + bütçe hazine fallback |
 | **FAZ-A v2 (Mini Pedal)** | `fda6dcb` | `is_mini_pedal` tespit + `f_score×0.5` + ⚠️ rozet — Trendyol/HB kirliliği giderildi |
 | **FAZ-C v2 (Gizli Hazine)** | `fda6dcb` | `gizli_hazine_dedektoru()` — kural+LLM, pozitif/negatif sinyal, 🔮/⚠️ tier, +2.0 boost |
+| **FAZ-B (Epey avg fix)** | `7ec4237` | epey_avg = budget*0.3–1.5 dahili ürünler (4813→2444TL, 2369TL şişirme giderildi) |
+| **FAZ-D (HB parça filtresi)** | `7ec4237` | HB+TY bisiklet aramasında sele kılıfı/pompa/tamir seti/ayna → atla |
 
 ### Live Kanıt Zinciri
 - **7 Haz 10:03** — Sahibinden 11 sayfa 5.0MB 225 row, results=23 top=7.36 ✅
@@ -238,9 +240,9 @@ Lord direktifi: *"En ucuzu değil, en değerlisi. Masa altı pedal bisiklet değ
 - **Akakce yedek** (cookies expire ise)
 
 ### Açık iş (öncelik sırasıyla)
-- ☐ **FAZ-B: Epey avg şişik fix** — budget dahili ürünlerden hesapla (satır ~1975)
-- ☐ **FAZ-D: HB parça filtresi** — sele/ayna/yedek parça bisiklet aramasında çıkmasın
-- ☐ **Push** — 78 commit önde (Lord onay bekler)
+- ✅ **FAZ-B: Epey avg fix** — `7ec4237` (2369TL şişirme giderildi)
+- ✅ **FAZ-D: HB parça filtresi** — `7ec4237` (sele/pompa/tamir seti atlanıyor)
+- ☐ **Push** — 80 commit önde (Lord onay bekler)
 - ☐ **Telegram callback live test** (🔄 Yeniden Ara / ⚖️ Mod Değiştir)
 - ☐ **Başka kategori test** — telefon/laptop → Lord profili evrensel mi
 - ☐ **Cookies refresh otomasyon** — expire tespiti + Telgrama uyarı
