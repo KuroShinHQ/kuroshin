@@ -204,6 +204,35 @@ Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 
 
 ---
 
+## 🌊 DALGA-6 v6 — Fix-Mini-b + Hazine Detail + Stealth (8 Haz 2026)
+
+Lord direktifi: *"Sahibinden ilanlarının açıklamaları Gizli Hazine Dedektörü'ne verilmiyor. Reidan Küçük Boy Pedal mini pedal filtresi kaçıyor. nodriver stealth scraping ekle."*
+
+### Tamamlanan Fix'ler (8 Haz 2026)
+
+| Fix | İş | Kanıt |
+|---|---|---|
+| **Fix-Mini-b Mini Pedal Post** | `[MINI_PEDAL_POST]` post-processing — Sahibinden + tüm sitelerden kaçan mini pedallar. Bileşik: "küçük"+"pedal", "mini"+"pedal"+"bisiklet yok". `_MINI_POST_SINYAL` listesi genişletildi. | `[MINI_PEDAL_POST] tespit: Reidan Küçük Boy Pedal` ✅ |
+| **Hazine Detail Fetch** | `sahibinden_ilan_analiz()` cookies parametresi eklendi. Hazine adayları için detay sayfası ÖNCE okunuyor → tam açıklama LLM'e veriliyor. 8-15s gecikme ekli. | `[HAZINE_DED] detay:` log izi, `cookies=sahib_cookies` geçiriliyor ✅ |
+| **Sahibinden Stealth Anon** | `fetch_sahibinden_stealth_anon()` + `_sahib_stealth_async()` — nodriver Chromium, login YOK, 30-60s/ilan gecikme. Cookie yoksa veya bot tespitinde devreye girer. | `fetch_sahibinden_stealth_anon` kod inspect ✅ |
+| **_SAHIB_BROWSER_HEADERS** | Modül seviyesi sabit — `fetch_sahibinden_direct` + `sahibinden_ilan_analiz` paylaşımlı kullanım | Kod inspect ✅ |
+| **Iron Inquisitor** | 54/54 PASS (9 yeni test: mini_pedal_post, stealth, hazine_detail, ilan_analiz_cookies) | 2026-06-07 15:06 raporu ✅ |
+
+### Canlı Kanıt (7 Haz 15:12)
+```
+[MINI_PEDAL_POST] tespit (kaçan): Reidan Küçük Boy Pedal Egzersiz Bisikleti Ev Direnç Fit
+[MINI_PEDAL] 2 ürün elendi: ['Walke Mini El Ve Ayak...', 'Reidan Küçük Boy Pedal...']
+[YATAY_ELIPTİK] 4 ürün elendi
+results=21 elapsed=157.1s top_score=6.71
+```
+
+### Açık iş
+- ☐ **Stealth canlı test** — cookies yokken nodriver stealth gerçek Sahibinden çıktısı
+- ☐ **Gizli Hazine Dedektörü canlı tetikle** — daha ucuz ilan (epey_avg*0.6 altı) görününce detay sayfası logla
+- ☐ **Push** — Lord onay bekler
+
+---
+
 ## 🌊 DALGA-6 v5 — Lord Fix-1~4 + Bot Bypass + Ping-Pong Retry (7 Haz 2026)
 
 Lord direktifi: *"Bütçeme ihanet ettin. Bütçe kutsaldır. Fix-1~4 uygula, kanıtla. Sahibinden bot'a yakalanma."*

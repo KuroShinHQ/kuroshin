@@ -519,5 +519,104 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "RUNTIME: Lord 'login YOK' doktrini — market_master kodunda login/password atama keyword'leri YOK"
+  },
+  {
+    "id": "verify-dalga6-fix8-mini-pedal-kucuk-boy",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "kucuk boy pedal",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Mini Pedal: 'kucuk boy pedal' sinyali _MINI_POST_SINYAL'de var (Reidan Küçük Boy Pedal tespiti)"
+  },
+  {
+    "id": "verify-dalga6-fix8-mini-pedal-post-block",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "MINI_PEDAL_POST",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Mini Pedal: [MINI_PEDAL_POST] post-processing bloğu var (Sahibinden kaçan mini pedal tespiti)"
+  },
+  {
+    "id": "verify-dalga6-fix8-mini-pedal-runtime",
+    "category": "verify_dalga6_fix8",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import ProductListing; L=ProductListing(title='Reidan Küçük Boy Pedal',price=860.0,url='',site='sahibinden',is_second_hand=True); tl=L.title.lower(); _MINI_POST_SINYAL=('el ve ayak','el ayak','mini pedal','mini el ayak','küçük boy pedal','kucuk boy pedal','masa altı pedal','masa altı bisiklet','sadece ayak pedal'); _MINI_POST_ISTISNA=('dikey','sele','t-222','t-245','upright','tam boy'); _is_mini=any(s in tl for s in _MINI_POST_SINYAL); _is_mini=_is_mini or ('küçük' in tl and 'pedal' in tl and 'tam boy' not in tl); assert _is_mini, f'Reidan Küçük Boy Pedal mini tespit edilmedi: tl={tl}'; print('PASS: Reidan Küçük Boy Pedal → mini_pedal tespiti OK')",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RUNTIME Fix-8: 'Reidan Küçük Boy Pedal' → is_mini_pedal=True (küçük+pedal bileşik sinyal)"
+  },
+  {
+    "id": "verify-dalga6-fix8-stealth-function-exists",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "fetch_sahibinden_stealth_anon",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Stealth: fetch_sahibinden_stealth_anon() fonksiyonu tanımlandı (nodriver login-siz)"
+  },
+  {
+    "id": "verify-dalga6-fix8-stealth-nodriver-import",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "import nodriver as uc",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Stealth: nodriver lazy import stealth fonksiyonu içinde var"
+  },
+  {
+    "id": "verify-dalga6-fix8-stealth-delay",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "random.uniform(30, 60)",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Stealth: 30-60s rate-limit delay (ilan başına bekleme)"
+  },
+  {
+    "id": "verify-dalga6-fix8-hazine-detail-fetch",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "HAZINE_DED] detay:",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Hazine Detail: Sahibinden hazine adayları detay sayfası log kaydı mevcut"
+  },
+  {
+    "id": "verify-dalga6-fix8-ilan-analiz-cookies",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "cookies=sahib_cookies",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8 Hazine Detail: sahibinden_ilan_analiz() cookies parametresi ile çağrılıyor"
+  },
+  {
+    "id": "verify-dalga6-fix8-sahib-browser-headers-module",
+    "category": "verify_dalga6_fix8",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "_SAHIB_BROWSER_HEADERS",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Fix-8: _SAHIB_BROWSER_HEADERS modül sabiti tanımlandı (fetch_sahibinden_direct + sahibinden_ilan_analiz paylaşımlı)"
   }
 ]

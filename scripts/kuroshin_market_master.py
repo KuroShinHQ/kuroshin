@@ -17,12 +17,14 @@ Açık doktrin:
   - Public veri (login YOK, oturum YOK)
 """
 from __future__ import annotations
+import asyncio
 import json
 import os
 import random
 import re
 import sys
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -1396,6 +1398,19 @@ def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
 # Fix-Bot (7 Haz): Sahibinden bot tespit sinyalleri — bu string'ler gelince blocked=True
 _SAHIB_BOT_SINYALLER = ("olağandışı", "olagandisi", "otomatik", "unusual", "Destek kodu", "GW98", "bot")
 
+# Sahibinden browser-like headers (modül seviyesi — fetch_sahibinden_direct + sahibinden_ilan_analiz)
+_SAHIB_BROWSER_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 def _sahib_bot_mu(html: str) -> bool:
     """HTML içinde Sahibinden bot/rate-limit sinyali var mı?"""
@@ -1461,18 +1476,8 @@ def fetch_sahibinden_direct(query: str, log_fn=None,
     if mapped_slug and mapped_slug != direct_slug:
         candidate_slugs.append(mapped_slug)
     candidate_slugs.append(direct_slug)
-    # Fix-Bot: Browser-like headers (Sahibinden fingerprint bypass)
-    _browser_headers = {
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "same-origin",
-        "Upgrade-Insecure-Requests": "1",
-    }
+    # Fix-Bot: Browser-like headers (modül sabiti _SAHIB_BROWSER_HEADERS kullan)
+    _browser_headers = _SAHIB_BROWSER_HEADERS
     t0 = time.time()
     url = f"https://www.sahibinden.com/{candidate_slugs[0]}"
     r = None
@@ -1602,11 +1607,15 @@ def fetch_sahibinden_direct(query: str, log_fn=None,
 
 def sahibinden_ilan_analiz(url: str, kritik_ozellikler: List[str],
                             llama_url: str = LLAMA_URL,
+                            cookies: Optional[Dict[str, str]] = None,
                             log_fn=None) -> Dict[str, Any]:
-    """FAZ-B (6 Haz 2026) — Sahibinden/akakce ilan detay LLM analiz.
+    """FAZ-B (6 Haz 2026) / Fix-8 Haz — Sahibinden ilan detay LLM analiz.
     Lord doktrini: 'EN KRİTİK: ilan AÇIKLAMASI'.
 
-    1. URL'den detay sayfa fetch (curl_cffi)
+    Fix-8 Haz: cookies parametresi eklendi — Sahibinden hazine adayları için
+    Lord session cookies ile detay sayfası fetch → tam açıklama okunuyor.
+
+    1. URL'den detay sayfa fetch (curl_cffi + isteğe bağlı cookies)
     2. Açıklama metnini çıkar
     3. LLM özet: Aydınlama kritikleri ile eşleşme + spec dict
 
@@ -1620,15 +1629,21 @@ def sahibinden_ilan_analiz(url: str, kritik_ozellikler: List[str],
     log = log_fn or (lambda m: None)
     if not url or "http" not in url:
         return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0}
-    # 1. Fetch — akakce/sahibinden için curl_cffi chrome124
     if cc_requests is None:
         return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
                 "hata": "curl_cffi YOK"}
+    # Detay sayfası fetch: Sahibinden ilan URL'leri için cookies + browser headers
     try:
-        r = cc_requests.get(url, impersonate="chrome124", timeout=20)
+        r = cc_requests.get(url, impersonate="chrome124",
+                            cookies=cookies or {},
+                            headers=_SAHIB_BROWSER_HEADERS,
+                            timeout=25, allow_redirects=True)
         if r.status_code != 200 or not r.text:
             return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
                     "hata": f"status {r.status_code}"}
+        if _sahib_bot_mu(r.text):
+            return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
+                    "hata": "bot_detection_detail"}
     except Exception as e:
         return {"aciklama_dolu": False, "aciklama_metin": "", "ilan_spec": {}, "eslesme_pct": 0,
                 "hata": f"fetch: {type(e).__name__}"}
@@ -1793,6 +1808,163 @@ def gizli_hazine_dedektoru(title: str, description: str, price: float,
             "poz_sinyaller": data.get("poz_sinyaller", []),
             "neg_sinyaller": data.get("neg_sinyaller", []),
             "not": not_metin}
+
+
+# ============================================================================
+# Sahibinden Stealth Anon — nodriver (8 Haz 2026)
+# Lord direktifi: "login cookie gerektirmeyen, gerçek tarayıcı gibi davranan parser"
+# nodriver = gerçek Chrome CDPsiz, JS fingerprint atlatır, bot tespiti azalır
+# 30-60s sayfa başına bekleme (IP rate-limit koruması)
+# ============================================================================
+async def _sahib_stealth_async(query: str, budget: float, limit: int,
+                                log_fn=None) -> List[Dict[str, Any]]:
+    """Async iç fonksiyon — nodriver ile anonim Sahibinden taraması."""
+    log = log_fn or (lambda m: None)
+    try:
+        import nodriver as uc
+    except ImportError:
+        log("[SAHIB_STEALTH] nodriver YOK — kurulamadı")
+        return []
+
+    q_norm = query.lower()
+    for fr, to in [("ı","i"),("ş","s"),("ç","c"),("ğ","g"),("ü","u"),("ö","o")]:
+        q_norm = q_norm.replace(fr, to)
+    q_norm = re.sub(r"\s+", " ", q_norm).strip()
+    mapped_slug = _SAHIB_SLUG_MAP.get(q_norm) or _SAHIB_SLUG_MAP.get(q_norm.split()[0] if q_norm.split() else "")
+    if mapped_slug:
+        base_url = f"https://www.sahibinden.com/{mapped_slug}?sorting=PRICE_ASC"
+    else:
+        base_url = f"https://www.sahibinden.com/arama?query={urllib.parse.quote(query)}&sorting=PRICE_ASC"
+    if budget > 0:
+        base_url += f"&priceMax={int(budget)}"
+    log(f"[SAHIB_STEALTH] nodriver başlatılıyor: {base_url[:80]}")
+
+    results: List[Dict[str, Any]] = []
+    browser = None
+    try:
+        browser = await uc.start(
+            headless=True,
+            browser_executable_path="/usr/bin/chromium-browser",
+            browser_args=["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],
+        )
+        page = await browser.get(base_url)
+        await asyncio.sleep(random.uniform(8, 15))
+        html = await page.get_content()
+
+        if _sahib_bot_mu(html) or len(html) < 3000:
+            log(f"[SAHIB_STEALTH] Bot/login tespiti listing sayfasında ({len(html)} ch)")
+            return []
+
+        # Listing parse
+        if BeautifulSoup is None:
+            return []
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.select("tr.searchResultsItem[data-id]")
+        log(f"[SAHIB_STEALTH] listing: {len(rows)} ilan satırı")
+
+        basic: List[Dict[str, Any]] = []
+        for row in rows[:limit * 2]:
+            try:
+                a = row.select_one("a.classifiedTitle")
+                if not a:
+                    continue
+                title = (a.get_text(" ", strip=True) or a.get("title", ""))[:200]
+                href = a.get("href", "")
+                if href.startswith("/"):
+                    href = f"https://www.sahibinden.com{href}"
+                price = 0.0
+                price_el = row.select_one(".searchResultsPriceValue")
+                if price_el:
+                    pm = re.search(r"([\d.]+)\s*(?:,(\d{2}))?\s*TL",
+                                   price_el.get_text(" ", strip=True).replace("\xa0", " "))
+                    if pm:
+                        try:
+                            price = float(pm.group(1).replace(".", "") + "." + (pm.group(2) or "0"))
+                        except ValueError:
+                            pass
+                loc_el = row.select_one(".searchResultsLocationValue")
+                location = loc_el.get_text(" ", strip=True)[:50] if loc_el else ""
+                if title and 50 < price <= (budget * 3 if budget else 99999):
+                    basic.append({"title": title, "price": price, "url": href,
+                                  "location": location, "description": ""})
+            except Exception:
+                continue
+        log(f"[SAHIB_STEALTH] parse: {len(basic)} ilan ayıklandı")
+
+        # Hazine adayları önce — detay sayfaları için daha değerli
+        hazine_esik = budget * 0.7 if budget > 0 else float("inf")
+        basic.sort(key=lambda x: x["price"])  # ucuz önce
+        hazine_adaylari = [p for p in basic if p["price"] < hazine_esik][:min(5, limit)]
+        diger = [p for p in basic if p not in hazine_adaylari][:limit - len(hazine_adaylari)]
+        hedefler = hazine_adaylari + diger
+
+        # Detay sayfalarına git — tam açıklama çek
+        for p in hedefler:
+            if not p.get("url"):
+                p.update({"site": "sahibinden", "rating": None, "review_count": 0,
+                          "is_second_hand": True, "kondisyon": "az_kullanildi",
+                          "ilan_spec": {"konum": p.get("location", "")}})
+                results.append(p)
+                continue
+            # 30-60s gecikme — rate-limit koruması
+            delay = random.uniform(30, 60)
+            log(f"[SAHIB_STEALTH] {delay:.0f}s bekleniyor → {p['url'][-50:]}")
+            await asyncio.sleep(delay)
+            try:
+                dpage = await browser.get(p["url"])
+                await asyncio.sleep(random.uniform(3, 8))
+                dhtml = await dpage.get_content()
+                desc = ""
+                if len(dhtml) > 1000:
+                    dsoup = BeautifulSoup(dhtml, "html.parser")
+                    for sel in ["div.classifiedDescription", "#classifiedDescription",
+                                "[itemprop=description]", "[class*=description]", ".aciklama"]:
+                        el = dsoup.select_one(sel)
+                        if el:
+                            txt = el.get_text(" ", strip=True)[:1000]
+                            if len(txt) > len(desc):
+                                desc = txt
+                p["description"] = desc
+                log(f"[SAHIB_STEALTH] ✓ {p['title'][:40]} {p['price']:,.0f}₺ desc={len(desc)}ch")
+            except Exception as e:
+                log(f"[SAHIB_STEALTH] detay hata {p['url'][-40:]}: {e}")
+            p.update({"site": "sahibinden", "rating": None, "review_count": 0,
+                      "is_second_hand": True, "kondisyon": "az_kullanildi",
+                      "ilan_spec": {"konum": p.pop("location", "")}})
+            results.append(p)
+
+    except Exception as e:
+        log(f"[SAHIB_STEALTH] nodriver hata: {type(e).__name__}: {str(e)[:80]}")
+    finally:
+        if browser:
+            try:
+                await browser.stop()
+            except Exception:
+                pass
+    return results[:limit]
+
+
+def fetch_sahibinden_stealth_anon(query: str, budget: float = 0.0,
+                                   limit: int = 10,
+                                   log_fn=None) -> List[Dict[str, Any]]:
+    """nodriver ile login-siz anonim Sahibinden taraması (sync wrapper).
+
+    Lord direktifi (8 Haz 2026): "arsenal'deki nodriver kullan — login YOK, stealth."
+    - Gerçek Chromium (JS fingerprint doğal görünür)
+    - 30-60s sayfa başına bekleme
+    - Hazine adaylarının detay sayfası okunur → tam açıklama
+    - Fallback: cookie expire/bot-detected durumunda devreye girer
+    """
+    log = log_fn or (lambda m: None)
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(_sahib_stealth_async(query, budget, limit, log_fn))
+        loop.close()
+        return result
+    except Exception as e:
+        log(f"[SAHIB_STEALTH] asyncio wrapper hata: {type(e).__name__}: {e}")
+        return []
 
 
 def analyze_flaws(description: str, llama_url: str = LLAMA_URL) -> Dict[str, Any]:
@@ -2325,8 +2497,22 @@ def market_master_query(query: str, budget: float = 5000.0,
             else:
                 _progress(f"⚠️ Sahibinden erişim hatası (status={st}) — akakce fallback")
             sahib_r = None
+    # Fix-8 Haz: Stealth fallback — cookies yoksa veya bot tespitinde nodriver dene
+    # Sahibinden kategori sayfaları login gerektirebilir; stealth ile bypass denemesi
+    _sahib_stealth_ok = False
+    _sahib_stealth_listings: List[Dict[str, Any]] = []
+    if not sahib_direct_success and not sahib_bot_detected:
+        # Cookies hiç yoksa → stealth ilk seçenek
+        _try_stealth = not sahib_cookies
+        if _try_stealth:
+            _progress(f"🥷 <b>Sahibinden Stealth</b> (nodriver · login-siz · ~30-60s/sayfa)…")
+            _sahib_stealth_listings = fetch_sahibinden_stealth_anon(query, budget=budget, limit=10, log_fn=_log)
+            if _sahib_stealth_listings:
+                _sahib_stealth_ok = True
+                _progress(f"🥷 Stealth: {len(_sahib_stealth_listings)} ilan bulundu — Gizli Hazine taranıyor")
+                _log(f"[SAHIB_STEALTH] {len(_sahib_stealth_listings)} ilan başarılı")
     try:
-        if not sahib_r:
+        if not sahib_r and not _sahib_stealth_ok:
             sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
             # Sahibinden direkt veya akakce'ye göre parser seç
@@ -2377,15 +2563,33 @@ def market_master_query(query: str, budget: float = 5000.0,
                 if hazine_esik and 0 < pr < hazine_esik:
                     p["is_hazine"] = True
                     p["hazine_iskonto_pct"] = int((1 - pr / ref_for_iskonto) * 100) if ref_for_iskonto > 0 else 0
-            # FAZ-C v2 (7 Haz): Gizli Hazine Dedektörü — ucuz ilan = çöp DEĞİL, LLM tara
-            # Lord direktifi: aşırı ucuz ilan için pozitif/negatif sinyal analizi → tier
+            # FAZ-C v2 (7 Haz) / Fix-8 Haz: Gizli Hazine Dedektörü
+            # Fix-8 Haz: Detay sayfası ÖNCE okunuyor → tam açıklama LLM'e verilir
+            # Önceki: sadece listing page kısa snippet → LLM boş/eksik veri ile karar veriyordu
             hazine_adaylari = [p for p in sahib_parsed if p.get("is_hazine")]
             if hazine_adaylari and sahib_direct_success:
-                _progress(f"🔮 <b>Gizli Hazine Dedektörü</b>: {len(hazine_adaylari)} ucuz ilan taranıyor…")
+                _progress(f"🔮 <b>Gizli Hazine Dedektörü</b>: {len(hazine_adaylari)} ilan · detay sayfaları okunuyor…")
                 for p in hazine_adaylari:
+                    # Detay sayfasını oku — tam açıklama için (Fix-8 Haz)
+                    full_desc = p.get("description", "")
+                    if p.get("url"):
+                        _log(f"[HAZINE_DED] detay: {p['url'][-50:]}")
+                        ilan_a = sahibinden_ilan_analiz(
+                            p["url"], kritik,
+                            cookies=sahib_cookies,
+                            log_fn=_log,
+                        )
+                        if ilan_a.get("aciklama_dolu"):
+                            full_desc = ilan_a.get("aciklama_metin", full_desc)
+                            _log(f"[HAZINE_DED] açıklama OK {len(full_desc)}ch eslesme={ilan_a.get('eslesme_pct',0)}%")
+                            if ilan_a.get("ilan_spec"):
+                                p.setdefault("ilan_spec", {}).update(ilan_a["ilan_spec"])
+                        elif ilan_a.get("hata"):
+                            _log(f"[HAZINE_DED] detay hata: {ilan_a['hata']}")
+                        time.sleep(random.uniform(8, 15))
                     ded = gizli_hazine_dedektoru(
                         title=p.get("title", ""),
-                        description=p.get("description", ""),
+                        description=full_desc,
                         price=p.get("price", 0),
                         ref_price=ref_for_iskonto,
                         log_fn=_log,
@@ -2429,6 +2633,50 @@ def market_master_query(query: str, budget: float = 5000.0,
         site_stats["sahibinden.com"] = {"n": 0, "durum": f"akakce hata: {str(e)[:30]}", "tier": "-"}
         _log(f"akakce indirect hata: {e}")
         _progress(f"🔍 Akakce: ❌ hata — {str(e)[:60]}")
+
+    # Fix-8 Haz: Stealth listing'leri doğrudan ekle (cookie olmadığında / akakce yerine)
+    if _sahib_stealth_ok and _sahib_stealth_listings:
+        _stealth_parsed = _sahib_stealth_listings
+        # Bot-anomali filtresi
+        if epey_avg > 0:
+            _s_alt = max(50.0, epey_avg * 0.05)
+            _s_ust = epey_avg * 5
+            _stealth_parsed = [p for p in _stealth_parsed if _s_alt <= p.get("price", 0) <= _s_ust]
+        # Hazine tespiti
+        _ref_isk = epey_avg if epey_avg > 0 else budget
+        _haz_esik = (epey_avg * 0.6) if epey_avg > 0 else (budget * 0.7 if budget > 0 else 0)
+        for p in _stealth_parsed:
+            pr = p.get("price", 0)
+            if _haz_esik and 0 < pr < _haz_esik:
+                p["is_hazine"] = True
+                p["hazine_iskonto_pct"] = int((1 - pr / _ref_isk) * 100) if _ref_isk > 0 else 0
+        # Gizli Hazine Dedektörü — stealth ilanlarında açıklama zaten çekildi (full_desc)
+        _s_hazine_adaylari = [p for p in _stealth_parsed if p.get("is_hazine")]
+        if _s_hazine_adaylari:
+            _progress(f"🔮 <b>Stealth Gizli Hazine</b>: {len(_s_hazine_adaylari)} ucuz ilan taranıyor…")
+            for p in _s_hazine_adaylari:
+                ded = gizli_hazine_dedektoru(
+                    title=p.get("title", ""), description=p.get("description", ""),
+                    price=p.get("price", 0), ref_price=_ref_isk, log_fn=_log,
+                )
+                p["gizli_hazine_skoru"] = ded.get("skor", 0)
+                p["gizli_hazine_tier"] = ded.get("tier", "belirsiz")
+                p["hazine_not"] = ded.get("not", "")
+        for p in _stealth_parsed:
+            listings.append(ProductListing(**p))
+        _s_gizli = [p for p in _stealth_parsed if p.get("gizli_hazine_tier") == "gizli_hazine"]
+        _s_ucuz = [p for p in _stealth_parsed if p.get("is_hazine")]
+        if _s_gizli:
+            ornek = max(_s_gizli, key=lambda x: x.get("gizli_hazine_skoru", 0))
+            _progress(f"🥷 <b>Stealth Sahibinden</b>: {len(_stealth_parsed)} ilan\n"
+                      f"🔮 <b>Gizli Hazine</b>: <i>{ornek.get('title','')[:50]}</i> → "
+                      f"<b>{ornek['price']:,.0f}₺</b> · skor {ornek.get('gizli_hazine_skoru',0)}/10")
+        else:
+            _progress(f"🥷 <b>Stealth Sahibinden</b>: {len(_stealth_parsed)} ilan"
+                      + (f" · {len(_s_ucuz)} ucuz" if _s_ucuz else " · belirgin ucuzluk yok"))
+        site_stats["sahibinden.com"] = {
+            "n": len(_stealth_parsed), "durum": "stealth_anon", "tier": "nodriver",
+        }
 
     # 5) FIX-ALL: Referans fiyat gerçek listing'lerin median'ından
     if listings:
@@ -2475,6 +2723,26 @@ def market_master_query(query: str, budget: float = 5000.0,
         if len(merged) < len(listings):
             _log(f"[DEDUP] toplam {len(listings)} → {len(merged)} ürün (cross-site)")
             listings = merged
+
+    # Fix-Mini-b (8 Haz): Post-processing mini pedal tespiti
+    # Sahibinden + diğer listelerden kaçan mini pedal ilanları — is_mini_pedal set edilmemişse kontrol
+    _MINI_POST_SINYAL = ("el ve ayak", "el ayak", "mini pedal", "mini el ayak",
+                         "küçük boy pedal", "kucuk boy pedal", "masa altı pedal",
+                         "masa altı bisiklet", "sadece ayak pedal")
+    _MINI_POST_ISTISNA = ("dikey", "sele", "t-222", "t-245", "upright", "tam boy")
+    for L in listings:
+        if not L.is_mini_pedal:
+            tl = L.title.lower()
+            _is_mini = any(s in tl for s in _MINI_POST_SINYAL)
+            # Bileşik: "mini" + "pedal" (bisiklet yoksa → pedal aleti)
+            if not _is_mini and "mini" in tl and "pedal" in tl and "bisiklet" not in tl:
+                _is_mini = True
+            # Bileşik: "küçük"/"kucuk" + "pedal" (tam boy değilse)
+            if not _is_mini and ("küçük" in tl or "kucuk" in tl) and "pedal" in tl and "tam boy" not in tl:
+                _is_mini = True
+            if _is_mini and not any(s in tl for s in _MINI_POST_ISTISNA):
+                L.is_mini_pedal = True
+                _log(f"[MINI_PEDAL_POST] tespit (kaçan): {L.title[:55]}")
 
     # Fix-2 (7 Haz): Mini pedal eleme + Telegram log
     mini_pedal_isimleri = [L.title[:50] for L in listings if L.is_mini_pedal]
