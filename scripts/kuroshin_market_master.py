@@ -1119,6 +1119,82 @@ def _load_sahibinden_cookies() -> Dict[str, str]:
         return {}
 
 
+def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
+                                log_fn=None) -> List[Dict[str, Any]]:
+    """Sahibinden direkt listing HTML parser (Lord cookies erişimi sonrası).
+    Selector: tr.searchResultsItem[data-id] + a.classifiedTitle + searchResultsPriceValue
+    """
+    log = log_fn or (lambda m: None)
+    out: List[Dict[str, Any]] = []
+    if not html or BeautifulSoup is None:
+        return out
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return out
+    rows = soup.select("tr.searchResultsItem[data-id]")
+    log(f"[SAHIBINDEN_PARSE] searchResultsItem: {len(rows)} row")
+    for row in rows[:limit*2]:
+        try:
+            ilan_id = row.get("data-id", "")
+            if not ilan_id:
+                continue
+            # Başlık + URL
+            a = row.select_one("a.classifiedTitle")
+            if not a:
+                continue
+            title = (a.get_text(" ", strip=True) or a.get("title", ""))[:200]
+            href = a.get("href", "")
+            if href.startswith("/"):
+                href = f"https://www.sahibinden.com{href}"
+            # Fiyat
+            price = 0.0
+            price_el = row.select_one(".searchResultsPriceValue, td.searchResultsPriceValue div, [class*=price]")
+            if price_el:
+                ptxt = price_el.get_text(" ", strip=True)
+                pm = re.search(r"([\d.]+)\s*(?:,(\d{2}))?\s*TL", ptxt.replace("\xa0", " "))
+                if pm:
+                    try:
+                        int_part = pm.group(1).replace(".", "")
+                        dec_part = pm.group(2) or "0"
+                        price = float(f"{int_part}.{dec_part}")
+                    except ValueError:
+                        pass
+            # Konum
+            loc_el = row.select_one(".searchResultsLocationValue, [class*=location]")
+            location = loc_el.get_text(" ", strip=True)[:60] if loc_el else ""
+            # Açıklama özet — Sahibinden listing'de başlık altında bazen kısa açıklama
+            desc = ""
+            for cls in ["searchResultsTagAttributeValue", "shortDescription"]:
+                d = row.select_one(f"[class*={cls}]")
+                if d:
+                    desc = d.get_text(" ", strip=True)[:300]
+                    break
+            if not title or price <= 0:
+                continue
+            out.append({
+                "title": title,
+                "price": price,
+                "url": href,
+                "site": "sahibinden",
+                "rating": None,
+                "review_count": 0,
+                "description": desc + (f" · {location}" if location else ""),
+                "has_photo_review": False,
+                # Sahibinden = 2.el
+                "is_second_hand": True,
+                "kondisyon": "az_kullanildi",  # default tahmin
+                # Sahibinden ilan ID
+                "ilan_spec": {"sahibinden_id": ilan_id, "konum": location},
+            })
+        except Exception:
+            continue
+    log(f"[SAHIBINDEN_PARSE] toplam {len(out)} ilan extract edildi")
+    # Filtre: fiyat budget*3 üst sınır (Lord doktrini bot/anomali)
+    filtered = [x for x in out if 50 <= x["price"] <= budget * 3]
+    return filtered[:limit]
+
+
 def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
     """Lord cookies ile Sahibinden kategori listesi direkt fetch.
     Returns: FetchResult veya None (cookies yoksa)."""
@@ -1130,14 +1206,25 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
     if cc_requests is None:
         log("[SAHIBINDEN_DIRECT] curl_cffi YOK")
         return None
-    # Sahibinden arama URL
-    safe_q = query.replace(" ", "+")
-    # Tipik Sahibinden arama: /arama?q=kondisyon+bisikleti
-    url = f"https://www.sahibinden.com/arama?q={safe_q}"
+    # Sahibinden 2 URL stratejisi: kategori slug önce (içerik dolu), sonra arama
+    # Lord 6 Haz canli test: /arama?q= → "Sonuç Bulunamadı" boş sayfa
+    slug = query.lower().replace(" ", "-").replace("ı", "i").replace("ş", "s")
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    urls = [
+        f"https://www.sahibinden.com/{slug}",  # kategori slug — Sahibinden'in canonical formu
+        f"https://www.sahibinden.com/arama?query={query.replace(' ', '+')}",
+    ]
     t0 = time.time()
+    url = urls[0]
     try:
         r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
                             timeout=25, allow_redirects=False)
+        # Eğer "Sonuç Bulunamadı" gelirse 2. URL dene
+        if r.status_code == 200 and "Sonuç Bulunamadı" in (r.text or "")[:5000]:
+            log(f"[SAHIBINDEN_DIRECT] {url} 'Sonuç Bulunamadı' → arama URL fallback")
+            url = urls[1]
+            r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
+                                timeout=25, allow_redirects=False)
         elapsed = round(time.time() - t0, 1)
         # Login redirect kontrolü
         if r.status_code in (301, 302):
@@ -1755,10 +1842,16 @@ def market_master_query(query: str, budget: float = 5000.0,
         if not sahib_r:
             sahib_r = fetcher.fetch_sahibinden_indirect(query)
         if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
-            sahib_parsed = _parse_listings_from_html(
-                sahib_r.text, "sahibinden_indirect", budget,
-                limit=top_n*2, log_fn=_log,
-            )
+            # Sahibinden direkt veya akakce'ye göre parser seç
+            if sahib_direct_success:
+                sahib_parsed = _parse_sahibinden_listings(
+                    sahib_r.text, budget, limit=top_n*2, log_fn=_log
+                )
+            else:
+                sahib_parsed = _parse_listings_from_html(
+                    sahib_r.text, "sahibinden_indirect", budget,
+                    limit=top_n*2, log_fn=_log,
+                )
             # FAZ-E Bot-Anomali Filter
             bot_eliminated = 0
             if epey_avg > 0:
