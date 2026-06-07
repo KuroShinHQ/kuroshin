@@ -204,6 +204,49 @@ Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 
 
 ---
 
+## 🌊 DALGA-6 v3 — Sahibinden Direkt + Lord Profili TAMAM (7 Haz 2026)
+
+Lord direktifi (6 Haz revize): *"benim Sahibinden hesabım var → cookie ile yetkili erişim OK"* + *"akakce ≠ Sahibinden, ana odak gerçek 2.el hazineler"*.
+
+### Tamamlanan Fazlar (6-7 Haz 2026)
+
+| Faz | Commit | İş |
+|---|---|---|
+| **A** | `bc9407f` | Aydınlama web_search (DDG + populer_markalar) — "🧠 LLM + 🌐 web" |
+| **B** | `49753b4` | Sahibinden ilan detay LLM özet (`sahibinden_ilan_analiz()`) |
+| **C** | `49753b4` | 4-seviye hazine karar (`hazine_seviye_belirle()`) 🟢/🟡/💎/🔴 + Lord metafor |
+| **E** | `de2b151` | Bot-Anomali çift filtre (Epey avg × 0.05/5 eşik) |
+| **G** | `c93bbfe`+`4080a4e` | Stream framework + optimize (Telgram 19→10 mesaj, ASCII ▰▱) |
+| Düzeltmeler | `dbda6f9` | 5 fix: Aydınlama EN BAŞA, tie-break, dedup, f_score neutral, URL .com + Playwright CF stealth |
+| Yol A | `30837b2` | Akakce etiket dürüstlük — "Sahibinden hazine" → "akakce fiyat keşif" |
+| **Cookie** | `5c87ce3`+`08e34e0` | Lord cookies altyapısı + Sahibinden direkt erişim (21 gerçek 2.el ilan) |
+| **D** | `90d3ffb` | Lord düşünce profili — site önceliği + marka tercih + bot ceza + foto bonus |
+
+### Live Kanıt Zinciri (7 Haz 05:05)
+- 🔐 Sahibinden direkt erişim (44 cookie, rememberedUserName=kuroshin_user)
+- 🕵️ 6 gerçek 2.el ilan ("temiz sağlam kaliteli bisiklet" 3500₺, vs)
+- 👤 Lord profili aktif (12 marka tercihi, min ⭐4.0)
+- Triathlon (Epey) "marka+0.5" bonus
+- Aydınlama: 5 kritik özellik + Kochler/Kipsta/Decathlon (web bilgi)
+- Telgrama 13 kademeli mesaj akışı
+
+### Veri kaynakları (4 site DOLU)
+- **Epey** (Playwright Chromium + stealth) — kategori kriter + referans fiyat
+- **Trendyol** (Playwright) — fiyat + ⭐ + foto sinyali
+- **Hepsiburada** (curl_cffi chrome124) — Akamai bypass + SSR rating
+- **Sahibinden direkt** (Lord cookies → curl_cffi yetkili erişim) — gerçek 2.el
+- **Akakce yedek** (Sahibinden cookies expire ise fallback)
+
+### Açık iş (sıradaki)
+- **Push** 76 commit (Lord onay bekler)
+- **Telegram callback live test** (🔄 Yeniden Ara / ⚖️ Mod Değiştir / 💎 Sadece Hazine)
+- **Başka kategori test** (telefon/laptop/kulaklık) — Lord profili evrensel mi
+- **Cookies refresh otomasyon** — expire tespiti + Telgrama uyarı
+- **Marka çıkartma LLM** — Aydınlama popüler markalar Lord profiline otomatik ekle
+- **Iron Inquisitor DALGA-6 v3 runtime testleri** — FAZ-A/B/C/D/E/G fixture testleri
+
+---
+
 ## 🌊 DALGA-6 v2 — Lord Mantık Genişletme (4 Haz 2026 ~01:00)
 
 Lord direktifi: *"İlk kanıt alıcaz sonra entegre edicez."* Sprint 4 LLM-siz testler ile kanıtlar **alındı**:
