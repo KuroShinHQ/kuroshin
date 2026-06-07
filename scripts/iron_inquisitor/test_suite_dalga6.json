@@ -52,7 +52,6 @@
     "weight": 1.0,
     "description": "FAZ-0: MD v3'te smart routing tablosu (SITE_FETCHER) tanimli"
   },
-
   {
     "id": "verify-dalga6-faz1-module-exists",
     "category": "verify_dalga6_faz1",
@@ -228,7 +227,6 @@
     "weight": 1.0,
     "description": "FAZ-1: HTTPS only — http:// link yok (guvenlik)"
   },
-
   {
     "id": "verify-dalga6-faz2-sahibinden-indirect",
     "category": "verify_dalga6_faz2",
@@ -313,7 +311,6 @@
     "weight": 1.0,
     "description": "FAZ-2: Lord doktrini — login/password/auth_token KEYWORD YOK"
   },
-
   {
     "id": "verify-dalga6-faz3-analyze-flaws",
     "category": "verify_dalga6_faz3",
@@ -383,7 +380,6 @@
     "weight": 1.0,
     "description": "FAZ-3: LLM JSON mode (analyze_flaws/evaluate_reviews)"
   },
-
   {
     "id": "verify-dalga6-faz4-ascii-chart",
     "category": "verify_dalga6_faz4",
@@ -453,7 +449,6 @@
     "weight": 1.0,
     "description": "FAZ-4: 'butce uygun urun bulamadim' fallback metni"
   },
-
   {
     "id": "verify-dalga6-runtime-sanitize-butce",
     "category": "verify_dalga6_runtime",
@@ -554,61 +549,6 @@
     "description": "RUNTIME Fix-8: 'Reidan Küçük Boy Pedal' → is_mini_pedal=True (küçük+pedal bileşik sinyal)"
   },
   {
-    "id": "verify-dalga6-fix8-stealth-function-exists",
-    "category": "verify_dalga6_fix8",
-    "type": "code_inspect",
-    "check": "file_contains",
-    "file": "scripts/kuroshin_market_master.py",
-    "pattern": "fetch_sahibinden_stealth_anon",
-    "expect_blocked": false,
-    "weight": 1.0,
-    "description": "Fix-8 Stealth: fetch_sahibinden_stealth_anon() fonksiyonu tanımlandı (nodriver login-siz)"
-  },
-  {
-    "id": "verify-dalga6-fix8-stealth-nodriver-import",
-    "category": "verify_dalga6_fix8",
-    "type": "code_inspect",
-    "check": "file_contains",
-    "file": "scripts/kuroshin_market_master.py",
-    "pattern": "import nodriver as uc",
-    "expect_blocked": false,
-    "weight": 1.0,
-    "description": "Fix-8 Stealth: nodriver lazy import stealth fonksiyonu içinde var"
-  },
-  {
-    "id": "verify-dalga6-fix8-stealth-delay",
-    "category": "verify_dalga6_fix8",
-    "type": "code_inspect",
-    "check": "file_contains",
-    "file": "scripts/kuroshin_market_master.py",
-    "pattern": "random.uniform(30, 60)",
-    "expect_blocked": false,
-    "weight": 1.0,
-    "description": "Fix-8 Stealth: 30-60s rate-limit delay (ilan başına bekleme)"
-  },
-  {
-    "id": "verify-dalga6-fix8-hazine-detail-fetch",
-    "category": "verify_dalga6_fix8",
-    "type": "code_inspect",
-    "check": "file_contains",
-    "file": "scripts/kuroshin_market_master.py",
-    "pattern": "HAZINE_DED] detay:",
-    "expect_blocked": false,
-    "weight": 1.0,
-    "description": "Fix-8 Hazine Detail: Sahibinden hazine adayları detay sayfası log kaydı mevcut"
-  },
-  {
-    "id": "verify-dalga6-fix8-ilan-analiz-cookies",
-    "category": "verify_dalga6_fix8",
-    "type": "code_inspect",
-    "check": "file_contains",
-    "file": "scripts/kuroshin_market_master.py",
-    "pattern": "cookies=sahib_cookies",
-    "expect_blocked": false,
-    "weight": 1.0,
-    "description": "Fix-8 Hazine Detail: sahibinden_ilan_analiz() cookies parametresi ile çağrılıyor"
-  },
-  {
     "id": "verify-dalga6-fix8-sahib-browser-headers-module",
     "category": "verify_dalga6_fix8",
     "type": "code_inspect",
@@ -618,5 +558,98 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Fix-8: _SAHIB_BROWSER_HEADERS modül sabiti tanımlandı (fetch_sahibinden_direct + sahibinden_ilan_analiz paylaşımlı)"
+  },
+  {
+    "id": "verify-dalga6-fix9-ilan-analiz-no-fetch",
+    "description": "sahibinden_ilan_analiz: existing_desc parametresi var, URL fetch yok",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "existing_desc",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-fix9-parse-marka-description",
+    "description": "Parse edilen ilanlar Marka: prefix ile description alıyor",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "Marka: {marka}",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-fix9-ilan-analiz-runtime",
+    "category": "verify_dalga6_fix9",
+    "description": "sahibinden_ilan_analiz existing_desc ile calisir, URL fetch etmez",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "code": "import sys; sys.path.insert(0,\"scripts\"); import warnings; warnings.filterwarnings(\"ignore\"); import kuroshin_market_master as mm; r1 = mm.sahibinden_ilan_analiz(\"\", [\"model\"], existing_desc=\"Marka: Reidan\"); assert r1[\"aciklama_dolu\"] == False; r2 = mm.sahibinden_ilan_analiz(\"\", [\"model\"], existing_desc=\"A\"*60, llama_url=\"http://127.0.0.1:9999\"); assert \"aciklama_metin\" in r2; print(\"PASS: existing_desc calisiyor\")",
+    "timeout": 15,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "verify-dalga6-v1133-butce-hard-drop",
+    "category": "verify_v1133",
+    "description": "v11.33.0 Dir1: BÜTÇE_HARD_DROP var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "BÜTÇE_HARD_DROP",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-v1133-spin-kara",
+    "category": "verify_v1133",
+    "description": "v11.33.0 Dir4: SPIN_KARA var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "SPIN_KARA",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-v1133-capraz",
+    "category": "verify_v1133",
+    "description": "v11.33.0 Dir2: CAPRAZ_KATEGORI var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "CAPRAZ_KATEGORI",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-v1133-tayin",
+    "category": "verify_v1133",
+    "description": "v11.33.0 Dir3: \"tayin\" hazine sinyali var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "tayin",
+    "expected": {
+      "blocked": false
+    }
+  },
+  {
+    "id": "verify-dalga6-v1133-unverified",
+    "category": "verify_v1133",
+    "description": "v11.33.0 Dir5: UNVERIFIED_MODEL var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "UNVERIFIED_MODEL",
+    "expected": {
+      "blocked": false
+    }
   }
 ]
