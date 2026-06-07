@@ -79,6 +79,8 @@ SITE_FETCHER: Dict[str, Tuple[str, str]] = {
 # Lord doktrini "iz bırakmadan" — request arası random.uniform(5, 15) saniye delay
 RATE_LIMIT_MIN_SEC = 5    # min 5s (random.uniform(5, 15) min sınır)
 RATE_LIMIT_MAX_SEC = 15
+# Sahibinden bot tespiti / bütçe aşımı → retry süresi
+SAHIB_RETRY_SEC = 120     # 2 dk bekle (Sahibinden rate-limit genellikle 5-10 dk ama ilk denemede 2 dk)
 
 # Telegram 5-mesaj akışı: _market_msg_baslangic + _market_msg_canli_durum + _market_msg_ana_rapor + _market_render_ascii_chart + _market_msg_derin_analiz
 # Inline keyboard callback'leri: market_yeniden_ara, market_mod_degistir, market_tablo, market_derin, market_tum_linkler
@@ -2244,6 +2246,7 @@ def market_master_query(query: str, budget: float = 5000.0,
     # FAZ-Cookie: Sahibinden direkt önce dene (Lord cookies varsa)
     sahib_r = None
     sahib_direct_success = False
+    sahib_bot_detected = False   # Ping-Pong retry flag
     if sahib_cookies:
         # Fix-Dikey: bisiklet aramasında Dikey kategori filtresi uygula + bütçe geç
         _bisiklet_sinyal = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
@@ -2264,7 +2267,8 @@ def market_master_query(query: str, budget: float = 5000.0,
             elif err == "login_redirect" or (st in (301, 302) and "login" in str(err)):
                 _progress(f"⚠️ Sahibinden cookies süresi dolmuş — yeniden export gerekli (akakce fallback)")
             elif err and "bot_detection" in str(err):
-                _progress(f"🤖 <b>Sahibinden bot tespiti</b> — ~5-10 dk bekle, tekrar dene (akakce fallback)")
+                sahib_bot_detected = True
+                _progress(f"🤖 <b>Sahibinden bot tespiti</b> — {SAHIB_RETRY_SEC}s sonra retry yapılacak (şimdi Epey/TY/HB ile devam)")
             else:
                 _progress(f"⚠️ Sahibinden erişim hatası (status={st}) — akakce fallback")
             sahib_r = None
@@ -2501,19 +2505,83 @@ def market_master_query(query: str, budget: float = 5000.0,
                 x.price if x.price > 0 else 999999,
             ))
 
-    # 7) Telegram MESAJ 3: Ana rapor (top_n)
+    # 7) Sahibinden Ping-Pong Retry (7 Haz 2026)
+    # Tetikleyici 1: Bot detection yakalandı
+    # Tetikleyici 2: Top-3 tümü bütçe aşıyor → Sahibinden'den ürün gelmedi demek
+    _top3_hepsi_asim = (len(listings) >= 3 and
+                        all(getattr(L, 'butce_asimi', False) for L in listings[:3]))
+    _sahib_retry = sahib_cookies and (sahib_bot_detected or
+                                      (not sahib_direct_success and _top3_hepsi_asim))
+    if _sahib_retry:
+        _sebep = "bot tespiti" if sahib_bot_detected else "top-3 tümü bütçe aşımı"
+        _progress(f"⏱ <b>Sahibinden retry</b> ({_sebep})\n"
+                  f"Şimdilik Epey/TY/HB sonuçları — {SAHIB_RETRY_SEC}s sonra Sahibinden ekleniyor…")
+        # Ara rapor gönder (Sahibinden olmadan)
+        _progress(_market_msg_ana_rapor(listings[:top_n], mod))
+        _progress(_market_render_ascii_chart(listings[:top_n]))
+        # Bekle
+        _log(f"[SAHIB_RETRY] {SAHIB_RETRY_SEC}s bekleniyor ({_sebep})")
+        time.sleep(SAHIB_RETRY_SEC)
+        # Retry fetch
+        _progress(f"🔄 <b>Sahibinden retry</b> başlıyor ({SAHIB_RETRY_SEC}s beklendi)…")
+        _bisiklet_sinyal2 = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
+        sahib_r2 = fetch_sahibinden_direct(query, log_fn=_log,
+                                           apply_dikey_filter=_bisiklet_sinyal2,
+                                           budget=budget)
+        if sahib_r2 and sahib_r2.status == 200 and not sahib_r2.blocked and sahib_r2.text:
+            sahib2_parsed = _parse_sahibinden_listings(
+                sahib_r2.text, budget, limit=12, log_fn=_log, query=query)
+            # Hazine tespiti
+            if epey_avg > 0:
+                _hazine_esik2 = epey_avg * 0.6
+                for p in sahib2_parsed:
+                    if 0 < p.get("price", 0) < _hazine_esik2:
+                        p["is_hazine"] = True
+                        p["hazine_iskonto_pct"] = int((1 - p["price"] / epey_avg) * 100)
+            # Mevcut başlıklar dedup — aynı ilan tekrar ekleme
+            mevcut_basliklar = {L.title[:40].lower() for L in listings}
+            yeni_ilanlar = [p for p in sahib2_parsed
+                            if p.get("title", "")[:40].lower() not in mevcut_basliklar]
+            if yeni_ilanlar:
+                for p in yeni_ilanlar:
+                    listings.append(ProductListing(**p))
+                # Yeniden puan + sırala
+                ref_price2 = (ref_price_min + ref_price_max) / 2 if listings else budget
+                listings = scorer.score_all(listings, ref_price2, kritik, mod, budget=budget)
+                if _load_lord_profil():
+                    listings = _lord_skor_ayarla(listings, log_fn=_log)
+                listings = sorted(listings, key=lambda x: (
+                    x.gizli_hazine_tier == "riskli",
+                    -x.master_score, -x.hazine_iskonto_pct,
+                    -(x.rating or 0), x.price if x.price > 0 else 999999,
+                ))
+                _progress(f"✅ <b>Sahibinden retry BAŞARILI</b> — {len(yeni_ilanlar)} yeni ilan eklendi → final sıralama güncellendi")
+            else:
+                _progress(f"ℹ️ Sahibinden retry: {len(sahib2_parsed)} ilan bulundu ama hepsi zaten listede")
+        else:
+            err2 = sahib_r2.error if sahib_r2 else "no_response"
+            _progress(f"⚠️ <b>Sahibinden retry başarısız</b> ({err2}) — üstteki Epey/TY/HB sonuçları geçerli")
+
+    # 8) Final rapor (Ping-Pong retry olduysa bu final, olmadıysa normal ilk rapor)
     msg3 = _market_msg_ana_rapor(listings[:top_n], mod)
 
-    # 8) Telegram MESAJ 4: ASCII diyagram
+    # 9) ASCII diyagram
     msg4 = _market_render_ascii_chart(listings[:top_n])
+    # Ping-Pong retry olduysa mesajları _progress ile zaten gönderdik, final'i de gönder
+    if _sahib_retry:
+        _progress(msg3)
+        _progress(msg4)
+        msg3 = ""   # chancellor tekrar göndermesin
+        msg4 = ""
 
     elapsed = round(time.time() - t0, 1)
     _log(f"results={len(listings)} elapsed={elapsed}s top_score={listings[0].master_score if listings else 'N/A'}")
 
     # FAZ-G optimize + Fix #2 (6 Haz): Aydinlama stream'in başına alındı.
-    # Final messages = 2 mesaj (Ana Rapor + ASCII) — Aydınlama stream içinde 1. sıraya
+    # Ping-Pong retry olduysa msg3/msg4 boş — _progress ile zaten gönderildi
+    # Final messages = boş olmayan mesajlar
     return {
-        "messages": [msg3, msg4],
+        "messages": [m for m in [msg3, msg4] if m],
         "listings": [
             {"title": L.title, "price": L.price, "url": L.url, "site": L.site,
              "rating": L.rating, "review_count": L.review_count,
