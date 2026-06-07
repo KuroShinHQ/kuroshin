@@ -502,6 +502,9 @@ class ProductListing:
     # FAZ-C v2 (7 Haz): Gizli Hazine Dedektörü
     gizli_hazine_skoru: int = 0   # 0-10 (LLM sinyal analizi)
     gizli_hazine_tier: str = ""   # 'gizli_hazine' | 'riskli' | 'belirsiz'
+    # Fix-1 (7 Haz): Bütçe aşımı — price > budget → V_score cezası + rozet
+    butce_asimi: bool = False
+    butce_asimi_pct: int = 0
 
     # Scores (MerchantScorer hesaplar)
     v_score: float = 0.0
@@ -972,12 +975,20 @@ class MerchantScorer:
         return round(master, 2)
 
     def score_all(self, listings: List[ProductListing], ref_price: float,
-                  kritik_ozellikler: List[str], mod: str = "dengeli") -> List[ProductListing]:
+                  kritik_ozellikler: List[str], mod: str = "dengeli",
+                  budget: float = 0.0) -> List[ProductListing]:
         """Tüm ürünleri puanla + sırala.
         Fix #3 (6 Haz): Tie-break — master_score eşitse hazine_iskonto_pct DESC,
-        sonra rating DESC, sonra price ASC. Lord doktrini: aynı puanda hazine üst."""
+        sonra rating DESC, sonra price ASC. Lord doktrini: aynı puanda hazine üst.
+        Fix-1 (7 Haz): price > budget → V_score -2.0 cezası. Bütçe kutsaldır."""
         for L in listings:
             L.v_score = self.calc_v_score(L, ref_price, L.is_second_hand)
+            # Fix-1: bütçe aşımı cezası
+            if budget > 0 and L.price > budget:
+                L.butce_asimi = True
+                L.butce_asimi_pct = round((L.price - budget) / budget * 100)
+                L.v_score = max(0.0, round(L.v_score - 2.0, 2))
+                self.log(f"[BÜTÇE_AŞIMI] {L.title[:40]} {L.price:,.0f}₺ > bütçe {budget:,.0f}₺ (+%{L.butce_asimi_pct}) → V-2.0")
             L.r_score = self.calc_r_score(L)
             L.f_score = self.calc_f_score(L, kritik_ozellikler)
             L.master_score = self.calc_master_score(L, mod)
@@ -1172,8 +1183,15 @@ def _lord_skor_ayarla(listings: List["ProductListing"], log_fn=None) -> List["Pr
         elif title_lower and len(title_lower) > 5:
             # Bilinmeyen marka — küçük ceza
             delta += bilinmeyen_ceza
-        # Yorum bot ceza (rating var ama review_count YOK)
+        # Fix-3 (7 Haz): Bot ceza eşiği güncellendi.
+        # Senaryo 1: Puan var ama hiç yorum yok → şüpheli
+        # Senaryo 2: 500+ yorum VE 4.0 altı puan → bot şişirme
+        _bot_supheli = False
         if L.rating and L.rating >= min_yildiz and L.review_count == 0:
+            _bot_supheli = True
+        elif L.review_count > 500 and (L.rating or 5.0) < 4.0:
+            _bot_supheli = True
+        if _bot_supheli:
             delta += bot_ceza
             notes.append(f"botSupheli{bot_ceza}")
         # Foto bonus
@@ -1844,11 +1862,13 @@ def _market_msg_ana_rapor(listings: List[ProductListing], mod: str) -> str:
                 yorum_line += " · 📸 fotolu yorum"
         elif L.has_photo_review:
             yorum_line = "\n💬 📸 fotolu yorum"
-        # Rozet: Gizli Hazine > mini pedal > normal hazine
+        # Rozet: Gizli Hazine > bütçe aşımı > mini pedal > normal hazine
         if L.gizli_hazine_tier == "gizli_hazine":
             hazine_rozet = f" 🔮 <b>GİZLİ HAZİNE skor={L.gizli_hazine_skoru}/10</b>"
         elif L.gizli_hazine_tier == "riskli":
             hazine_rozet = f" ⚠️ <b>DÜŞÜK FİYATLI RİSKLİ skor={L.gizli_hazine_skoru}/10</b>"
+        elif L.butce_asimi:
+            hazine_rozet = f" 💰 <b>BÜTÇE AŞIMI +%{L.butce_asimi_pct}</b>"
         elif L.is_mini_pedal:
             hazine_rozet = " ⚠️ <b>TAM BOY DEĞİL (masa altı pedal)</b>"
         elif L.is_hazine and L.hazine_iskonto_pct >= 30:
@@ -1900,6 +1920,8 @@ def _market_render_ascii_chart(listings: List[ProductListing]) -> str:
             hzn = " 🔮"
         elif L.gizli_hazine_tier == "riskli":
             hzn = " ⚠️"
+        elif L.butce_asimi:
+            hzn = f" 💰+%{L.butce_asimi_pct}"
         elif L.is_mini_pedal:
             hzn = " ⚠️"
         elif L.is_hazine:
@@ -2163,12 +2185,12 @@ def market_master_query(query: str, budget: float = 5000.0,
             # Sahibinden direkt veya akakce'ye göre parser seç
             if sahib_direct_success:
                 sahib_parsed = _parse_sahibinden_listings(
-                    sahib_r.text, budget, limit=top_n*2, log_fn=_log, query=query
+                    sahib_r.text, budget, limit=12, log_fn=_log, query=query
                 )
             else:
                 sahib_parsed = _parse_listings_from_html(
                     sahib_r.text, "sahibinden_indirect", budget,
-                    limit=top_n*2, log_fn=_log,
+                    limit=12, log_fn=_log,
                 )
             # FAZ-E Bot-Anomali Filter
             bot_eliminated = 0
@@ -2306,10 +2328,18 @@ def market_master_query(query: str, budget: float = 5000.0,
             _log(f"[DEDUP] toplam {len(listings)} → {len(merged)} ürün (cross-site)")
             listings = merged
 
+    # Fix-2 (7 Haz): Mini pedal eleme + Telegram log
+    mini_pedal_isimleri = [L.title[:50] for L in listings if L.is_mini_pedal]
+    if mini_pedal_isimleri:
+        listings = [L for L in listings if not L.is_mini_pedal]
+        _log(f"[MINI_PEDAL] {len(mini_pedal_isimleri)} ürün elendi: {mini_pedal_isimleri}")
+        _progress(f"⚠️ <b>{len(mini_pedal_isimleri)} ürün mini pedal</b> sayıldı, elendi "
+                  f"(masa altı el/ayak pedal — tam boy bisiklet değil)")
+
     # 6) Puanla + sırala
     if listings:
         ref_price = (ref_price_min + ref_price_max) / 2
-        listings = scorer.score_all(listings, ref_price, kritik, mod)
+        listings = scorer.score_all(listings, ref_price, kritik, mod, budget=budget)
         # FAZ-D (7 Haz): Lord düşünce profili — site önceliği, marka, bot ceza
         lord_profil = _load_lord_profil()
         if lord_profil:
