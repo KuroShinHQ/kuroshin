@@ -1162,11 +1162,11 @@ SAHIBINDEN_SESSION_PATH = Path("/mnt/c/Kuroshin/memory/sahibinden_session.json")
 # Sahibinden kategori slug mapping — query term → çalışan slug (7 Haz 2026 test edildi)
 # NOT: Her slug sahibinden.com/<slug> olarak test edildi. 404 alanlar EKLENMEDİ.
 _SAHIB_SLUG_MAP: Dict[str, str] = {
-    "telefon": "cep-telefonu",
-    "cep telefon": "cep-telefonu",
-    "akilli telefon": "cep-telefonu",
-    "iphone": "cep-telefonu",
-    "samsung telefon": "cep-telefonu",
+    "telefon": "cep-telefonu-aksesuar",
+    "cep telefon": "cep-telefonu-aksesuar",
+    "akilli telefon": "cep-telefonu-aksesuar",
+    "iphone": "cep-telefonu-aksesuar",
+    "samsung telefon": "cep-telefonu-aksesuar",
     "kondisyon bisikleti": "kondisyon-bisikleti",
     "eliptik bisiklet": "kondisyon-bisikleti",
     "bisiklet": "bisiklet",
