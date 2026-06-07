@@ -1357,8 +1357,44 @@ def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
     return filtered[:limit]
 
 
-def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
+# Fix-Bot (7 Haz): Sahibinden bot tespit sinyalleri — bu string'ler gelince blocked=True
+_SAHIB_BOT_SINYALLER = ("olağandışı", "olagandisi", "otomatik", "unusual", "Destek kodu", "GW98", "bot")
+
+
+def _sahib_bot_mu(html: str) -> bool:
+    """HTML içinde Sahibinden bot/rate-limit sinyali var mı?"""
+    sample = (html or "")[:3000].lower()
+    return any(s.lower() in sample for s in _SAHIB_BOT_SINYALLER)
+
+
+def _sahib_find_filter_params(html: str, log_fn=None) -> str:
+    """İlk sayfa HTML'inden Dikey filtre URL parametresini dinamik keşfet.
+    Sahibinden filtre linkleri: href="...filter_attribute_XXX=Dikey..."
+    Returns: '&filter_attribute_XXX=Dikey' veya '' bulunamazsa."""
+    log = log_fn or (lambda m: None)
+    # Filtre linklerinde Dikey opsiyonunu ara
+    pattern = r'href="[^"]*?(filter_attribute_\d+)=([^&"]*[Dd]ikey[^&"]*)'
+    m = re.search(pattern, html or "")
+    if m:
+        param_name = m.group(1)
+        param_val = m.group(2)
+        log(f"[SAHIB_FILTER] Dinamik keşif: {param_name}={param_val}")
+        return f"&{param_name}={param_val}"
+    # Alternatif: JavaScript veya hidden input araması
+    pattern2 = r'"(filter_attribute_\d+)"[^>]*value="([^"]*[Dd]ikey[^"]*)"'
+    m2 = re.search(pattern2, html or "")
+    if m2:
+        log(f"[SAHIB_FILTER] input keşfi: {m2.group(1)}={m2.group(2)}")
+        return f"&{m2.group(1)}={m2.group(2)}"
+    return ""
+
+
+def fetch_sahibinden_direct(query: str, log_fn=None,
+                             apply_dikey_filter: bool = False,
+                             budget: float = 0.0) -> Optional["FetchResult"]:
     """Lord cookies ile Sahibinden kategori listesi direkt fetch.
+    apply_dikey_filter: True ise HTML'den Dikey filtre URL'si dinamik keşfedilir.
+    budget: >0 ise URL'ye priceMax parametresi eklenir.
     Returns: FetchResult veya None (cookies yoksa)."""
     log = log_fn or (lambda m: None)
     cookies = _load_sahibinden_cookies()
@@ -1381,16 +1417,38 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
     if mapped_slug and mapped_slug != direct_slug:
         candidate_slugs.append(mapped_slug)
     candidate_slugs.append(direct_slug)
+    # Fix-Bot: Browser-like headers (Sahibinden fingerprint bypass)
+    _browser_headers = {
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Upgrade-Insecure-Requests": "1",
+    }
     t0 = time.time()
     url = f"https://www.sahibinden.com/{candidate_slugs[0]}"
     r = None
+    # Fix-Bot: İlk istek öncesi insan gibi gecikme
+    time.sleep(random.uniform(2, 5))
     try:
         # Slug bul
         for slug_try in candidate_slugs:
             url = f"https://www.sahibinden.com/{slug_try}"
             r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
+                                headers=_browser_headers,
                                 timeout=25, allow_redirects=False)
             if r.status_code == 200:
+                # Fix-Bot: İlk sayfada bot sinyali kontrol et
+                if _sahib_bot_mu(r.text):
+                    log(f"[SAHIBINDEN_DIRECT] BOT TESPİT — slug={slug_try}")
+                    return FetchResult(url=url, status=200, blocked=True,
+                                       tier="sahibinden_cookie",
+                                       elapsed_s=round(time.time()-t0, 1),
+                                       error="bot_detection")
                 break
             log(f"[SAHIBINDEN_DIRECT] /{slug_try} → {r.status_code}, sonraki dene")
         # Redirect kontrol: 2FA challenge vs login vs normal redirect
@@ -1422,15 +1480,36 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
                                elapsed_s=elapsed, blocked=True, error="sonuc_bulunamadi")
         # Tüm sayfaları tara — timeout bazlı (Lord: "gerekirse timeout at ama tüm sayfalar")
         base_slug = url.split("sahibinden.com/")[-1].split("?")[0]
-        # Sayfa 1: PRICE_ASC sıralı
-        price_sort_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC"
+        # Fix-Bot/Dikey: URL filtre parametreleri oluştur
+        extra_qs = ""
+        if apply_dikey_filter:
+            # İlk sayfa HTML'inden Dikey filtre parametresini keşfet
+            dikey_param = _sahib_find_filter_params(r.text, log_fn=log)
+            if dikey_param:
+                extra_qs += dikey_param
+                log(f"[SAHIBINDEN_DIRECT] Dikey filtre aktif: {dikey_param}")
+            else:
+                log(f"[SAHIBINDEN_DIRECT] Dikey filtre bulunamadı — tüm tipler")
+        if budget > 0:
+            extra_qs += f"&priceMax={int(budget)}"
+            log(f"[SAHIBINDEN_DIRECT] Bütçe filtresi: priceMax={int(budget)}")
+        # Sayfa 1: PRICE_ASC sıralı + filtreler
+        price_sort_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC{extra_qs}"
         combined_html = ""
+        # Fix-Bot: Sayfa 1 öncesi de kısa delay
+        time.sleep(random.uniform(1, 3))
         try:
             r0 = cc_requests.get(price_sort_url, impersonate="chrome124", cookies=cookies,
-                                  timeout=20, allow_redirects=False)
+                                  headers=_browser_headers, timeout=20, allow_redirects=False)
             if r0.status_code == 200 and r0.text:
+                if _sahib_bot_mu(r0.text):
+                    log(f"[SAHIBINDEN_DIRECT] BOT — sayfa-1 (PRICE_ASC)")
+                    return FetchResult(url=price_sort_url, status=200, blocked=True,
+                                       tier="sahibinden_cookie",
+                                       elapsed_s=round(time.time()-t0, 1),
+                                       error="bot_detection_page1")
                 combined_html = r0.text
-                log(f"[SAHIBINDEN_DIRECT] sayfa-1 (PRICE_ASC) {len(r0.text)} char")
+                log(f"[SAHIBINDEN_DIRECT] sayfa-1 (PRICE_ASC{'+Dikey' if extra_qs else ''}) {len(r0.text)} char")
         except Exception:
             pass
         if not combined_html:
@@ -1441,11 +1520,15 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
         pages_fetched = 1
         while time.time() < page_deadline:
             try:
-                page_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC&pagingOffset={page_offset}"
+                page_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC&pagingOffset={page_offset}{extra_qs}"
                 rp = cc_requests.get(page_url, impersonate="chrome124", cookies=cookies,
-                                     timeout=20, allow_redirects=False)
+                                     headers=_browser_headers, timeout=20, allow_redirects=False)
                 if rp.status_code != 200 or not rp.text:
                     log(f"[SAHIBINDEN_DIRECT] offset={page_offset} → {rp.status_code if rp else 'err'} DUR")
+                    break
+                # Fix-Bot: bot sinyali kontrol
+                if _sahib_bot_mu(rp.text):
+                    log(f"[SAHIBINDEN_DIRECT] BOT TESPİT sayfa offset={page_offset} — dur")
                     break
                 if "searchResultsItem" not in rp.text:
                     log(f"[SAHIBINDEN_DIRECT] offset={page_offset} → ilan yok, son sayfa")
@@ -1454,7 +1537,8 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
                 pages_fetched += 1
                 log(f"[SAHIBINDEN_DIRECT] sayfa-{pages_fetched} offset={page_offset} +{len(rp.text)} char")
                 page_offset += 20
-                time.sleep(random.uniform(2, 4))
+                # Fix-Bot: Delay artırıldı 2-4 → 5-10s (iz bırakmama)
+                time.sleep(random.uniform(5, 10))
             except Exception as e:
                 log(f"[SAHIBINDEN_DIRECT] offset={page_offset} hata: {e}")
                 break
@@ -2161,7 +2245,11 @@ def market_master_query(query: str, budget: float = 5000.0,
     sahib_r = None
     sahib_direct_success = False
     if sahib_cookies:
-        sahib_r = fetch_sahibinden_direct(query, log_fn=_log)
+        # Fix-Dikey: bisiklet aramasında Dikey kategori filtresi uygula + bütçe geç
+        _bisiklet_sinyal = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
+        sahib_r = fetch_sahibinden_direct(query, log_fn=_log,
+                                          apply_dikey_filter=_bisiklet_sinyal,
+                                          budget=budget)
         if sahib_r and sahib_r.status == 200 and not sahib_r.blocked:
             sahib_direct_success = True
             _log("[SAHIBINDEN_DIRECT] PASS — direkt erişim")
@@ -2175,6 +2263,8 @@ def market_master_query(query: str, budget: float = 5000.0,
                 _progress(f"⚠️ Sahibinden 2FA challenge — bot tespiti, cookies yenile (akakce fallback)")
             elif err == "login_redirect" or (st in (301, 302) and "login" in str(err)):
                 _progress(f"⚠️ Sahibinden cookies süresi dolmuş — yeniden export gerekli (akakce fallback)")
+            elif err and "bot_detection" in str(err):
+                _progress(f"🤖 <b>Sahibinden bot tespiti</b> — ~5-10 dk bekle, tekrar dene (akakce fallback)")
             else:
                 _progress(f"⚠️ Sahibinden erişim hatası (status={st}) — akakce fallback")
             sahib_r = None
