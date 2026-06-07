@@ -1268,6 +1268,18 @@ def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
                     break
             if not title or price <= 0:
                 continue
+            # Aksesuar/kılıf filtresi — URL'de Sahibinden kategori tipi kontrolü
+            # Format: .../cep-telefonu-aksesuar-[TIP]-... → TIP="cep-telefonu" ise kabul et
+            # Lord doktrini: telefon aramasında sadece gerçek cep-telefonu ilanları
+            if href and "/ilan/" in href:
+                # Sahibinden URL'de ilan tipi: cep-telefonu-aksesuar- + [tip]
+                is_telefon_ilan = any(x in href for x in [
+                    "-cep-telefonu-aksesuar-cep-telefonu-",
+                ])
+                is_yepy = "/yepy/yenilenmis-telefonlar/" in href
+                if not (is_telefon_ilan or is_yepy):
+                    log(f"[SAHIBINDEN_PARSE] aksesuar/diğer atlandı: {title[:35]}")
+                    continue
             out.append({
                 "title": title,
                 "price": price,
@@ -1319,6 +1331,7 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
     url = f"https://www.sahibinden.com/{candidate_slugs[0]}"
     r = None
     try:
+        # Slug bul
         for slug_try in candidate_slugs:
             url = f"https://www.sahibinden.com/{slug_try}"
             r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
@@ -1326,15 +1339,9 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
             if r.status_code == 200:
                 break
             log(f"[SAHIBINDEN_DIRECT] /{slug_try} → {r.status_code}, sonraki dene")
-        # Eğer "Sonuç Bulunamadı" gelirse başarısız say
-        if r and r.status_code == 200 and "Sonuç Bulunamadı" in (r.text or "")[:5000]:
-            log(f"[SAHIBINDEN_DIRECT] {url} 'Sonuç Bulunamadı'")
-            r = FetchResult(url=url, status=200, tier="sahibinden_cookie",
-                            elapsed_s=round(time.time()-t0,1), blocked=True,
-                            error="sonuc_bulunamadi")
-        elapsed = round(time.time() - t0, 1)
         # Redirect kontrol: 2FA challenge vs login vs normal redirect
         if r and r.status_code in (301, 302):
+            elapsed = round(time.time() - t0, 1)
             loc = r.headers.get("Location", "")
             if "iki-asamali" in loc or "CHLG" in loc:
                 err_tag = "2fa_challenge"
@@ -1348,11 +1355,46 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
             return FetchResult(url=url, status=r.status_code, blocked=True,
                                tier="sahibinden_cookie", elapsed_s=elapsed,
                                error=err_tag)
-        log(f"[SAHIBINDEN_DIRECT] status={r.status_code} chars={len(r.text or '')} elapsed={elapsed}s")
+        if not r or r.status_code != 200:
+            elapsed = round(time.time() - t0, 1)
+            return FetchResult(url=url, status=(r.status_code if r else 0),
+                               tier="sahibinden_cookie", elapsed_s=elapsed,
+                               blocked=True, error="no_200")
+        # Eğer "Sonuç Bulunamadı" gelirse başarısız say
+        if "Sonuç Bulunamadı" in (r.text or "")[:5000]:
+            log(f"[SAHIBINDEN_DIRECT] 'Sonuç Bulunamadı' → başarısız")
+            elapsed = round(time.time() - t0, 1)
+            return FetchResult(url=url, status=200, tier="sahibinden_cookie",
+                               elapsed_s=elapsed, blocked=True, error="sonuc_bulunamadi")
+        # Çok sayfa tara: ?sorting=PRICE_ASC ile bütçe içi ilanları ön sırada getir
+        # Lord doktrini: Sahibinden'de 2.el ucuz ürün var ama ilk sayfada değil (premium dükkanlar önde)
+        base_slug = url.split("sahibinden.com/")[-1].split("?")[0]
+        combined_html = r.text or ""
+        for page_offset in [20, 40]:
+            try:
+                page_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC&pagingOffset={page_offset}"
+                rp = cc_requests.get(page_url, impersonate="chrome124", cookies=cookies,
+                                     timeout=20, allow_redirects=False)
+                if rp.status_code == 200 and rp.text:
+                    combined_html += rp.text
+                    log(f"[SAHIBINDEN_DIRECT] sayfa offset={page_offset} +{len(rp.text)} char")
+            except Exception:
+                pass
+        elapsed = round(time.time() - t0, 1)
+        # İlk sayfa da fiyat sıralı olmayabilir — URL'yi fiyat sıralı olarak yenile
+        price_sort_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC"
+        try:
+            r0 = cc_requests.get(price_sort_url, impersonate="chrome124", cookies=cookies,
+                                  timeout=20, allow_redirects=False)
+            if r0.status_code == 200 and r0.text:
+                combined_html = r0.text + combined_html
+        except Exception:
+            pass
+        log(f"[SAHIBINDEN_DIRECT] 3 sayfa birleşik chars={len(combined_html)} elapsed={elapsed}s")
         return FetchResult(
-            url=url, status=r.status_code, text=r.text or "",
+            url=url, status=200, text=combined_html,
             elapsed_s=elapsed, tier="sahibinden_cookie",
-            blocked=(r.status_code != 200) or "Just a moment" in (r.text or ""),
+            blocked=False,
         )
     except Exception as e:
         return FetchResult(url=url, status=0, tier="sahibinden_cookie",
