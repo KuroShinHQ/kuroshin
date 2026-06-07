@@ -1216,7 +1216,7 @@ def _load_sahibinden_cookies() -> Dict[str, str]:
 
 
 def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
-                                log_fn=None) -> List[Dict[str, Any]]:
+                                log_fn=None, query: str = "") -> List[Dict[str, Any]]:
     """Sahibinden direkt listing HTML parser (Lord cookies erişimi sonrası).
     Selector: tr.searchResultsItem[data-id] + a.classifiedTitle + searchResultsPriceValue
     """
@@ -1230,7 +1230,8 @@ def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
         return out
     rows = soup.select("tr.searchResultsItem[data-id]")
     log(f"[SAHIBINDEN_PARSE] searchResultsItem: {len(rows)} row")
-    for row in rows[:limit*2]:
+    # Çok sayfa veri: tüm satırları tara (PRICE_ASC ile ucuzlar önce gelir)
+    for row in rows:
         try:
             ilan_id = row.get("data-id", "")
             if not ilan_id:
@@ -1268,17 +1269,16 @@ def _parse_sahibinden_listings(html: str, budget: float, limit: int = 20,
                     break
             if not title or price <= 0:
                 continue
-            # Aksesuar/kılıf filtresi — URL'de Sahibinden kategori tipi kontrolü
-            # Format: .../cep-telefonu-aksesuar-[TIP]-... → TIP="cep-telefonu" ise kabul et
-            # Lord doktrini: telefon aramasında sadece gerçek cep-telefonu ilanları
-            if href and "/ilan/" in href:
-                # Sahibinden URL'de ilan tipi: cep-telefonu-aksesuar- + [tip]
+            # Aksesuar/kılıf filtresi — sadece telefon aramasında aktif
+            # Bisiklet/diğer kategorilerde tüm ilanlar kabul edilir
+            q_lower = query.lower()
+            if href and "/ilan/" in href and ("telefon" in q_lower or "cep" in q_lower):
                 is_telefon_ilan = any(x in href for x in [
                     "-cep-telefonu-aksesuar-cep-telefonu-",
                 ])
                 is_yepy = "/yepy/yenilenmis-telefonlar/" in href
                 if not (is_telefon_ilan or is_yepy):
-                    log(f"[SAHIBINDEN_PARSE] aksesuar/diğer atlandı: {title[:35]}")
+                    log(f"[SAHIBINDEN_PARSE] telefon-aksesuar/diğer atlandı: {title[:35]}")
                     continue
             out.append({
                 "title": title,
@@ -1366,31 +1366,46 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
             elapsed = round(time.time() - t0, 1)
             return FetchResult(url=url, status=200, tier="sahibinden_cookie",
                                elapsed_s=elapsed, blocked=True, error="sonuc_bulunamadi")
-        # Çok sayfa tara: ?sorting=PRICE_ASC ile bütçe içi ilanları ön sırada getir
-        # Lord doktrini: Sahibinden'de 2.el ucuz ürün var ama ilk sayfada değil (premium dükkanlar önde)
+        # Tüm sayfaları tara — timeout bazlı (Lord: "gerekirse timeout at ama tüm sayfalar")
         base_slug = url.split("sahibinden.com/")[-1].split("?")[0]
-        combined_html = r.text or ""
-        for page_offset in [20, 40]:
-            try:
-                page_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC&pagingOffset={page_offset}"
-                rp = cc_requests.get(page_url, impersonate="chrome124", cookies=cookies,
-                                     timeout=20, allow_redirects=False)
-                if rp.status_code == 200 and rp.text:
-                    combined_html += rp.text
-                    log(f"[SAHIBINDEN_DIRECT] sayfa offset={page_offset} +{len(rp.text)} char")
-            except Exception:
-                pass
-        elapsed = round(time.time() - t0, 1)
-        # İlk sayfa da fiyat sıralı olmayabilir — URL'yi fiyat sıralı olarak yenile
+        # Sayfa 1: PRICE_ASC sıralı
         price_sort_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC"
+        combined_html = ""
         try:
             r0 = cc_requests.get(price_sort_url, impersonate="chrome124", cookies=cookies,
                                   timeout=20, allow_redirects=False)
             if r0.status_code == 200 and r0.text:
-                combined_html = r0.text + combined_html
+                combined_html = r0.text
+                log(f"[SAHIBINDEN_DIRECT] sayfa-1 (PRICE_ASC) {len(r0.text)} char")
         except Exception:
             pass
-        log(f"[SAHIBINDEN_DIRECT] 3 sayfa birleşik chars={len(combined_html)} elapsed={elapsed}s")
+        if not combined_html:
+            combined_html = r.text or ""
+        # Sayfa 2+ timeout döngüsü — tüm ilan sayfaları
+        page_deadline = t0 + 90  # 90s max pagination bütçesi
+        page_offset = 20
+        pages_fetched = 1
+        while time.time() < page_deadline:
+            try:
+                page_url = f"https://www.sahibinden.com/{base_slug}?sorting=PRICE_ASC&pagingOffset={page_offset}"
+                rp = cc_requests.get(page_url, impersonate="chrome124", cookies=cookies,
+                                     timeout=20, allow_redirects=False)
+                if rp.status_code != 200 or not rp.text:
+                    log(f"[SAHIBINDEN_DIRECT] offset={page_offset} → {rp.status_code if rp else 'err'} DUR")
+                    break
+                if "searchResultsItem" not in rp.text:
+                    log(f"[SAHIBINDEN_DIRECT] offset={page_offset} → ilan yok, son sayfa")
+                    break
+                combined_html += rp.text
+                pages_fetched += 1
+                log(f"[SAHIBINDEN_DIRECT] sayfa-{pages_fetched} offset={page_offset} +{len(rp.text)} char")
+                page_offset += 20
+                time.sleep(random.uniform(2, 4))
+            except Exception as e:
+                log(f"[SAHIBINDEN_DIRECT] offset={page_offset} hata: {e}")
+                break
+        elapsed = round(time.time() - t0, 1)
+        log(f"[SAHIBINDEN_DIRECT] {pages_fetched} sayfa birleşik chars={len(combined_html)} elapsed={elapsed}s")
         return FetchResult(
             url=url, status=200, text=combined_html,
             elapsed_s=elapsed, tier="sahibinden_cookie",
@@ -2010,7 +2025,7 @@ def market_master_query(query: str, budget: float = 5000.0,
             # Sahibinden direkt veya akakce'ye göre parser seç
             if sahib_direct_success:
                 sahib_parsed = _parse_sahibinden_listings(
-                    sahib_r.text, budget, limit=top_n*2, log_fn=_log
+                    sahib_r.text, budget, limit=top_n*2, log_fn=_log, query=query
                 )
             else:
                 sahib_parsed = _parse_listings_from_html(
@@ -2038,14 +2053,22 @@ def market_master_query(query: str, budget: float = 5000.0,
                 "bot_eliminated": bot_eliminated,
                 "epey_avg": int(epey_avg) if epey_avg else 0,
             }
-            # FAZ-D Hazine Avi: epey_avg*0.6 altinda + makul (epey_avg*0.05 ustu)
+            # FAZ-D Hazine Avi: epey_avg*0.6 altinda = hazine; yoksa bütçe*0.7 fallback
             # Lord doktrini: "Sahibinden = hazine madeni, ucuz pahali muadil bul"
-            hazine_esik = epey_avg * 0.6 if epey_avg > 0 else 0
+            if epey_avg > 0:
+                hazine_esik = epey_avg * 0.6
+                ref_for_iskonto = epey_avg
+            else:
+                # Epey fiyatı yoksa bütçenin %70'i altı = potansiyel hazine (bütçe bazlı)
+                hazine_esik = budget * 0.7 if budget > 0 else 0
+                ref_for_iskonto = budget
+                if hazine_esik:
+                    _log(f"[HAZINE] epey_avg=0, bütçe bazlı eşik: {hazine_esik:,.0f}₺")
             for p in sahib_parsed:
                 pr = p.get("price", 0)
                 if hazine_esik and 0 < pr < hazine_esik:
                     p["is_hazine"] = True
-                    p["hazine_iskonto_pct"] = int((1 - pr / epey_avg) * 100)
+                    p["hazine_iskonto_pct"] = int((1 - pr / ref_for_iskonto) * 100) if ref_for_iskonto > 0 else 0
             for p in sahib_parsed:
                 listings.append(ProductListing(**p))
             # Yol A (6 Haz): "💎 HAZINE" → "💰 EN UCUZ" akakce fiyat keşif
