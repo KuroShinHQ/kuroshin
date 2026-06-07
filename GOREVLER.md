@@ -204,6 +204,34 @@ Lord canlı testinde (3 Haz 19:08) "Flaş Ürün / En Çok Satan 1. Ürün / 10 
 
 ---
 
+## 🌊 DALGA-6 v5 — Lord Fix-1~4 + Bot Bypass + Ping-Pong Retry (7 Haz 2026)
+
+Lord direktifi: *"Bütçeme ihanet ettin. Bütçe kutsaldır. Fix-1~4 uygula, kanıtla. Sahibinden bot'a yakalanma."*
+
+### Tamamlanan Fix'ler (7 Haz 2026 — Commit `e063939`→`0c82dd1`)
+
+| Fix | Commit | İş | Kanıt |
+|---|---|---|---|
+| **Fix-1 BÜTÇE** | `e063939` | `price>budget → V_score-2.0 + butce_asimi=True + 💰BÜTÇE AŞIMI rozeti` | Triathlon 3856₺ V:7.15→5.15, Cosfer 2650₺ master:8.22 → 1. sıra |
+| **Fix-2 Mini Pedal Log** | `e063939` | `score_all` öncesi eleme + Telegram "⚠️ N ürün mini pedal elendi" | Kod inspect PASS |
+| **Fix-3 botSupheli** | `e063939` | `review_count>500 AND rating<4.0` (Dynamic Mini 391 yorum/4.5 → ceza yok) | Kod inspect PASS |
+| **Fix-4 Sahibinden limit** | `e063939` | `limit=top_n*2 → limit=12` (direkt + indirect) | Kod inspect PASS |
+| **Bot Bypass** | `f0338a6` | `_SAHIB_BOT_SINYALLER` + delay 5-10s + browser headers + `_sahib_bot_mu()` | Kod inspect PASS |
+| **Dikey Filtre** | `f0338a6` | `_sahib_find_filter_params()` dinamik attr keşfi + `priceMax=budget` URL | 850→10 ilan Lord keşfi |
+| **Ping-Pong Retry** | `2ca058e` | Bot tespiti/top-3 tümü aşım → ara rapor → 300s → retry → final rapor | Kod inspect PASS |
+
+### Iron Inquisitor Durumu
+- **7 Haz 11:31** — 45/45 PASS (Fix-1~4 + bot bypass sonrası) ✅
+
+### Açık iş
+- ☐ **Sahibinden canlı test** — Dikey filtre + Ping-Pong retry kanıt (blok kalkınca)
+- ☐ **Sahibinden ilan açıklama genişletme** — şu an sadece 3 hazine adayı; tüm 10 ilanı okusun mu?
+- ☐ **Push** — 85 commit önde (Lord onay bekler)
+- ☐ **Iron Inquisitor DALGA-6 v5** — Fix-1~4 + retry için fixture testleri
+- ☐ **Başka kategori test** — telefon/laptop → Lord profili evrensel mi
+
+---
+
 ## 🌊 DALGA-6 v4 — Mini Pedal + Gizli Hazine + Pipeline Fix (7 Haz 2026)
 
 Lord direktifi: *"En ucuzu değil, en değerlisi. Masa altı pedal bisiklet değil. Açıklamasını oku, hazineyi bul."*
