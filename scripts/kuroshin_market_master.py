@@ -1073,6 +1073,87 @@ def aydinlama_bulgusu(query: str, category_slug: str = "", budget: float = 0,
 
 
 # ============================================================================
+# FAZ-D Lord Düşünce Profili (7 Haz 2026)
+# Lord'un ürün alma karar süreci → Market Master'a yansır
+# ============================================================================
+LORD_PROFIL_PATH = Path("/mnt/c/Kuroshin/memory/lord_alisveris_profili.json")
+_LORD_PROFIL_CACHE: Dict[str, Any] = {}
+
+
+def _load_lord_profil() -> Dict[str, Any]:
+    """Lord alışveriş profilini yükle (cached)."""
+    global _LORD_PROFIL_CACHE
+    if _LORD_PROFIL_CACHE:
+        return _LORD_PROFIL_CACHE
+    if not LORD_PROFIL_PATH.exists():
+        return {}
+    try:
+        _LORD_PROFIL_CACHE = json.loads(LORD_PROFIL_PATH.read_text(encoding="utf-8"))
+        return _LORD_PROFIL_CACHE
+    except Exception:
+        return {}
+
+
+def _lord_skor_ayarla(listings: List["ProductListing"], log_fn=None) -> List["ProductListing"]:
+    """FAZ-D: Lord profil tercihlerine göre listings master_score'larını ayarlar.
+    Etki:
+      - Site önceliği (Sahibinden +1.0, Epey +0.9, vb. çarpan)
+      - Marka tercihi (tanıdık marka +0.5 / bilinmeyen -0.3)
+      - Yorum bot eşiği (4-5 ⭐ ama yorum 0 = -2 ceza, foto var = +1.5)
+    """
+    log = log_fn or (lambda m: None)
+    profil = _load_lord_profil()
+    if not profil:
+        return listings
+    site_oncelik = profil.get("site_oncelik", {})
+    yorum_esik = profil.get("yorum_bot_esik", {})
+    marka_pref = profil.get("marka_tercih", {})
+    tanidik = [m.lower() for m in marka_pref.get("tanidik_markalar", [])]
+    tanidik_boost = float(marka_pref.get("tanidik_boost", 0.5))
+    bilinmeyen_ceza = float(marka_pref.get("bilinmeyen_marka_ceza", -0.3))
+    min_yildiz = float(yorum_esik.get("min_yildiz", 4.0))
+    bot_ceza = float(yorum_esik.get("yildiz_yuksek_yorum_yok_ceza", -2.0))
+    foto_bonus = float(yorum_esik.get("fotograf_bonus", 1.5))
+
+    for L in listings:
+        delta = 0.0
+        notes = []
+        # Site önceliği — çarpan
+        oncelik = site_oncelik.get(L.site, 0.8)
+        if oncelik != 1.0:
+            old = L.master_score
+            L.master_score = round(L.master_score * oncelik, 2)
+            if oncelik > 1.0:
+                notes.append(f"site×{oncelik}")
+            elif oncelik < 0.9:
+                notes.append(f"site×{oncelik}")
+        # Marka tercihi
+        title_lower = L.title.lower()
+        marka_match = next((m for m in tanidik if m in title_lower), None)
+        if marka_match:
+            delta += tanidik_boost
+            notes.append(f"marka+{tanidik_boost}")
+        elif title_lower and len(title_lower) > 5:
+            # Bilinmeyen marka — küçük ceza
+            delta += bilinmeyen_ceza
+        # Yorum bot ceza (rating var ama review_count YOK)
+        if L.rating and L.rating >= min_yildiz and L.review_count == 0:
+            delta += bot_ceza
+            notes.append(f"botSupheli{bot_ceza}")
+        # Foto bonus
+        if L.has_photo_review:
+            delta += foto_bonus
+            notes.append(f"foto+{foto_bonus}")
+        # Uygula (0-10 clip)
+        if delta != 0:
+            L.master_score = round(max(0.0, min(10.0, L.master_score + delta)), 2)
+        if notes:
+            L.hazine_not = (L.hazine_not + " · " if L.hazine_not else "") + " ".join(notes)
+    log(f"[LORD_PROFIL] {len(listings)} listing skor ayarlandı")
+    return listings
+
+
+# ============================================================================
 # Lord Cookie Aktarımı (6 Haz 2026) — Sahibinden direkt erişim
 # Lord doktrini: "benim Sahibinden hesabım var" → cookie ile yetkili erişim
 # ============================================================================
@@ -1960,6 +2041,16 @@ def market_master_query(query: str, budget: float = 5000.0,
     if listings:
         ref_price = (ref_price_min + ref_price_max) / 2
         listings = scorer.score_all(listings, ref_price, kritik, mod)
+        # FAZ-D (7 Haz): Lord düşünce profili — site önceliği, marka, bot ceza
+        lord_profil = _load_lord_profil()
+        if lord_profil:
+            _progress(f"👤 <b>Lord profili aktif</b> — Sahibinden öncelikli, min ⭐{lord_profil.get('yorum_bot_esik',{}).get('min_yildiz',4.0)}, marka tercihi {len(lord_profil.get('marka_tercih',{}).get('tanidik_markalar',[]))}")
+            listings = _lord_skor_ayarla(listings, log_fn=_log)
+            # Yeniden sırala (Lord ayarı sonrası)
+            listings = sorted(listings, key=lambda x: (
+                -x.master_score, -x.hazine_iskonto_pct, -(x.rating or 0),
+                x.price if x.price > 0 else 999999,
+            ))
         # FAZ-D Hazine Boost: Sahibinden ilanlarinda epey_avg*0.6 alti = HAZINE
         # master_score'a +1.5 boost (max 10). Lord doktrini "cam gibi cikar".
         hazine_boost_n = 0
