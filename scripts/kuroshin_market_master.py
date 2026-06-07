@@ -1159,6 +1159,21 @@ def _lord_skor_ayarla(listings: List["ProductListing"], log_fn=None) -> List["Pr
 # ============================================================================
 SAHIBINDEN_SESSION_PATH = Path("/mnt/c/Kuroshin/memory/sahibinden_session.json")
 
+# Sahibinden kategori slug mapping — query term → çalışan slug (7 Haz 2026 test edildi)
+# NOT: Her slug sahibinden.com/<slug> olarak test edildi. 404 alanlar EKLENMEDİ.
+_SAHIB_SLUG_MAP: Dict[str, str] = {
+    "telefon": "cep-telefonu",
+    "cep telefon": "cep-telefonu",
+    "akilli telefon": "cep-telefonu",
+    "iphone": "cep-telefonu",
+    "samsung telefon": "cep-telefonu",
+    "kondisyon bisikleti": "kondisyon-bisikleti",
+    "eliptik bisiklet": "kondisyon-bisikleti",
+    "bisiklet": "bisiklet",
+    "klavye": "klavye",
+    # Diğer kategoriler (TV, tablet, laptop vb.) slug olarak çalışmıyor — direkt slug fallback dener
+}
+
 
 def _load_sahibinden_cookies() -> Dict[str, str]:
     """Lord cookies.txt veya CookieEditor export → dict[name, value].
@@ -1287,33 +1302,52 @@ def fetch_sahibinden_direct(query: str, log_fn=None) -> Optional["FetchResult"]:
     if cc_requests is None:
         log("[SAHIBINDEN_DIRECT] curl_cffi YOK")
         return None
-    # Sahibinden 2 URL stratejisi: kategori slug önce (içerik dolu), sonra arama
-    # Lord 6 Haz canli test: /arama?q= → "Sonuç Bulunamadı" boş sayfa
-    slug = query.lower().replace(" ", "-").replace("ı", "i").replace("ş", "s")
-    slug = re.sub(r"[^a-z0-9-]", "", slug)
-    urls = [
-        f"https://www.sahibinden.com/{slug}",  # kategori slug — Sahibinden'in canonical formu
-        f"https://www.sahibinden.com/arama?query={query.replace(' ', '+')}",
-    ]
+    # Sahibinden URL stratejisi: 1) slug mapping 2) query slug 3) arama URL
+    # 7 Haz fix: genel sorgular (telefon→cep-telefonu) için mapping kullan
+    q_norm = query.lower().replace("ı", "i").replace("ş", "s").replace("ç", "c").replace("ğ", "g").replace("ü", "u").replace("ö", "o")
+    q_norm = re.sub(r"\s+", " ", q_norm).strip()
+    # Mapping'den bak (exact veya query'nin ilk kelimesi)
+    mapped_slug = _SAHIB_SLUG_MAP.get(q_norm) or _SAHIB_SLUG_MAP.get(q_norm.split()[0] if q_norm.split() else "")
+    direct_slug = q_norm.replace(" ", "-")
+    direct_slug = re.sub(r"[^a-z0-9-]", "", direct_slug)
+    # URL sıralaması: mapping varsa önce, sonra direct slug, sonra boş (arama sayfası JS-render gerektirir)
+    candidate_slugs = []
+    if mapped_slug and mapped_slug != direct_slug:
+        candidate_slugs.append(mapped_slug)
+    candidate_slugs.append(direct_slug)
     t0 = time.time()
-    url = urls[0]
+    url = f"https://www.sahibinden.com/{candidate_slugs[0]}"
+    r = None
     try:
-        r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
-                            timeout=25, allow_redirects=False)
-        # Eğer "Sonuç Bulunamadı" gelirse 2. URL dene
-        if r.status_code == 200 and "Sonuç Bulunamadı" in (r.text or "")[:5000]:
-            log(f"[SAHIBINDEN_DIRECT] {url} 'Sonuç Bulunamadı' → arama URL fallback")
-            url = urls[1]
+        for slug_try in candidate_slugs:
+            url = f"https://www.sahibinden.com/{slug_try}"
             r = cc_requests.get(url, impersonate="chrome124", cookies=cookies,
                                 timeout=25, allow_redirects=False)
+            if r.status_code == 200:
+                break
+            log(f"[SAHIBINDEN_DIRECT] /{slug_try} → {r.status_code}, sonraki dene")
+        # Eğer "Sonuç Bulunamadı" gelirse başarısız say
+        if r and r.status_code == 200 and "Sonuç Bulunamadı" in (r.text or "")[:5000]:
+            log(f"[SAHIBINDEN_DIRECT] {url} 'Sonuç Bulunamadı'")
+            r = FetchResult(url=url, status=200, tier="sahibinden_cookie",
+                            elapsed_s=round(time.time()-t0,1), blocked=True,
+                            error="sonuc_bulunamadi")
         elapsed = round(time.time() - t0, 1)
-        # Login redirect kontrolü
-        if r.status_code in (301, 302):
+        # Redirect kontrol: 2FA challenge vs login vs normal redirect
+        if r and r.status_code in (301, 302):
             loc = r.headers.get("Location", "")
-            log(f"[SAHIBINDEN_DIRECT] redirect → {loc[:80]} (cookies expired olabilir)")
+            if "iki-asamali" in loc or "CHLG" in loc:
+                err_tag = "2fa_challenge"
+                log(f"[SAHIBINDEN_DIRECT] 2FA challenge → {loc[:80]}")
+            elif "login" in loc or "giris" in loc:
+                err_tag = "login_redirect"
+                log(f"[SAHIBINDEN_DIRECT] login redirect → {loc[:80]} (cookies expired)")
+            else:
+                err_tag = f"redirect:{loc[:80]}"
+                log(f"[SAHIBINDEN_DIRECT] redirect → {loc[:80]}")
             return FetchResult(url=url, status=r.status_code, blocked=True,
                                tier="sahibinden_cookie", elapsed_s=elapsed,
-                               error=f"redirect: {loc[:120]}")
+                               error=err_tag)
         log(f"[SAHIBINDEN_DIRECT] status={r.status_code} chars={len(r.text or '')} elapsed={elapsed}s")
         return FetchResult(
             url=url, status=r.status_code, text=r.text or "",
@@ -1915,9 +1949,17 @@ def market_master_query(query: str, budget: float = 5000.0,
             sahib_direct_success = True
             _log("[SAHIBINDEN_DIRECT] PASS — direkt erişim")
         else:
-            # Cookies expired / fail → akakce fallback
-            _log(f"[SAHIBINDEN_DIRECT] FAIL ({sahib_r.error if sahib_r else 'None'}) → akakce'ye düş")
-            _progress(f"⚠️ Sahibinden cookies süresi dolmuş veya hata — akakce fallback")
+            st = sahib_r.status if sahib_r else 0
+            err = sahib_r.error if sahib_r else "None"
+            _log(f"[SAHIBINDEN_DIRECT] FAIL status={st} err={err} → akakce'ye düş")
+            if st == 404:
+                _progress(f"⚠️ Sahibinden bu sorgu için kategori sayfası yok — akakce fallback")
+            elif err == "2fa_challenge":
+                _progress(f"⚠️ Sahibinden 2FA challenge — bot tespiti, cookies yenile (akakce fallback)")
+            elif err == "login_redirect" or (st in (301, 302) and "login" in str(err)):
+                _progress(f"⚠️ Sahibinden cookies süresi dolmuş — yeniden export gerekli (akakce fallback)")
+            else:
+                _progress(f"⚠️ Sahibinden erişim hatası (status={st}) — akakce fallback")
             sahib_r = None
     try:
         if not sahib_r:
