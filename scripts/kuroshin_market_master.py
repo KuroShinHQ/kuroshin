@@ -2292,7 +2292,7 @@ def market_master_query(query: str, budget: float = 5000.0,
     sahib_bot_detected = False   # Ping-Pong retry flag
     if sahib_cookies:
         # Fix-Dikey: bisiklet aramasında Dikey kategori filtresi uygula + bütçe geç
-        _bisiklet_sinyal = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
+        _bisiklet_sinyal = any(k in query.lower() for k in ("bisiklet", "kondisyon"))
         sahib_r = fetch_sahibinden_direct(query, log_fn=_log,
                                           apply_dikey_filter=_bisiklet_sinyal,
                                           budget=budget,
@@ -2652,7 +2652,7 @@ def market_master_query(query: str, budget: float = 5000.0,
         time.sleep(SAHIB_RETRY_SEC)
         # Retry fetch
         _progress(f"🔄 <b>Sahibinden retry</b> başlıyor ({SAHIB_RETRY_SEC}s beklendi)…")
-        _bisiklet_sinyal2 = any(k in query.lower() for k in ("bisiklet", "spinning", "kondisyon"))
+        _bisiklet_sinyal2 = any(k in query.lower() for k in ("bisiklet", "kondisyon"))
         sahib_r2 = fetch_sahibinden_direct(query, log_fn=_log,
                                            apply_dikey_filter=_bisiklet_sinyal2,
                                            budget=budget,
