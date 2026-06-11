@@ -1,6 +1,39 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026
-**Süreç:** 🚀 **v11.33.1** — DALGA-6 ✅ + KuroRecon v1.0.1 ✅ + Iron 97/97 ✅
+**Son Güncelleme:** 11 Haziran 2026 18:30
+**Süreç:** 🚀 **v11.33.1** — DALGA-6 ✅ + KuroRecon v1.0.1 ✅ + Iron 97/97 ✅ + Scraping araştırması ✅
+
+---
+
+## 🔥 SCRAPING KARARLILIĞI — Playwright Bağımlılığını Kaldır (11 Haz 2026)
+
+**Hedef:** 4-site ağını Playwright olmadan stabil çalıştır. Her site için kırılmayan, ML gerektirmeyen parser.
+
+**Araştırma sonuçları (11 Haz — bu sohbet):**
+
+| Site | Mevcut | Keşif | Sonuç |
+|---|---|---|---|
+| **Trendyol** | Playwright (CSS) | HTML içinde gömülü JSON array — `"products":` bracket-count ile 24 ürün | ✅ Playwright KALDIRILABILIR |
+| **HB** | curl_cffi (CSS hash) | `li[class^="productListContent-"]` curl_cffi ile 37 kart — zaten çalışıyor | ✅ Stabil, name/price fix lazım |
+| **Epey** | Playwright (CSS) | curl_cffi ile `a[href*="#fiyatlar"]` 25 link geliyor | ✅ Playwright KALDIRILABILIR |
+| **Sahibinden** | Cookie bağımlı | nodriver/camoufox/API hepsi FAIL — login zorunlu | ❌ Cookie kalır |
+
+**Yapılacaklar (öncelik sırası):**
+
+- [x] **TY-1** `_parse_trendyol_json(html)` — bracket-count JSON, 10 ürün ✅ (11 Haz)
+- [x] **TY-2** market_master Trendyol → curl_cffi chrome131, Playwright kaldırıldı ✅
+- [x] **EPEY-1** `_parse_epey_curlcffi(html)` — 9 ürün, title attr, Playwright YOK ✅
+- [x] **EPEY-2** market_master Epey → curl_cffi chrome131 ✅
+- [x] **HB-1** chrome131 + `[class*="Price"]` broad selector ✅
+- [ ] **SAH-OPT** FlareSolverr Docker dene — Sahibinden Turnstile'a ~%50 şans. Cookie sistemi yedek kalır.
+- [ ] **TEST-1** `test_suite_scraper_mlfree.json` — 4 site için fixture HTML + runtime_test (`python_eval`) testleri. ML yok, 5s'de koşar.
+- [ ] **TEST-2** Iron Inquisitor'a ekle, `--skip-llama --skip-bridge --no-telegram` ile CI'a entegre
+
+**Kanıt dosyaları (bu sohbet):**
+- `scripts/_test_api_endpoints.py` — 4-site endpoint araştırması
+- `scripts/_test_api_deep.py` — Trendyol/HB HTML yapı analizi
+- `scripts/_test_ty_json2.py` — Trendyol JSON parse KANIT (24 ürün)
+- `scripts/_test_epey_hb_json.py` — Epey #fiyatlar + HB kart analizi
+- `scripts/_test_hb_sah.py` — HB/Sahibinden URL denemesi
 
 ---
 

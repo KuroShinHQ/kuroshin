@@ -62,18 +62,18 @@ KB_CACHE_TTL_HOURS = 24
 # DALGA-6 Smart Routing Tablosu (3 Haz 2026 19:30 — Playwright kanıt revize)
 # 4 hedef site: epey.com + trendyol.com + hepsiburada.com + sahibinden.com
 # ============================================================================
-# Kanit (Lord izlerken, gerçek URL'ler ile Playwright + curl_cffi):
-#   trendyol.com     → curl_cffi 596K char AMA CSR (JSON-LD 0, data-test-id 0) → PARSER 0 urun
-#                      Playwright Chromium JS-render → 5 GERCEK urun (Cosfer 2544 TL, vs.)
-#   hepsiburada.com  → curl_cffi 3.8M, li[class^="productListContent-"] 36 SSR urun (Cosfer 3990 TL, vs.) ✅
-#                      Playwright headless ZARARLI → Akamai "Güvenlik" 1.3K (TLS impersonate sart!)
-#   epey.com         → curl_cffi 196K AMA body sadece navigation menusu (kategori CSR-after-load)
-#                      Playwright → 213K + .listelegr 10 GERCEK urun (Voit V-Fit 7520 TL, vs.)
-#   sahibinden.com   → LOGIN ZORUNLU 2026 → indirect (cimri/akakce/DDG snippet)
+# Kanit (11 Haz 2026 — Playwright bağımlılığı kaldırıldı):
+#   trendyol.com     → curl_cffi HTML içinde gömülü JSON array ("products" key) — 24 GERCEK urun
+#                      bracket-count parse, Playwright GEREKMİYOR (_parse_trendyol_json)
+#   hepsiburada.com  → curl_cffi chrome131, li[class^="productListContent-"] 37 SSR urun ✅
+#                      chrome124→131: FP-Inconsistent (arXiv 2406.07647) — eski fingerprint şüpheli
+#   epey.com         → curl_cffi chrome131, a[href*="#fiyatlar"] 12+ GERCEK urun ✅
+#                      Playwright GEREKMİYOR — tam URL slug + title attribute ile isim
+#   sahibinden.com   → LOGIN ZORUNLU 2026 → cookie sistemi (fetch_sahibinden_direct)
 SITE_FETCHER: Dict[str, Tuple[str, str]] = {
-    "epey.com":        ("playwright",    "chromium"),
-    "trendyol.com":    ("playwright",    "chromium"),
-    "hepsiburada.com": ("curl_cffi",     "chrome124"),  # impersonate=chrome124 — TLS/JA3 Akamai bypass (headless yakalanıyor, ironik)
+    "epey.com":        ("curl_cffi",     "chrome131"),  # 11 Haz: Playwright kaldırıldı
+    "trendyol.com":    ("curl_cffi",     "chrome131"),  # 11 Haz: gömülü JSON path
+    "hepsiburada.com": ("curl_cffi",     "chrome131"),  # chrome124→131 (TLS fingerprint güncelleme)
     "sahibinden.com":  ("indirect",      "google_snippet"),
     "_fallback":       ("cloudscraper",  "chrome/windows/desktop"),
 }
@@ -166,6 +166,179 @@ def _ld_to_listing_dict(data: dict, site: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def _parse_trendyol_json(html: str, budget: float, limit: int, log_fn=None) -> List[Dict[str, Any]]:
+    """Trendyol HTML içindeki gömülü JSON array'i bracket-count ile çıkar.
+    11 Haz 2026 kanıt: curl_cffi fetch → 'products' key → 24 gerçek ürün.
+    CSS seçici kırılganlığından bağımsız — JSON key stabil.
+    """
+    log = log_fn or (lambda m: None)
+    pos = html.find('"products":')
+    if pos < 0:
+        return []
+
+    # Bracket-counting — doğru JSON array sınırı bul
+    start = html.find('[', pos)
+    if start < 0:
+        return []
+    depth = 0
+    in_str = False
+    esc = False
+    end = -1
+    for j in range(start, min(start + 3_000_000, len(html))):
+        c = html[j]
+        if esc:
+            esc = False
+            continue
+        if c == '\\' and in_str:
+            esc = True
+            continue
+        if c == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if c == '[':
+            depth += 1
+        elif c == ']':
+            depth -= 1
+            if depth == 0:
+                end = j + 1
+                break
+    if end < 0:
+        return []
+
+    try:
+        products_raw = json.loads(html[start:end])
+    except json.JSONDecodeError:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    min_price = max(50.0, budget * 0.05)
+
+    for p in products_raw:
+        try:
+            cf = p.get("cleanUrlFragments", {})
+            name = cf.get("name") or p.get("name", "")
+            brand = cf.get("webBrandName") or p.get("brand", "")
+            if not name:
+                continue
+
+            price_obj = p.get("price", {})
+            price = 0.0
+            if isinstance(price_obj, dict):
+                price = (price_obj.get("current") or
+                         price_obj.get("discountedPrice") or
+                         price_obj.get("originalPrice") or 0.0)
+            if not price:
+                price = float(p.get("discountedPriceNumerized") or
+                              p.get("priceNumerized") or 0)
+
+            if price <= min_price:
+                continue
+
+            rating_obj = p.get("ratingScore", {})
+            rating = float(rating_obj.get("averageRating", 0)) if isinstance(rating_obj, dict) else 0.0
+            review_count = int(rating_obj.get("totalCount", 0)) if isinstance(rating_obj, dict) else 0
+
+            url_slug = p.get("url", "")
+            product_url = f"https://www.trendyol.com{url_slug}" if url_slug else ""
+
+            full_name = f"{brand} {name}".strip() if brand and brand.lower() not in name.lower() else name
+
+            results.append({
+                "title": full_name[:200],
+                "price": price,
+                "url": product_url,
+                "site": "trendyol",
+                "rating": rating,
+                "review_count": review_count,
+                "description": "",
+                "tier": "trendyol_json",
+            })
+        except Exception:
+            continue
+
+        if len(results) >= limit:
+            break
+
+    log(f"[PARSER trendyol] JSON embedded: {len(results)} urun")
+    return results
+
+
+def _parse_epey_curlcffi(html: str, budget: float, limit: int, log_fn=None) -> List[Dict[str, Any]]:
+    """Epey curl_cffi parser — a[href*='#fiyatlar'] + slug eşleştirme.
+    11 Haz 2026 kanıt: curl_cffi chrome131 → 12 gerçek ürün (Playwright kaldırıldı).
+    """
+    log = log_fn or (lambda m: None)
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    min_price = max(50.0, budget * 0.05)
+
+    for link in soup.select('a[href*="#fiyatlar"]'):
+        href = link.get("href", "")
+        if "#fiyatlar" not in href:
+            continue
+        full_url = href.split("#")[0]
+        if not full_url or ".html" not in full_url:
+            continue
+        product_url = full_url if full_url.startswith("http") else f"https://www.epey.com{full_url}"
+
+        text = link.get_text(" ", strip=True)
+        pm = re.search(r"([\d.]+),([\d]{2})\s*TL", text)
+        if pm:
+            try:
+                price = float(pm.group(1).replace(".", "") + "." + pm.group(2))
+            except ValueError:
+                price = 0.0
+        else:
+            pm2 = re.search(r"([\d.]+)\s*TL", text)
+            price = float(pm2.group(1).replace(".", "")) if pm2 else 0.0
+
+        if price <= min_price or price > budget:
+            continue
+
+        site_m = re.search(r"(\d+)\s*site", text)
+        site_count = int(site_m.group(1)) if site_m else 0
+
+        name = ""
+        for a in soup.find_all("a", href=lambda h: h and h.split("#")[0] == full_url):
+            t = a.get_text(" ", strip=True)
+            if t and len(t) > 3 and "TL" not in t:
+                name = t[:200]
+                break
+        if not name:
+            for a in soup.find_all("a", href=True):
+                if a.get("href", "").split("#")[0] == full_url and a.get("title"):
+                    name = a.get("title", "")[:200]
+                    break
+        if not name:
+            m = re.search(r"/([^/]+)\.html$", full_url)
+            name = m.group(1).replace("-", " ").title() if m else ""
+        if not name:
+            continue
+
+        results.append({
+            "title": name,
+            "price": price,
+            "url": product_url,
+            "site": "epey",
+            "rating": 0.0,
+            "review_count": site_count,
+            "description": f"{site_count} site karşılaştırma",
+            "tier": "epey_curlcffi",
+        })
+
+        if len(results) >= limit:
+            break
+
+    log(f"[PARSER epey] curl_cffi: {len(results)} urun")
+    return results
+
+
 def _parse_listings_from_html(html: str, site: str, budget: float,
                               limit: int = 10, log_fn=None,
                               negatif_tipler: tuple = ()) -> List[Dict[str, Any]]:
@@ -217,16 +390,29 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                     out.append(ld)
     log(f"[PARSER {site}] JSON-LD'den {len(out)} urun")
 
-    # 2. CSS selectors SITE-SPESIFIK (3 Haz 2026 19:30 — Lord canli kanit revize)
-    # Generic selectors (.title, [class*='title']) Trendyol homepage widget'larini
-    # yakaliyordu ("Flas Urun", "En Cok Satan 1. Urun" sahte sonuc) — site-spesifik pin'li.
+    # 2. Site-spesifik hızlı path — JSON/stabil seçici (11 Haz 2026 revize)
+    # Trendyol ve Epey için Playwright kaldırıldı, curl_cffi + stabil parser kullanılıyor.
+    if len(out) < 3:
+        # Trendyol — gömülü JSON (kırılmaz, CSS'e bağımsız)
+        if "trendyol" in site:
+            ty_results = _parse_trendyol_json(html, budget, limit, log_fn)
+            if ty_results:
+                out.extend(ty_results)
+                return out[:limit]
+
+        # Epey — curl_cffi a[href*="#fiyatlar"] (tam URL slug + title, Playwright yok)
+        if "epey" in site:
+            ep_results = _parse_epey_curlcffi(html, budget, limit, log_fn)
+            if ep_results:
+                out.extend(ep_results)
+                return out[:limit]
+
     if len(out) < 3:
         cards = []
         title_selectors: List[str] = []
         price_selectors: List[str] = []
         if "trendyol" in site:
-            # Trendyol arama sayfasi (?q=) layout: .product-card kart icinde .product-brand + .product-name
-            # Trendyol kategori sayfasi: .p-card-wrppr + .prdct-desc-cntnr-name
+            # Trendyol CSS fallback (JSON path başarısız olursa)
             cards = soup.select(".product-card, .p-card-wrppr")[:limit*3]
             title_selectors = [".product-name", ".prdct-desc-cntnr-name",
                                "[class*='product-down-text']", "span[class*='ProductName']"]
@@ -234,16 +420,15 @@ def _parse_listings_from_html(html: str, site: str, budget: float,
                                ".prc-box-dscntd", "[class*='price-box']",
                                "div[class*='price']", "[class*='Price__']"]
         elif "hepsiburada" in site:
-            # HB SSR — li[class^="productListContent-..."] (hash uçucu, prefix pin)
+            # HB SSR — li[class^="productListContent-"] (chrome131, prefix pin)
             cards = soup.select('li[class^="productListContent-"]')[:limit*2]
-            title_selectors = ['h3', 'h2', '[class*="title"][class*="product"]',
-                               'a[title]', '[data-test-id*="product-card-name"]']
-            price_selectors = ['[class*="price"][class*="current"]', '[data-test-id*="price"]',
-                               '[class*="finalPrice"]', '[class*="Price__"]', 'div[class*="price"]']
+            title_selectors = ['h3', 'h2', 'a[title]', '[class*="title"][class*="product"]',
+                               '[data-test-id*="product-card-name"]']
+            price_selectors = ['[class*="price"][class*="current"]', '[class*="Price"]',
+                               '[data-test-id*="price"]', '[class*="finalPrice"]',
+                               'div[class*="price"]']
         elif "epey" in site:
-            # Epey kategori — urun adi linkleri (/<cat>/<slug>.html) + fiyat linkleri (#fiyatlar) AYRI
-            # Strateji: tum #fiyatlar linklerini al → href slug'ini kullanarak isim link'i ile esle
-            # Bu Epey'in standart layout'u (3 Haz 2026 canli debug ile teyit)
+            # Epey CSS fallback (curl_cffi path başarısız olursa)
             cards = soup.select('a[href*="#fiyatlar"]')[:limit*4]
             title_selectors = []
             price_selectors = []
