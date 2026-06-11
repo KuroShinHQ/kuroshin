@@ -1,6 +1,6 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026 22:00
-**Süreç:** 🚀 **v11.33.4** — Byparr etik rate limit ✅ + ML-free test suite 12/12 ✅ + Byparr login duvarı teşhis ✅
+**Son Güncelleme:** 11 Haziran 2026 22:30
+**Süreç:** 🚀 **v11.33.4** — Byparr etik rate limit ✅ + ML-free test suite 12/12 ✅ + SAH-MOBILE araştırması ✅
 
 ---
 
@@ -27,7 +27,12 @@
 - [x] **SAH-BYPARR** Byparr entegrasyonu + etik rate limit (300s+jitter) ✅ — ⚠️ Sahibinden login zorunlu, CF bypass yeterli değil
 - [x] **TEST-1** `test_suite_scraper_mlfree.json` — 12/12 %100 PASS ✅ (11 Haz) — fixture HTML + runtime + code_inspect
 - [x] **TEST-2** Iron Inquisitor `--suite test_suite_scraper_mlfree.json --skip-llama --skip-bridge` ile çalışıyor ✅
-- [ ] **SAH-MOBILE** Sahibinden mobile API araştır — gerçek uygulama trafiği, login bypass olasılığı
+- [x] **SAH-MOBILE-RESEARCH** Sahibinden login bypass global araştırması tamamlandı (11 Haz) — 3 yol bulundu:
+  - ✅ **Yol A — Session Pool:** Crawlee SessionPool, 2-3 hesap cookie'si rotate et ($0, 30dk iş)
+  - ✅ **Yol B — APK+Frida:** Android emülatör + mitmproxy/android-unpinner → gerçek API endpoint yakala (tek seferlik, endpoint bulunca cookie'siz)
+  - ✅ **Yol C — Cookie Auto-Refresh:** Byparr üzerinden otomatik login (user+pass env'den), session yenile
+- [ ] **SAH-FRIDA** Yol B: Android emülatör + Frida + mitmproxy → Sahibinden APK API endpoint'leri yakala (`github.com/mitmproxy/android-unpinner`)
+- [ ] **SAH-SESSION-POOL** Yol A: 2 ekstra Sahibinden hesabı cookie'si pool'a ekle, expire → auto-rotate
 - [ ] **FIYAT-ALARM** KuroRecon fiyat alarm → Telegram entegrasyonu (ürün takibe al, düşünce bildir)
 
 **Kanıt dosyaları (bu sohbet):**
