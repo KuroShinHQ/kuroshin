@@ -1706,6 +1706,11 @@ def _sahib_find_filter_params(html: str, log_fn=None,
 
 BYPARR_URL = "http://127.0.0.1:8191/v1"
 BYPARR_TIMEOUT = 70  # Byparr Cloudflare çözmek için ~30s alıyor
+# Etik rate limit — aynı domain için minimum bekleme (insan davranışı)
+# Byparr zaten ~30s alıyor ama ekstra jitter ile DDoS görünümü tamamen engelleniyor
+BYPARR_MIN_INTERVAL_SEC = 300   # aynı domain için 5dk'da 1 araştırma max
+BYPARR_JITTER_SEC = (8, 20)     # her call öncesi 8-20s random insan gecikmesi
+_byparr_last_ts: Dict[str, float] = {}  # domain → son çağrı zamanı
 
 
 def fetch_sahibinden_byparr(query: str, budget: float = 0.0, log_fn=None,
@@ -1733,6 +1738,20 @@ def fetch_sahibinden_byparr(query: str, budget: float = 0.0, log_fn=None,
         except Exception as e:
             log(f"[BYPARR] Servis ulaşılamıyor ({e}) — skip")
             return None
+
+    # Etik rate limit: aynı domain için minimum BYPARR_MIN_INTERVAL_SEC bekle
+    domain = "sahibinden.com"
+    now = time.time()
+    last = _byparr_last_ts.get(domain, 0)
+    wait_needed = BYPARR_MIN_INTERVAL_SEC - (now - last)
+    if wait_needed > 0:
+        log(f"[BYPARR] Rate limit: {wait_needed:.0f}s bekleniyor (etik throttle, son çağrı {int(now-last)}s önce)")
+        time.sleep(wait_needed)
+    # İnsan-benzeri jitter (her call öncesi 8-20s)
+    jitter = random.uniform(*BYPARR_JITTER_SEC)
+    log(f"[BYPARR] İnsan gecikmesi: {jitter:.1f}s")
+    time.sleep(jitter)
+    _byparr_last_ts[domain] = time.time()
 
     q_norm = query.lower().replace("ı", "i").replace("ş", "s").replace("ç", "c").replace("ğ", "g").replace("ü", "u").replace("ö", "o")
     q_norm = re.sub(r"\s+", " ", q_norm).strip()

@@ -1,6 +1,6 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026 21:00
-**Süreç:** 🚀 **v11.33.3** — Byparr CF+PX bypass ✅ + Walker 5. katman ✅ + Cookie expire uyarısı ✅ + Iron 66/66 ✅
+**Son Güncelleme:** 11 Haziran 2026 21:30
+**Süreç:** 🚀 **v11.33.4** — Byparr CF+PX bypass ✅ + Etik rate limit ✅ + Walker 5. katman ✅ + Iron 66/66 ✅
 
 ---
 
