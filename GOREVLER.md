@@ -31,7 +31,23 @@
   - ✅ **Yol A — Session Pool:** Crawlee SessionPool, 2-3 hesap cookie'si rotate et ($0, 30dk iş)
   - ✅ **Yol B — APK+Frida:** Android emülatör + mitmproxy/android-unpinner → gerçek API endpoint yakala (tek seferlik, endpoint bulunca cookie'siz)
   - ✅ **Yol C — Cookie Auto-Refresh:** Byparr üzerinden otomatik login (user+pass env'den), session yenile
-- [ ] **SAH-FRIDA** Yol B: Android emülatör + Frida + mitmproxy → Sahibinden APK API endpoint'leri yakala (`github.com/mitmproxy/android-unpinner`)
+- [x] **SAH-FRIDA-STATIC** ✅ jadx statik analiz TAMAMLANDI (11 Haz) — tüm API sırları çıkarıldı:
+  - `x-api-key: [REDACTED]`
+  - `x-api-hash: [REDACTED]` ← SABİT string!
+  - `x-devatt-token: EMPTY_TOKEN` ← SABİT string!
+  - Base URL: `https://api.sahibinden.com/sahibinden-ral/rest`
+  - Login: `POST /login` → `{authCode}` → `x-auth-token` header
+  - Arama: `GET /classifieds/search?query=...&priceTo=...&pagingSize=...`
+  - Aptoide'den APK (122MB, v1638) indirildi: `/tmp/sahibinden.apk`
+  - Android SDK (API 33) + emülatör + frida-server 17.11.0 kuruldu WSL2'de
+  - **TEK EKSİK:** `x-auth-token` → POST /login şifre gerekiyor (web cookie çalışmıyor)
+- [ ] **SAH-FRIDA-TOKEN** `POST /login` ile authCode al → `memory/sahibinden_mobile_token.json` kaydet
+  - Yol 1: Sahibinden şifre → direkt API login (en hızlı)
+  - Yol 2: Emülatör ADB fix → frida-server hook (emülatör kararsız, ADB v37/v1.0.41 çakışması)
+  - Yol 3: mitmproxy (port 8080) + emülatör proxy → manuel bir kez login → token yakala
+- [ ] **SAH-MOBILE-API-ENTEGRE** authCode alınınca `market_master.py`'ye mobile API ekle:
+  - `_fetch_sahibinden_mobile_api()` — `x-auth-token` ile direkt REST API çağrısı
+  - Cookie sistemine paralel çalışır, expire sorunu olmaz
 - [ ] **SAH-SESSION-POOL** Yol A: 2 ekstra Sahibinden hesabı cookie'si pool'a ekle, expire → auto-rotate
 - [ ] **FIYAT-ALARM** KuroRecon fiyat alarm → Telegram entegrasyonu (ürün takibe al, düşünce bildir)
 
