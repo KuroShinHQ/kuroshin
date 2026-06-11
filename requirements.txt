@@ -1,0 +1,36 @@
+# Kuroshin OS — Python Bağımlılıkları
+# Python 3.10+ (WSL Ubuntu-22.04 üzerinde test edildi)
+# Kurulum: pip install -r requirements.txt
+# Playwright sonrası: playwright install chromium
+
+# ── TEMEL ─────────────────────────────────────────────────────────────────────
+requests==2.32.5
+httpx==0.28.1
+python-dotenv==1.2.2
+pydantic==2.13.3
+uvicorn==0.46.0
+fastapi==0.136.0
+
+# ── WEB SCRAPING & ANTI-BOT ───────────────────────────────────────────────────
+curl_cffi==0.15.0           # TLS/JA3 impersonate (Akamai/CF bypass — birincil)
+cloudscraper==1.2.71        # JS challenge bypass (fallback)
+nodriver==0.50.3            # Headless Chrome otomasyon (CF Turnstile için)
+playwright==1.58.0          # JS-render (Trendyol, Epey)
+beautifulsoup4==4.14.3      # HTML parsing
+# playwright install chromium  ← kurulumdan sonra çalıştır
+
+# ── AI AJAN ÇERÇEVESI ─────────────────────────────────────────────────────────
+agno==2.5.16                # Agno multi-agent framework
+smolagents==1.24.0          # HuggingFace smolagents
+litellm==1.83.13            # LLM proxy (llama-server + Gemini + OpenAI unified)
+
+# ── RAG & HAFIZA ──────────────────────────────────────────────────────────────
+chromadb==1.5.5             # Vektör veritabanı (kalıcı hafıza)
+rank-bm25==0.2.2            # BM25 sparse retrieval (HybridRAG)
+FlagEmbedding==1.4.0        # BGE reranker (cross-encoder)
+sentence-transformers==2.7.0 # Dense embedding (RAG)
+
+# ── ORKESTRASYON ──────────────────────────────────────────────────────────────
+langgraph==1.2.2            # Paralel fan-out + InMemorySaver checkpoint
+langchain-core==1.4.0       # LangChain temel (langgraph bağımlılığı)
+crawl4ai==0.8.6             # Deep crawl (Walker service — Crawlee bridge)
