@@ -49,16 +49,25 @@ _UA_POOL: List[str] = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
 ]
 
-# Bilinen anti-bot sistemlerinin imzaları
+# Bilinen anti-bot sistemlerinin HARD-BLOCK imzaları.
+# Sadece sayfanın gerçekten engellendiğini gösteren spesifik stringler —
+# cookie adları veya JS değişkenleri gibi normal sayfalarda da geçen geniş
+# patternler buraya GİRMEZ (false-positive önlemi).
 _ANTIBOT_PATTERNS = [
-    ("Cloudflare",  r"(cf-ray|__cf_bm|Just a moment|Checking your browser|cf_chl_)"),
-    ("DataDome",    r"(datadome|dd_check)"),
-    ("Akamai",      r"(akamai|ak_bmsc|_abck)"),
-    ("PerimeterX",  r"(_px|px-captcha)"),
-    ("reCAPTCHA",   r"(g-recaptcha|recaptcha/api\.js)"),
-    ("Turnstile",   r"(challenges\.cloudflare\.com|cf-turnstile)"),
-    ("Sahibinden",  r"(olağandışı|otomatik erişim|bot|Destek kodu)"),
+    ("Cloudflare",  r"(Just a moment\.\.\.|Checking your browser|cf_chl_opt|cf_chl_prog)"),
+    ("DataDome",    r"datadome\.co/.*blocked"),
+    ("PerimeterX",  r"px-captcha"),
+    ("reCAPTCHA",   r"recaptcha/api\.js"),
+    ("Turnstile",   r"challenges\.cloudflare\.com/turnstile"),
+    ("Sahibinden",  r"(olağandışı bir erişim|otomatik erişim tespit|Destek kodu:?\s*GW)"),
 ]
+
+# Soft-detect: sayfa içeriği büyükse gerçek block değil, sadece bilgi amaçlı log
+_ANTIBOT_SOFT_PATTERNS = [
+    ("cf-cookie",   r"(__cf_bm|cf-ray)"),
+    ("akamai-cookie", r"(ak_bmsc|_abck)"),
+]
+_HARD_BLOCK_MIN_SIZE = 50_000  # 50KB üzeri sayfa + soft pattern → block DEĞİL
 
 
 @dataclass
@@ -107,12 +116,27 @@ def _build_headers(ua: str, referer: Optional[str] = None,
 
 
 def _detect_antibot(html: str, resp_headers: Dict) -> List[str]:
+    """
+    Gerçek HARD-BLOCK tespiti.
+    Büyük sayfalar (>50KB) + sadece cookie/header imzası → block DEĞİL.
+    """
     hits = []
-    sample = (html or "")[:6000]
+    html_len = len(html or "")
+    sample = (html or "")[:8000]
     hdr_str = " ".join(f"{k}:{v}" for k, v in resp_headers.items())
+
+    # Hard-block patternleri — hem HTML hem header'da ara
     for name, pattern in _ANTIBOT_PATTERNS:
         if re.search(pattern, sample, re.IGNORECASE) or re.search(pattern, hdr_str, re.IGNORECASE):
             hits.append(name)
+
+    # Soft patternler: sadece sayfa küçükse (<50KB) block say
+    # Büyük sayfada Akamai/CF cookie imzası bulunması normal — içerik geldiyse block değil
+    if html_len < _HARD_BLOCK_MIN_SIZE:
+        for name, pattern in _ANTIBOT_SOFT_PATTERNS:
+            if re.search(pattern, sample, re.IGNORECASE) or re.search(pattern, hdr_str, re.IGNORECASE):
+                hits.append(name)
+
     return list(dict.fromkeys(hits))
 
 
