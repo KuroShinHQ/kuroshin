@@ -1,0 +1,134 @@
+[
+  {
+    "id": "mlfree-trendyol-json-parse",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Trendyol: _parse_trendyol_json() — gerçek JSON format (price dict + ratingScore dict)",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_trendyol_json; import json; products = [{\"name\":\"Test Bisiklet\",\"price\":{\"current\":1499.99,\"discountedPrice\":1499.99},\"ratingScore\":{\"averageRating\":4.5,\"totalCount\":120},\"url\":\"/test-bisiklet-p-123\"},{\"name\":\"Kondisyon X2\",\"price\":{\"current\":2899.0},\"ratingScore\":{\"averageRating\":4.2,\"totalCount\":55},\"url\":\"/kondisyon-p-456\"}]; html = '<html><script>window.__X__ = {\"products\":' + json.dumps(products) + '};</script></html>'; result = _parse_trendyol_json(html, budget=3000, limit=10); assert len(result) >= 1, 'En az 1 urun beklendi: ' + str(result); print('PASS', len(result), 'urun:', result[0]['title'])",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-trendyol-price-dict-or-numerized",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Trendyol: priceNumerized fallback — price dict yoksa priceNumerized kullanılır",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_trendyol_json; import json; products = [{\"name\":\"Numerized Bisiklet\",\"priceNumerized\":\"1999.00\",\"discountedPriceNumerized\":\"1799.00\",\"ratingScore\":{\"averageRating\":4.0,\"totalCount\":30},\"url\":\"/numerized-p-789\"}]; html = '<html><script>window.__X__ = {\"products\":' + json.dumps(products) + '};</script></html>'; result = _parse_trendyol_json(html, budget=3000, limit=10); assert len(result) >= 1, 'priceNumerized fallback calismadi: ' + str(result); print('PASS priceNumerized fallback OK:', result[0]['title'], result[0]['price'])",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-epey-html-url-parse",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Epey: _parse_epey_curlcffi() — .html uzantili #fiyatlar link + title attr",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_epey_curlcffi; html = '<html><body><a href=\"/bisiklet/triathlon-t222.html#fiyatlar\" title=\"Triathlon T-222 Kondisyon Bisikleti\"><span>1.500,00 TL</span> - 3 site</a><a href=\"/bisiklet/cosfer-r200.html#fiyatlar\" title=\"Cosfer R200 Kondisyon\"><span>2.200,00 TL</span> - 2 site</a></body></html>'; result = _parse_epey_curlcffi(html, budget=5000, limit=10); assert len(result) >= 1, '0 urun dondu: ' + str(result); print('PASS', len(result), 'urun:', [r[\"title\"][:30] for r in result])",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-epey-empty-graceful",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Epey: boş HTML → boş liste, exception yok",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_epey_curlcffi; result = _parse_epey_curlcffi('<html><body>Sayfa bulunamadi</body></html>', budget=3000, limit=10); assert isinstance(result, list) and len(result) == 0, 'Bos liste beklendi: ' + str(result); print('PASS bos HTML graceful OK')",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-sahibinden-data-id-parse",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Sahibinden: _parse_sahibinden_listings() — data-id + classifiedTitle gerçek selector",
+    "code": "import sys; sys.path.insert(0,'scripts'); from kuroshin_market_master import _parse_sahibinden_listings; html = '<table><tbody><tr class=\"searchResultsItem\" data-id=\"1234567\"><td class=\"searchResultsTitle\"><a class=\"classifiedTitle\" href=\"/ilan/trek-bisiklet-1234567\" title=\"Trek FX3 Bisiklet\">Trek FX3 Bisiklet</a></td><td class=\"searchResultsPriceValue\">2.500 TL</td></tr><tr class=\"searchResultsItem\" data-id=\"8901234\"><td class=\"searchResultsTitle\"><a class=\"classifiedTitle\" href=\"/ilan/triathlon-8901234\" title=\"Triathlon Kondisyon\">Triathlon Kondisyon</a></td><td class=\"searchResultsPriceValue\">1.800 TL</td></tr></tbody></table>'; result = _parse_sahibinden_listings(html, budget=3000, limit=10); assert len(result) >= 1, '0 ilan parse edildi, data-id+classifiedTitle selector calismadi: ' + str(result); print('PASS', len(result), 'ilan:', [r.get(\"title\",\"?\")[:30] for r in result])",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-sahibinden-budget-hard-drop",
+    "category": "mlfree_parser",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "scripts/kuroshin_market_master.py",
+    "pattern": "BÜTÇE_HARD_DROP",
+    "description": "Sahibinden: BÜTÇE_HARD_DROP — market_master'da bütçe aşımı eliyor kodu mevcut",
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-byparr-url-const",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Byparr: BYPARR_URL sabiti port 8191",
+    "code": "import sys; sys.path.insert(0,'scripts'); import kuroshin_market_master as mm; assert hasattr(mm, 'BYPARR_URL'), 'BYPARR_URL yok'; assert '8191' in mm.BYPARR_URL, 'port 8191 beklendi: ' + mm.BYPARR_URL; print('PASS BYPARR_URL:', mm.BYPARR_URL)",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-byparr-rate-limit-const",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Byparr: BYPARR_MIN_INTERVAL_SEC=300 + BYPARR_JITTER_SEC=(8,20) etik rate limit",
+    "code": "import sys; sys.path.insert(0,'scripts'); import kuroshin_market_master as mm; assert mm.BYPARR_MIN_INTERVAL_SEC == 300, 'beklenen 300: ' + str(mm.BYPARR_MIN_INTERVAL_SEC); assert mm.BYPARR_JITTER_SEC == (8, 20), 'beklenen (8,20): ' + str(mm.BYPARR_JITTER_SEC); print('PASS rate limit OK:', mm.BYPARR_MIN_INTERVAL_SEC, 's jitter:', mm.BYPARR_JITTER_SEC)",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-byparr-no-service-graceful",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Byparr: servis kapalıysa None döner, exception fırlatmaz",
+    "code": "import sys; sys.path.insert(0,'scripts'); import kuroshin_market_master as mm; mm.BYPARR_URL = 'http://127.0.0.1:19999/v1'; result = mm.fetch_sahibinden_byparr('bisiklet', budget=3000); assert result is None, 'None beklendi (servis kapali), alindi: ' + str(result); mm.BYPARR_URL = 'http://127.0.0.1:8191/v1'; print('PASS graceful fail OK - servis kapali None dondu')",
+    "timeout": 15,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-cookie-expire-func-callable",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Cookie expire: _check_sahibinden_cookie_expiry() callable, exception fırlatmaz",
+    "code": "import sys; sys.path.insert(0,'scripts'); import kuroshin_market_master as mm; assert callable(getattr(mm, '_check_sahibinden_cookie_expiry', None)), '_check_sahibinden_cookie_expiry yok'; result = mm._check_sahibinden_cookie_expiry(); assert result is None or isinstance(result, int), 'None veya int beklendi: ' + str(result); print('PASS cookie expire func OK, days_left:', result)",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-adaptive-retry-consts",
+    "category": "mlfree_parser",
+    "type": "runtime_test",
+    "check": "python_eval",
+    "description": "Adaptive retry: SAHIB_RETRY_MAX_SEC=1200 + _sahib_bot_hit_count sayacı tanımlı",
+    "code": "import sys; sys.path.insert(0,'scripts'); import kuroshin_market_master as mm; assert hasattr(mm, 'SAHIB_RETRY_MAX_SEC') and mm.SAHIB_RETRY_MAX_SEC == 1200, 'SAHIB_RETRY_MAX_SEC=1200 beklendi: ' + str(getattr(mm,'SAHIB_RETRY_MAX_SEC','YOK')); assert hasattr(mm, '_sahib_bot_hit_count'), '_sahib_bot_hit_count sayaci yok'; print('PASS adaptive retry OK, max:', mm.SAHIB_RETRY_MAX_SEC, 's hit_count:', mm._sahib_bot_hit_count)",
+    "timeout": 10,
+    "expect_blocked": false,
+    "weight": 1.0
+  },
+  {
+    "id": "mlfree-walker-layer5-code-inspect",
+    "category": "mlfree_parser",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_walker_service.py",
+    "pattern": "CURL_CFFI_BYPASS",
+    "description": "Walker 5. katman: CURL_CFFI_BYPASS log etiketi walker_service'de mevcut",
+    "expect_blocked": false,
+    "weight": 1.0
+  }
+]

@@ -1,6 +1,6 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026 21:30
-**Süreç:** 🚀 **v11.33.4** — Byparr CF+PX bypass ✅ + Etik rate limit ✅ + Walker 5. katman ✅ + Iron 66/66 ✅
+**Son Güncelleme:** 11 Haziran 2026 22:00
+**Süreç:** 🚀 **v11.33.4** — Byparr etik rate limit ✅ + ML-free test suite 12/12 ✅ + Byparr login duvarı teşhis ✅
 
 ---
 
@@ -24,9 +24,11 @@
 - [x] **EPEY-1** `_parse_epey_curlcffi(html)` — 9 ürün, title attr, Playwright YOK ✅
 - [x] **EPEY-2** market_master Epey → curl_cffi chrome131 ✅
 - [x] **HB-1** chrome131 + `[class*="Price"]` broad selector ✅
-- [x] **SAH-BYPARR** Byparr (Camoufox CF+PX bypass) entegrasyonu — cookiesiz 12 ilan ✅ (11 Haz)
-- [ ] **TEST-1** `test_suite_scraper_mlfree.json` — 4 site için fixture HTML + runtime_test (`python_eval`) testleri. ML yok, 5s'de koşar.
-- [ ] **TEST-2** Iron Inquisitor'a ekle, `--skip-llama --skip-bridge --no-telegram` ile CI'a entegre
+- [x] **SAH-BYPARR** Byparr entegrasyonu + etik rate limit (300s+jitter) ✅ — ⚠️ Sahibinden login zorunlu, CF bypass yeterli değil
+- [x] **TEST-1** `test_suite_scraper_mlfree.json` — 12/12 %100 PASS ✅ (11 Haz) — fixture HTML + runtime + code_inspect
+- [x] **TEST-2** Iron Inquisitor `--suite test_suite_scraper_mlfree.json --skip-llama --skip-bridge` ile çalışıyor ✅
+- [ ] **SAH-MOBILE** Sahibinden mobile API araştır — gerçek uygulama trafiği, login bypass olasılığı
+- [ ] **FIYAT-ALARM** KuroRecon fiyat alarm → Telegram entegrasyonu (ürün takibe al, düşünce bildir)
 
 **Kanıt dosyaları (bu sohbet):**
 - `scripts/_test_api_endpoints.py` — 4-site endpoint araştırması
