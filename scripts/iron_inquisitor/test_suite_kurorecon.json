@@ -1,0 +1,435 @@
+[
+  {
+    "id": "kr-yapi-fetcher-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: fetcher.py mevcut"
+  },
+  {
+    "id": "kr-yapi-parser-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: parser.py mevcut"
+  },
+  {
+    "id": "kr-yapi-exporter-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/scraper_paketi/exporter.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: exporter.py mevcut"
+  },
+  {
+    "id": "kr-yapi-init-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/scraper_paketi/__init__.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: scraper_paketi/__init__.py mevcut (paket olarak import edilebilir)"
+  },
+  {
+    "id": "kr-yapi-run-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/run.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: run.py (ana giris noktasi) mevcut"
+  },
+  {
+    "id": "kr-yapi-config-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/config.yaml",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: config.yaml (musteri konfigurasyon dosyasi) mevcut"
+  },
+  {
+    "id": "kr-yapi-demo-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/demo_ford_focus.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: demo_ford_focus.py (vitrin demo) mevcut"
+  },
+  {
+    "id": "kr-yapi-requirements-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/requirements.txt",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: requirements.txt mevcut"
+  },
+  {
+    "id": "kr-yapi-dockerfile-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/Dockerfile",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: Dockerfile mevcut (Docker teslim desteği)"
+  },
+  {
+    "id": "kr-yapi-readme-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon/README.md",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: README.md (musteri kurulum kilavuzu) mevcut"
+  },
+  {
+    "id": "kr-yapi-zip-exists",
+    "category": "kurorecon_yapi",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "KuroRecon_v1.0.0.zip",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon: teslim zip paketi mevcut"
+  },
+
+  {
+    "id": "kr-modul-fetcher-class",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "class PaketFetcher",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: PaketFetcher sinifi tanimli"
+  },
+  {
+    "id": "kr-modul-fetcher-result-class",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "class FetchResult",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: FetchResult dataclass tanimli"
+  },
+  {
+    "id": "kr-modul-fetcher-antibot",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "_detect_antibot",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: anti-bot tespit fonksiyonu mevcut"
+  },
+  {
+    "id": "kr-modul-fetcher-cookie-load",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "_load_cookies",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: cookie dosyasi yukleme fonksiyonu mevcut"
+  },
+  {
+    "id": "kr-modul-fetcher-curlcffi",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "curl_cffi",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: curl_cffi TLS impersonate destegi mevcut"
+  },
+  {
+    "id": "kr-modul-fetcher-playwright",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "_get_playwright",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: Playwright JS-render modu mevcut"
+  },
+  {
+    "id": "kr-modul-fetcher-ua-pool",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "_UA_POOL",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon fetcher: User-Agent havuzu tanimli (UA rotasyon)"
+  },
+  {
+    "id": "kr-modul-parser-parse-listings",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "def parse_listings",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon parser: parse_listings ana fonksiyonu tanimli"
+  },
+  {
+    "id": "kr-modul-parser-sahibinden",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "_parse_sahibinden",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon parser: Sahibinden searchResultsItem parser mevcut"
+  },
+  {
+    "id": "kr-modul-parser-jsonld",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "_parse_jsonld",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon parser: JSON-LD evrensel parser mevcut"
+  },
+  {
+    "id": "kr-modul-parser-trendyol",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "_parse_trendyol",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon parser: Trendyol CSS parser mevcut"
+  },
+  {
+    "id": "kr-modul-parser-hepsiburada",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "_parse_hepsiburada",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon parser: Hepsiburada SSR parser mevcut"
+  },
+  {
+    "id": "kr-modul-exporter-export",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/exporter.py",
+    "pattern": "def export",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon exporter: export (CSV/JSON) fonksiyonu tanimli"
+  },
+  {
+    "id": "kr-modul-exporter-print-table",
+    "category": "kurorecon_modul",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/exporter.py",
+    "pattern": "def print_table",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon exporter: print_table ASCII konsol tablosu fonksiyonu tanimli"
+  },
+
+  {
+    "id": "kr-izolasyon-no-wsl-path-fetcher",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "/mnt/c/Kuroshin",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: fetcher.py icinde WSL Kuroshin path YOK"
+  },
+  {
+    "id": "kr-izolasyon-no-root-path-fetcher",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "/root/kuroshin",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: fetcher.py icinde /root/kuroshin path YOK"
+  },
+  {
+    "id": "kr-izolasyon-no-telegram-parser",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/parser.py",
+    "pattern": "TELEGRAM",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: parser.py icinde Telegram bagimliligi YOK"
+  },
+  {
+    "id": "kr-izolasyon-no-telegram-run",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/run.py",
+    "pattern": "TELEGRAM",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: run.py icinde Telegram bagimliligi YOK"
+  },
+  {
+    "id": "kr-izolasyon-no-llama-url",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/run.py",
+    "pattern": "127.0.0.1:8080",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: run.py icinde llama-server endpoint YOK"
+  },
+  {
+    "id": "kr-izolasyon-no-llama-fetcher",
+    "category": "kurorecon_izolasyon",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "127.0.0.1:8080",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon izolasyon: fetcher.py icinde llama-server endpoint YOK"
+  },
+
+  {
+    "id": "kr-guvenlik-no-token-fetcher",
+    "category": "kurorecon_guvenlik",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "bot_token",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon guvenlik: fetcher.py icinde hardcoded bot_token YOK"
+  },
+  {
+    "id": "kr-guvenlik-no-token-run",
+    "category": "kurorecon_guvenlik",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/run.py",
+    "pattern": "bot_token",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon guvenlik: run.py icinde hardcoded bot_token YOK"
+  },
+  {
+    "id": "kr-guvenlik-no-hardcoded-cookie",
+    "category": "kurorecon_guvenlik",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "rememberedUserName|kuroshin_user",
+    "is_regex": true,
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon guvenlik: fetcher.py icinde hardcoded kullanici bilgisi YOK"
+  },
+  {
+    "id": "kr-guvenlik-no-persona-ref",
+    "category": "kurorecon_guvenlik",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/run.py",
+    "pattern": "persona.json",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon guvenlik: run.py icinde persona.json referansi YOK"
+  },
+  {
+    "id": "kr-guvenlik-cookie-from-file",
+    "category": "kurorecon_guvenlik",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/scraper_paketi/fetcher.py",
+    "pattern": "cookie_file",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon guvenlik: cookie PATH dosyadan okunuyor (hardcoded degil)"
+  },
+  {
+    "id": "kr-config-sites-key",
+    "category": "kurorecon_config",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/config.yaml",
+    "pattern": "sites:",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon config: 'sites:' anahtari tanimli"
+  },
+  {
+    "id": "kr-config-output-key",
+    "category": "kurorecon_config",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/config.yaml",
+    "pattern": "output:",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon config: 'output:' anahtari tanimli"
+  },
+  {
+    "id": "kr-config-scraper-delay",
+    "category": "kurorecon_config",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "KuroRecon/config.yaml",
+    "pattern": "delay_min",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon config: delay_min (rate-limit korumasi) tanimli"
+  },
+  {
+    "id": "kr-config-no-hardcoded-token",
+    "category": "kurorecon_config",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "KuroRecon/config.yaml",
+    "pattern": "bot_token",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "KuroRecon config: config.yaml icinde bot_token YOK"
+  }
+]

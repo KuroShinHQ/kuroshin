@@ -1,0 +1,14 @@
+# Zorunlu
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+pyyaml>=6.0
+
+# Birincil fetcher (TLS/JA3 impersonate — Akamai/CF bypass için şiddetle önerilir)
+curl_cffi>=0.6.0
+
+# Opsiyonel: JS-render gerekiyorsa (Trendyol, Epey)
+# playwright>=1.40.0
+# Kurulum sonrası: playwright install chromium
+
+# Opsiyonel: Cloudflare challenge bypass (alternatif)
+# cloudscraper>=1.2.71

@@ -1,0 +1,52 @@
+# ============================================================
+# SCRAPER PAKETİ — Müşteri Konfigürasyonu
+# Sadece bu dosyayı düzenleyin. Kod dosyalarına dokunmayın.
+# ============================================================
+
+sites:
+  # Örnek 1: Sahibinden — araç/2.el ürün araması (giriş gerektirir)
+  - name: "Sahibinden"
+    url: "https://www.sahibinden.com/otomobil-ford-focus?pagingSize=50&sorting=price_asc"
+    mode: "static"          # static (curl_cffi) | playwright (JS-render gerekiyorsa)
+    parser: "sahibinden"    # sahibinden | trendyol | hepsiburada | epey | generic
+    cookie_file: "cookies.json"   # Hesabınızın cookie dosyası (yoksa boş bırakın)
+    enabled: true
+
+  # Örnek 2: Hepsiburada — ürün araması (giriş gerekmez)
+  - name: "Hepsiburada"
+    url: "https://www.hepsiburada.com/ara?q=ford+focus"
+    mode: "static"
+    parser: "hepsiburada"
+    cookie_file: ""
+    enabled: false          # false yaparak devre dışı bırakın
+
+  # Örnek 3: Trendyol — ürün araması (Playwright gerektirir)
+  - name: "Trendyol"
+    url: "https://www.trendyol.com/sr?q=ford+focus"
+    mode: "playwright"
+    parser: "trendyol"
+    cookie_file: ""
+    enabled: false
+
+  # Yeni site eklemek için bu bloğu kopyalayın:
+  # - name: "Benim Sitem"
+  #   url: "https://www.ornek.com/kategori?q=arama"
+  #   mode: "static"
+  #   parser: "generic"
+  #   cookie_file: ""
+  #   enabled: false
+
+output:
+  format: "csv"           # csv | json
+  file: "sonuclar.csv"    # çıktı dosyası adı
+  sort_by: "price"        # price | title | site
+  ascending: true         # true = ucuzdan pahalıya | false = pahalıdan ucuza
+  max_results: 50         # site başına maksimum sonuç
+
+scraper:
+  delay_min: 3            # İstekler arası minimum bekleme (saniye) — çok düşük yapmayın
+  delay_max: 8            # İstekler arası maksimum bekleme (saniye)
+  timeout: 30             # Sayfa yükleme zaman aşımı (saniye)
+  max_retries: 3          # Hata durumunda tekrar deneme sayısı
+  proxy: ""               # Proxy kullanımı: http://kullanici:sifre@host:port (boş = proxy yok)
+  user_agent: "auto"      # auto = rastgele UA rotasyonu | özel UA string de yazabilirsiniz
