@@ -81,8 +81,14 @@ SITE_FETCHER: Dict[str, Tuple[str, str]] = {
 # Lord doktrini "iz bırakmadan" — request arası random.uniform(5, 15) saniye delay
 RATE_LIMIT_MIN_SEC = 5    # min 5s (random.uniform(5, 15) min sınır)
 RATE_LIMIT_MAX_SEC = 15
-# Sahibinden bot tespiti / bütçe aşımı → retry süresi
-SAHIB_RETRY_SEC = 300     # 5 dk bekle (Sahibinden IP rate-limit genellikle 10-30 dk, 5 dk ilk deneme)
+# Sahibinden bot tespiti → adaptive retry (11 Haz 2026)
+# Her bot tespitinde 2x artar: 300 → 600 → 1200s (max 1200)
+SAHIB_RETRY_SEC = 300
+SAHIB_RETRY_MAX_SEC = 1200
+_sahib_bot_hit_count: int = 0  # modül-seviyesi sayaç, her bot tespitinde artar
+
+# Cookie expire uyarı eşiği — bu kadar günden az kaldıysa Telegram uyarısı gönder
+SAHIB_COOKIE_WARN_DAYS = 7
 
 # Telegram 5-mesaj akışı: _market_msg_baslangic + _market_msg_canli_durum + _market_msg_ana_rapor + _market_render_ascii_chart + _market_msg_derin_analiz
 # Inline keyboard callback'leri: market_yeniden_ara, market_mod_degistir, market_tablo, market_derin, market_tum_linkler
@@ -1452,6 +1458,51 @@ _SAHIB_SLUG_MAP: Dict[str, str] = {
 }
 
 
+def _check_sahibinden_cookie_expiry(log_fn=None) -> Optional[int]:
+    """Cookie dosyasındaki en erken expiry'yi kontrol et.
+    Returns: kalan gün sayısı (None = expire yok veya dosya yok).
+    SAHIB_COOKIE_WARN_DAYS'den az kaldıysa Telegram uyarısı gönderir."""
+    log = log_fn or (lambda m: None)
+    if not SAHIBINDEN_SESSION_PATH.exists():
+        return None
+    try:
+        txt = SAHIBINDEN_SESSION_PATH.read_text(encoding="utf-8").strip()
+        if not (txt.startswith("[") or txt.startswith("{")):
+            return None
+        data = json.loads(txt)
+        if isinstance(data, dict):
+            data = data.get("cookies", [])
+        if not isinstance(data, list):
+            return None
+        now_ts = time.time()
+        min_expire: Optional[float] = None
+        for c in data:
+            if not isinstance(c, dict):
+                continue
+            exp = c.get("expirationDate") or c.get("expiry") or c.get("expires")
+            if exp and float(exp) > now_ts:
+                if min_expire is None or float(exp) < min_expire:
+                    min_expire = float(exp)
+        if min_expire is None:
+            return None
+        days_left = int((min_expire - now_ts) / 86400)
+        if days_left <= SAHIB_COOKIE_WARN_DAYS:
+            warn_msg = (
+                f"⚠️ <b>Sahibinden Cookie Uyarısı</b>\n"
+                f"En erken cookie <b>{days_left} gün</b> içinde expire oluyor!\n"
+                f"Yenilemek için: CookieEditor → sahibinden.com → Export → "
+                f"<code>memory/sahibinden_session.json</code>"
+            )
+            log(f"[COOKIE_EXPIRE] {days_left} gün kaldı — Telegram uyarısı gönderiliyor")
+            try:
+                _send_telegram(warn_msg)
+            except Exception:
+                pass
+        return days_left
+    except Exception:
+        return None
+
+
 def _load_sahibinden_cookies() -> Dict[str, str]:
     """Lord cookies.txt veya CookieEditor export → dict[name, value].
     Format desteği:
@@ -1471,21 +1522,32 @@ def _load_sahibinden_cookies() -> Dict[str, str]:
             if not isinstance(data, list):
                 return {}
             out: Dict[str, str] = {}
+            now_ts = time.time()
             for c in data:
                 if isinstance(c, dict):
                     name = c.get("name", "")
                     val = c.get("value", "")
                     domain = c.get("domain", "")
+                    exp = c.get("expirationDate") or c.get("expiry") or c.get("expires")
+                    # Expire olmuş cookie'yi atla
+                    if exp and float(exp) <= now_ts:
+                        continue
                     if name and val and ("sahibinden" in domain or not domain):
                         out[name] = val
             return out
         # Netscape format
         out2: Dict[str, str] = {}
+        now_ts = time.time()
         for line in txt.splitlines():
             if not line.strip() or line.startswith("#"):
                 continue
             parts = line.split("\t")
             if len(parts) >= 7 and "sahibinden" in parts[0]:
+                try:
+                    if float(parts[4]) <= now_ts:
+                        continue  # expire olmuş
+                except Exception:
+                    pass
                 out2[parts[5]] = parts[6]
         return out2
     except Exception:
@@ -1642,6 +1704,74 @@ def _sahib_find_filter_params(html: str, log_fn=None,
     return ""
 
 
+BYPARR_URL = "http://127.0.0.1:8191/v1"
+BYPARR_TIMEOUT = 70  # Byparr Cloudflare çözmek için ~30s alıyor
+
+
+def fetch_sahibinden_byparr(query: str, budget: float = 0.0, log_fn=None,
+                             negatif_tipler: tuple = (),
+                             pozitif_tipler: tuple = ()) -> Optional[List[Dict[str, Any]]]:
+    """Byparr (Camoufox + Cloudflare Turnstile bypass) ile Sahibinden anonim erişim.
+    Cookie zorunlu değil — PerimeterX + CF ikisi geçilir.
+    Returns: listing listesi veya None (Byparr yoksa)."""
+    log = log_fn or (lambda m: None)
+    try:
+        import httpx as _hx
+    except ImportError:
+        log("[BYPARR] httpx yok")
+        return None
+
+    # Byparr sağlık kontrolü
+    try:
+        hc = _hx.get(BYPARR_URL.replace("/v1", "/health"), timeout=3)
+        if hc.status_code not in (200, 404):
+            raise Exception(f"health {hc.status_code}")
+    except Exception:
+        # /health yok, /docs dene
+        try:
+            _hx.get(BYPARR_URL.replace("/v1", "/docs"), timeout=3)
+        except Exception as e:
+            log(f"[BYPARR] Servis ulaşılamıyor ({e}) — skip")
+            return None
+
+    q_norm = query.lower().replace("ı", "i").replace("ş", "s").replace("ç", "c").replace("ğ", "g").replace("ü", "u").replace("ö", "o")
+    q_norm = re.sub(r"\s+", " ", q_norm).strip()
+    mapped_slug = _SAHIB_SLUG_MAP.get(q_norm) or _SAHIB_SLUG_MAP.get(q_norm.split()[0] if q_norm.split() else "")
+    slug = mapped_slug or re.sub(r"[^a-z0-9-]", "", q_norm.replace(" ", "-"))
+    url = f"https://www.sahibinden.com/{slug}"
+    if budget > 0:
+        url += f"?priceMax={int(budget)}&pagingSize=20"
+
+    log(f"[BYPARR] Fetch: {url}")
+    try:
+        r = _hx.post(
+            BYPARR_URL,
+            json={"cmd": "request.get", "url": url, "maxTimeout": 60000},
+            timeout=BYPARR_TIMEOUT,
+        )
+        data = r.json()
+        if data.get("status") != "ok":
+            log(f"[BYPARR] status!=ok: {data.get('message','?')}")
+            return None
+        html = data["solution"]["response"]
+        cookies_raw = data["solution"].get("cookies", [])
+        log(f"[BYPARR] ✅ {len(html)} chars, {len(cookies_raw)} cookie")
+
+        # Bot sinyali?
+        if _sahib_bot_mu(html):
+            log("[BYPARR] Bot sinyali — başarısız")
+            return None
+
+        listings = _parse_sahibinden_listings(
+            html, budget, limit=12, log_fn=log, query=query, negatif_tipler=negatif_tipler
+        )
+        log(f"[BYPARR] {len(listings)} ilan parse edildi")
+        return listings if listings else None
+    except Exception as e:
+        log(f"[BYPARR] Hata: {e}")
+        return None
+
+
 def fetch_sahibinden_direct(query: str, log_fn=None,
                              apply_dikey_filter: bool = False,
                              budget: float = 0.0,
@@ -1651,9 +1781,11 @@ def fetch_sahibinden_direct(query: str, log_fn=None,
     budget: >0 ise URL'ye priceMax parametresi eklenir.
     Returns: FetchResult veya None (cookies yoksa)."""
     log = log_fn or (lambda m: None)
+    # Cookie expire uyarısı (7 günden az kaldıysa Telegram uyarısı)
+    _check_sahibinden_cookie_expiry(log_fn=log)
     cookies = _load_sahibinden_cookies()
     if not cookies:
-        log("[SAHIBINDEN_DIRECT] cookies YOK — akakce fallback'e geç")
+        log("[SAHIBINDEN_DIRECT] cookies YOK veya tümü expire — akakce fallback'e geç")
         return None
     if cc_requests is None:
         log("[SAHIBINDEN_DIRECT] curl_cffi YOK")
@@ -1688,7 +1820,10 @@ def fetch_sahibinden_direct(query: str, log_fn=None,
             if r.status_code == 200:
                 # Fix-Bot: İlk sayfada bot sinyali kontrol et
                 if _sahib_bot_mu(r.text):
-                    log(f"[SAHIBINDEN_DIRECT] BOT TESPİT — slug={slug_try}")
+                    global _sahib_bot_hit_count
+                    _sahib_bot_hit_count += 1
+                    adaptive_wait = min(SAHIB_RETRY_SEC * (2 ** (_sahib_bot_hit_count - 1)), SAHIB_RETRY_MAX_SEC)
+                    log(f"[SAHIBINDEN_DIRECT] BOT TESPİT — slug={slug_try} hit#{_sahib_bot_hit_count} → {adaptive_wait}s bekle")
                     return FetchResult(url=url, status=200, blocked=True,
                                        tier="sahibinden_cookie",
                                        elapsed_s=round(time.time()-t0, 1),
@@ -2468,9 +2603,9 @@ def market_master_query(query: str, budget: float = 5000.0,
     if sahib_cookies:
         _progress(f"🔐 <b>Sahibinden direkt</b> erişim (Lord cookies aktif, {len(sahib_cookies)} cookie)")
     elif epey_avg > 0:
-        _progress(f"🦊 <b>Sahibinden CF bypass</b> denenecek (cookies yok → Camoufox hayalet Firefox) — Epey avg {epey_avg:,.0f}₺")
+        _progress(f"🦊 <b>Sahibinden Byparr</b> hazır (cookiesiz CF+PX bypass) — Epey avg {epey_avg:,.0f}₺")
     else:
-        _progress(f"🦊 <b>Sahibinden CF bypass</b> denenecek (cookies yok → Camoufox hayalet Firefox)")
+        _progress(f"🦊 <b>Sahibinden Byparr</b> hazır (cookiesiz Cloudflare+PerimeterX bypass)")
     # FAZ-Cookie: Sahibinden direkt önce dene (Lord cookies varsa)
     sahib_r = None
     sahib_direct_success = False
@@ -2501,10 +2636,27 @@ def market_master_query(query: str, budget: float = 5000.0,
             else:
                 _progress(f"⚠️ Sahibinden erişim hatası (status={st}) — akakce fallback")
             sahib_r = None
+    # [BYPARR_FALLBACK] Cookie yoksa veya bot tespiti → Byparr CF+PX bypass (11 Haz 2026)
+    sahib_byparr_listings: Optional[List[Dict[str, Any]]] = None
+    if not sahib_r or sahib_bot_detected:
+        _progress("🦊 <b>Sahibinden Byparr</b> (Cloudflare+PerimeterX bypass) deneniyor...")
+        sahib_byparr_listings = fetch_sahibinden_byparr(
+            query, budget=budget, log_fn=_log,
+            negatif_tipler=_negatif_tipler,
+            pozitif_tipler=_pozitif_tipler,
+        )
+        if sahib_byparr_listings:
+            sahib_direct_success = True
+            _progress(f"🦊✅ <b>Byparr başarılı</b> — {len(sahib_byparr_listings)} ilan (cookiesiz)")
+        else:
+            _progress("🦊 Byparr başarısız → akakce fallback")
     try:
-        if not sahib_r:
+        if sahib_byparr_listings:
+            # Byparr zaten parse etti — akakce/akakce'yi atla, bot-anomali filtresine geç
+            sahib_parsed = sahib_byparr_listings
+        elif not sahib_r:
             sahib_r = fetcher.fetch_sahibinden_indirect(query)
-        if sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
+        if not sahib_byparr_listings and sahib_r.status == 200 and not sahib_r.blocked and sahib_r.text:
             # Sahibinden direkt veya akakce'ye göre parser seç
             if sahib_direct_success:
                 sahib_parsed = _parse_sahibinden_listings(

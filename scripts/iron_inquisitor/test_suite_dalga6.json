@@ -651,5 +651,93 @@
     "expected": {
       "blocked": false
     }
+  },
+  {
+    "id": "verify-byparr-start-script",
+    "category": "verify_byparr",
+    "description": "Byparr: start_byparr.sh mevcut",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/start_byparr.sh",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-byparr-fetch-func",
+    "category": "verify_byparr",
+    "description": "Byparr: fetch_sahibinden_byparr fonksiyonu market_master'da var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "def fetch_sahibinden_byparr",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-byparr-url-const",
+    "category": "verify_byparr",
+    "description": "Byparr: BYPARR_URL sabiti tanımlı (port 8191)",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "BYPARR_URL",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-byparr-fallback-inject",
+    "category": "verify_byparr",
+    "description": "Byparr: market_master_query'de BYPARR_FALLBACK inject noktası var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "BYPARR_FALLBACK",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-byparr-bat-entry",
+    "category": "verify_byparr",
+    "description": "Byparr: Kuroshin.bat [3/6] adımında start_byparr.sh var",
+    "type": "code_inspect",
+    "file": "Kuroshin.bat",
+    "check": "file_contains",
+    "pattern": "start_byparr.sh",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-byparr-walker-layer5",
+    "category": "verify_byparr",
+    "description": "Walker 5. katman: curl_cffi TLS bypass walker_service'e eklendi",
+    "type": "code_inspect",
+    "file": "agents/kuroshin_walker_service.py",
+    "check": "file_contains",
+    "pattern": "CURL_CFFI_BYPASS",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-cookie-expire-check",
+    "category": "verify_byparr",
+    "description": "Cookie expire: _check_sahibinden_cookie_expiry fonksiyonu var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "_check_sahibinden_cookie_expiry",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-adaptive-retry",
+    "category": "verify_byparr",
+    "description": "Adaptive retry: SAHIB_RETRY_MAX_SEC + _sahib_bot_hit_count var",
+    "type": "code_inspect",
+    "file": "scripts/kuroshin_market_master.py",
+    "check": "file_contains",
+    "pattern": "SAHIB_RETRY_MAX_SEC",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-scihub-module",
+    "category": "verify_byparr",
+    "description": "Sci-Hub: _test_scihub.py modülü (IP bypass + DOI → PDF) var",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "scripts/_test_scihub.py",
+    "expected": { "blocked": false }
   }
 ]

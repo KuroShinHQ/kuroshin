@@ -1,6 +1,6 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026 18:30
-**Süreç:** 🚀 **v11.33.1** — DALGA-6 ✅ + KuroRecon v1.0.1 ✅ + Iron 97/97 ✅ + Scraping araştırması ✅
+**Son Güncelleme:** 11 Haziran 2026 21:00
+**Süreç:** 🚀 **v11.33.3** — Byparr CF+PX bypass ✅ + Walker 5. katman ✅ + Cookie expire uyarısı ✅ + Iron 66/66 ✅
 
 ---
 
@@ -24,7 +24,7 @@
 - [x] **EPEY-1** `_parse_epey_curlcffi(html)` — 9 ürün, title attr, Playwright YOK ✅
 - [x] **EPEY-2** market_master Epey → curl_cffi chrome131 ✅
 - [x] **HB-1** chrome131 + `[class*="Price"]` broad selector ✅
-- [ ] **SAH-OPT** FlareSolverr Docker dene — Sahibinden Turnstile'a ~%50 şans. Cookie sistemi yedek kalır.
+- [x] **SAH-BYPARR** Byparr (Camoufox CF+PX bypass) entegrasyonu — cookiesiz 12 ilan ✅ (11 Haz)
 - [ ] **TEST-1** `test_suite_scraper_mlfree.json` — 4 site için fixture HTML + runtime_test (`python_eval`) testleri. ML yok, 5s'de koşar.
 - [ ] **TEST-2** Iron Inquisitor'a ekle, `--skip-llama --skip-bridge --no-telegram` ile CI'a entegre
 

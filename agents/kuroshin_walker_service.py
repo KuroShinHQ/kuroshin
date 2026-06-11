@@ -231,6 +231,7 @@ def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
         except Exception as e3:
             _log(f"[CRAWLEE] Camoufox da başarısız ({e3}), kuroshin_scraper son fallback deneniyor...")
         # 4. BORÇ-4 (2 Haz 2026) kuroshin_scraper son fallback — 8 anti-bot signature + UA rotate
+        _e4_msg = None
         try:
             import sys as _sys_sc
             if "/mnt/c/Kuroshin/scripts" not in _sys_sc.path:
@@ -242,10 +243,45 @@ def crawlee_deep_crawl(url: str, mode: str = "playwright") -> str:
                 _sig = ",".join(_res.antibot_detected) if _res.antibot_detected else "none"
                 _log(f"[SCRAPER_FALLBACK] url={url[:60]} sig={_sig} status=200 chars={len(_res.text)} attempts={_res.attempts}")
                 return sanitize_web_content(_res.text, max_chars=CRAWL_CHAR_LIMIT)
+            _e4_msg = f"scraper status={_res.status_code}"
             _log(f"[SCRAPER_FALLBACK] başarısız url={url[:60]} status={_res.status_code} chars={len(_res.text or '')}")
-            return f"Crawlee + Crawl4AI + Camoufox + Scraper dördü de başarısız (scraper status={_res.status_code})"
         except Exception as e4:
-            return f"Crawlee + Crawl4AI + Camoufox + Scraper dördü de başarısız: {e4}"
+            _e4_msg = str(e4)
+        _log(f"[SCRAPER_FALLBACK] başarısız → curl_cffi TLS bypass deneniyor...")
+        # 5. curl_cffi chrome131 TLS impersonate + ISP IP bypass (11 Haz 2026)
+        # DNS+TLS/SNI bloklu siteler için: 8.8.8.8 ile IP çöz → IP direkt + Host header
+        try:
+            import subprocess as _sp
+            import re as _re_ip
+            from urllib.parse import urlparse as _urlparse
+            import curl_cffi.requests as _ccffi
+            _parsed = _urlparse(url)
+            _host = _parsed.hostname or ""
+            _path = _parsed.path or "/"
+            if _parsed.query:
+                _path += "?" + _parsed.query
+            _nslookup = _sp.check_output(
+                ["nslookup", _host, "8.8.8.8"], timeout=8, text=True, stderr=_sp.DEVNULL
+            )
+            _ips = [m for m in _re_ip.findall(r"Address:\s+([\d\.]+)", _nslookup) if m != "8.8.8.8"]
+            _ip = _ips[-1] if _ips else None
+            if not _ip:
+                raise Exception(f"DNS çözülemedi: {_host}")
+            _scheme = _parsed.scheme or "https"
+            _r5 = _ccffi.get(
+                f"{_scheme}://{_ip}{_path}",
+                headers={"Host": _host, "Referer": f"{_scheme}://{_host}/"},
+                impersonate="chrome131",
+                verify=False,
+                timeout=20,
+            )
+            if _r5.status_code == 200 and len(_r5.text or "") > 200 and not _is_blocked_response(_r5.text):
+                _log(f"[CURL_CFFI_BYPASS] ✅ url={url[:60]} chars={len(_r5.text)} ip={_ip}")
+                return sanitize_web_content(_r5.text, max_chars=CRAWL_CHAR_LIMIT)
+            _log(f"[CURL_CFFI_BYPASS] başarısız url={url[:60]} status={_r5.status_code} chars={len(_r5.text or '')}")
+            return f"5 katmanın tümü başarısız: katman4={_e4_msg}, curl_cffi_status={_r5.status_code}"
+        except Exception as e5:
+            return f"5 katmanın tümü başarısız: katman4={_e4_msg}, katman5={e5}"
 
 
 def save_to_memory(data: str) -> str:
@@ -321,6 +357,9 @@ walker_agent = Agent(
         "3. Basit HTML siteler için 'web_reader_tool' ile oku.\n"
         "4. JavaScript ağır veya anti-bot korumalı siteler için 'crawlee_deep_crawl' kullan "
         "(mode='playwright' veya 'stealth'). Hafif siteler için mode='simple'.\n"
+        "   'crawlee_deep_crawl' 5 katmanlı fallback zinciri içerir: Crawlee → Crawl4AI → Camoufox → "
+        "kuroshin_scraper → curl_cffi TLS impersonate. Son katman TR ISP DNS/SNI bloklu siteler için "
+        "(sci-hub, akademik arşivler, CF korumalı domainler) otomatik devreye girer — sen sadece URL ver.\n"
         "5. Analiz et, Lorduma rapor sun.\n"
         "6. Kritik bulguları MUTLAKA 'save_to_memory' ile kaydet.\n\n"
         "ÜSLUP: Ciddi, teknik, Türkçe. 'Lordum' diye hitap et."
