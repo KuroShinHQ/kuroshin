@@ -1,6 +1,23 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 2 Haziran 2026
-**Süreç:** 🚀 **D-TURU v11.23.0** — TR prompt ✅ + Walker canli ✅ + LangGraph Checkpoint ✅ + DALGA 6 Protokol v2 ✅
+**Son Güncelleme:** 11 Haziran 2026
+**Süreç:** 🚀 **v11.33.1** — DALGA-6 ✅ + KuroRecon v1.0.1 ✅ + Iron 97/97 ✅
+
+---
+
+## 🆕 GİTHUB REPO TEMİZLİĞİ (11 Haz 2026 — Sıradaki sohbet)
+
+**Hedef:** 4 GitHub repoyu private yap + güncel içerikle cilala
+
+| Repo | Şu an | Yapılacak |
+|---|---|---|
+| `KuroShinHQ/KuroShinHQ` | Public, v8.9.0 (3 hafta eski) | Private yap |
+| `KuroShinHQ/Kuroshin-CLI` | Public | Private yap |
+| `KuroShinHQ/AI-Model-Scanner` | Public | Private yap |
+| `KuroShinHQ/KuroShinVM` | Public | Private yap |
+
+**Sonra:** KuroRecon için ayrı temiz public repo aç (portfolyo olarak)
+
+**Komut:** `gh repo edit KuroShinHQ/<repo> --visibility private`
 
 ---
 
