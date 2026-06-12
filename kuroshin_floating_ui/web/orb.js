@@ -18,9 +18,21 @@
   }
   syncSize();
 
+  // setOrbState WebGL'den bağımsız — CSS class + shader state
+  const STATE = { IDLE: 0, PROCESSING: 1, DONE: 2, ALARM: 3, GHOST: 4 };
+  let currentState = 0;
+
+  window.setOrbState = function (name) {
+    currentState = STATE[name] ?? 0;
+    const btn = document.getElementById('orb-btn');
+    if (!btn) return;
+    if (name === 'ALARM') btn.classList.add('alarm-state');
+    else btn.classList.remove('alarm-state');
+  };
+
   const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
   if (!gl) {
-    // WebGL yok — fallback dot göster, canvas gizle
+    // WebGL yok — fallback dot göster, canvas gizle; setOrbState CSS-only çalışır
     canvas.style.display = 'none';
     return;
   }
@@ -95,7 +107,7 @@ void main() {
 
   // Renk paleti (state'e göre)
   vec3 c1 = NAVY, c2 = PURPLE, rimC = CYAN;
-  if (u_state==3.0) { c1=vec3(0.25,0,0); c2=ALARM; rimC=ALARM; }
+  if (u_state==3.0) { c1=vec3(0.04,0.0,0.0); c2=vec3(0.92,0.06,0.06); rimC=vec3(1.0,0.22,0.05); }
   else if (u_state==2.0) { c1=vec3(0,0.15,0.08); c2=GREEN; rimC=GREEN; }
   else if (u_state==4.0) { c1=vec3(0.04,0.04,0.05); c2=GREY; rimC=GREY; }
 
@@ -147,17 +159,11 @@ void main() {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  // Orb durum API
-  const STATE = { IDLE: 0, PROCESSING: 1, DONE: 2, ALARM: 3, GHOST: 4 };
-  let currentState = 0;
-
+  // setOrbState shader tarafını da günceller (WebGL uniform)
+  const _baseSetOrbState = window.setOrbState;
   window.setOrbState = function (name) {
+    _baseSetOrbState(name);
     currentState = STATE[name] ?? 0;
-    // ALARM → orb-btn'e class ekle
-    const btn = document.getElementById('orb-btn');
-    if (!btn) return;
-    if (name === 'ALARM') btn.classList.add('alarm-state');
-    else btn.classList.remove('alarm-state');
   };
 
   function render(t) {

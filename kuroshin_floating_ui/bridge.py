@@ -38,6 +38,7 @@ async def _ws_handler(websocket):
 
 
 async def _broadcast(payload: dict):
+    global _WS_CLIENTS
     if not _WS_CLIENTS:
         return
     text = json.dumps(payload, ensure_ascii=False)
@@ -121,20 +122,41 @@ class _AlarmHTTPHandler(http.server.BaseHTTPRequestHandler):
     alarm.py gibi harici kaynaklar HTTP POST :9004/alarm ile push yapar.
     asyncio.run_coroutine_threadsafe ile _broadcast doğrudan event loop'a enjekte edilir.
     """
+    def do_GET(self):
+        if self.path == '/debug':
+            info = json.dumps({
+                'ws_clients': len(_WS_CLIENTS),
+                'loop_ok': bool(_BRIDGE_LOOP and not _BRIDGE_LOOP.is_closed()),
+            }).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(info)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         if self.path == '/alarm':
             try:
                 length = int(self.headers.get('Content-Length', 0))
                 body   = self.rfile.read(length)
                 data   = json.loads(body)
+                err_msg = b'no_loop'
                 if _BRIDGE_LOOP and not _BRIDGE_LOOP.is_closed():
-                    asyncio.run_coroutine_threadsafe(_broadcast(data), _BRIDGE_LOOP)
+                    future = asyncio.run_coroutine_threadsafe(_broadcast(data), _BRIDGE_LOOP)
+                    try:
+                        future.result(timeout=3)
+                        err_msg = b'ok'
+                    except Exception as e:
+                        err_msg = f'broadcast_err:{e}'.encode()
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b'ok')
-            except Exception:
+                self.wfile.write(err_msg)
+            except Exception as e:
                 self.send_response(500)
                 self.end_headers()
+                self.wfile.write(str(e).encode())
         else:
             self.send_response(404)
             self.end_headers()
