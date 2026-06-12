@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kuroshin</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div id="ui-root">
+
+  <!-- ── Chat Panel ── -->
+  <div id="chat-panel" class="collapsed">
+
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div style="display:flex;gap:8px;align-items:center;font-size:10px;color:#A3A3A3;">
+        <span style="display:flex;align-items:center;gap:3px;">
+          CH<span id="led-ch" class="led-dot led-unknown">●</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:3px;">
+          LM<span id="led-lm" class="led-dot led-unknown">●</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:3px;">
+          WK<span id="led-wk" class="led-dot led-unknown">●</span>
+        </span>
+      </div>
+      <span id="mode-badge" style="font-size:10px;color:rgba(255,255,255,0.3);letter-spacing:1px;">LITE</span>
+      <button id="close-btn"
+        style="background:none;border:none;color:#A3A3A3;cursor:pointer;font-size:13px;
+               padding:2px 4px;transition:color 0.2s;"
+        onmouseover="this.style.color='#fff'"
+        onmouseout="this.style.color='#A3A3A3'">✕</button>
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chat-area"></div>
+
+    <!-- Input Area -->
+    <div class="input-area">
+      <span class="input-prompt">&gt;</span>
+      <input id="cmd-input" type="text" placeholder="komut gir..." autocomplete="off" spellcheck="false"/>
+      <button id="send-btn">▶</button>
+    </div>
+
+    <!-- Sistem Butonları -->
+    <div class="sys-buttons">
+      <button class="sys-btn" id="btn-ram" title="RAM Purge">
+        <img src="../assets/icons/cpu.svg" alt="RAM"/>
+      </button>
+      <button class="sys-btn" id="btn-llm" title="LLM Toggle">
+        <img src="../assets/icons/cpu-fix.svg" alt="LLM"/>
+      </button>
+      <button class="sys-btn" id="btn-restart" title="Chancellor Restart">
+        <img src="../assets/icons/arrow-clockwise.svg" alt="Restart"/>
+      </button>
+      <button class="sys-btn" id="btn-alarm" title="Fiyat Alarmları">
+        <img src="../assets/icons/bell.svg" alt="Alarm"/>
+      </button>
+    </div>
+
+  </div><!-- /chat-panel -->
+
+  <!-- ── Floating Orb ── -->
+  <div id="orb-btn">
+    <canvas id="webgl-orb"></canvas>
+    <div id="orb-fallback"></div>
+  </div>
+
+</div><!-- /ui-root -->
+
+<script src="orb.js"></script>
+<script src="chat.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

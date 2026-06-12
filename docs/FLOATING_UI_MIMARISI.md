@@ -429,42 +429,122 @@ Terminal gerektirmez. Status LED'ler birer birer yanar.
 
 ---
 
-## 7. DOSYA YAPISI (Hedef)
+## 7. DOSYA YAPISI (Kesinleşti — 12 Haz 2026)
 
 ```
 C:\Kuroshin\
-├── kuroshin_floating_ui/
-│   ├── main.py                    ← pythonw ile başlatılır
-│   │                                 pywebview window + pystray + watchdog
-│   ├── bridge.py                  ← Windows Python WebSocket hub (:9003)
-│   │                                 Telegram poll + Chancellor HTTP poll
-│   │                                 alarm.py alert alır → UI'ya iletir
-│   ├── api.py                     ← JS'den çağrılan Python API sınıfı
-│   │                                 move_window, send_message, get_status
-│   │                                 full_power_start, chancellor_restart
-│   ├── modes.py                   ← Mod yöneticisi (LITE/LLM/FULL)
-│   │                                 WSL subprocess komutları
-│   ├── requirements.txt           ← pywebview, pystray, websockets, pillow
-│   ├── settings.json              ← pozisyon, son mod, opacity
-│   ├── web/
-│   │   ├── index.html             ← UI kök (pywebview file:// açar)
-│   │   ├── orb.js                 ← WebGL shader (stitch'ten direkt)
-│   │   ├── chat.js                ← Sohbet + mesaj render + typewriter
-│   │   ├── system.js              ← Status LED, sistem butonları
-│   │   ├── animations.js          ← fade, shake, snap, auto-hide
-│   │   └── style.css              ← Liquid Glass, JetBrains Mono, tüm stiller
-│   └── assets/
-│       └── icon.ico
 │
-├── scripts/
-│   └── chancellor_http_server.py  ← Chancellor'a entegre aiohttp mini server
-│                                     WSL :9005 — GET /status, POST /message, SSE /stream
-│                                     (chancellor.py import eder, ortak venv)
+├── kuroshin_floating_ui\               ← ANA DİZİN (Windows Python — pywebview)
+│   │
+│   ├── main.py                         ← Giriş noktası (pythonw ile başlatılır)
+│   │                                     • pywebview window (frameless, transparent, always-on-top)
+│   │                                     • pystray system tray (Göster/Gizle/Kapat)
+│   │                                     • bridge thread (WebSocket hub :9003)
+│   │                                     • watchdog subprocess restart
+│   │                                     • settings.json okuma/yazma
+│   │
+│   ├── api.py                          ← JS → Python köprüsü (pywebview expose)
+│   │                                     • move_window(x, y)
+│   │                                     • toggle_panel()
+│   │                                     • send_message(text)
+│   │                                     • get_status()
+│   │                                     • quit()
+│   │
+│   ├── modes.py                        ← Mod yöneticisi
+│   │                                     • LITE: WSL yok, ghost mod (FAZ-1'de aktif)
+│   │                                     • FULL_POWER: WSL subprocess zinciri (FAZ-3'te dolar)
+│   │                                     • MOD_2: Askıda (Lord belirleyecek)
+│   │                                     • start_full_power() / stop_all()
+│   │
+│   ├── settings.json                   ← Kalıcı ayarlar
+│   │                                     {
+│   │                                       "orb_x": 1830,
+│   │                                       "orb_y": 970,
+│   │                                       "orb_corner": "bottom-right",
+│   │                                       "mode": "lite",
+│   │                                       "panel_open": false,
+│   │                                       "opacity": 0.92,
+│   │                                       "theme": "dark"
+│   │                                     }
+│   │
+│   ├── requirements.txt                ← Sadece FloatingUI bağımlılıkları (Windows pip)
+│   │                                     pywebview>=4.4.1
+│   │                                     pystray>=0.19.5
+│   │                                     pillow>=10.0.0
+│   │                                     websockets>=13.1
+│   │
+│   ├── web\                            ← Tüm UI (pywebview file:// ile açar)
+│   │   ├── index.html                  ← UI kök (Stitch code.html temel alınır)
+│   │   │                                 JetBrains Mono CDN, Tailwind CDN
+│   │   ├── orb.js                      ← WebGL orb shader + animasyon durumları
+│   │   │                                 IDLE / PROCESSING / DONE / ALARM / GHOST
+│   │   │                                 Kaynak: project_circle shader GLSL extract
+│   │   ├── chat.js                     ← Sohbet paneli mantığı
+│   │   │                                 Mesaj balonları, typewriter, progress bar
+│   │   │                                 Akıllı scroll, zaman damgası
+│   │   ├── app.js                      ← Uygulama mantığı
+│   │   │                                 Panel toggle (tıklayınca aç/kapat)
+│   │   │                                 Orb drag + 4 köşe snap
+│   │   │                                 Auto-hide (2dk → 32px pulse)
+│   │   │                                 Click-outside kapat
+│   │   │                                 Sistem butonları handler
+│   │   │                                 Bridge WebSocket bağlantısı
+│   │   └── style.css                   ← Tüm stiller
+│   │                                     Liquid Glass panel
+│   │                                     JetBrains Mono
+│   │                                     Scroll 4px minimal
+│   │                                     Animasyonlar (breathe, pulse, shake, fade)
+│   │
+│   └── assets\
+│       ├── icon.ico                    ← pystray tray ikonu (256x256)
+│       └── icons\                      ← Phosphor Icons (lokal SVG — internet gerekmez)
+│           ├── cpu.svg                 ← RAM purge butonu
+│           ├── cpu-fix.svg             ← LLM toggle
+│           ├── arrow-clockwise.svg     ← Chancellor restart
+│           └── bell.svg               ← Fiyat alarm listesi
 │
-└── kuroshin-downloads/
-    └── stitch_kuroshin_floating_desktop_widget/
-        ├── kuroshin_system/DESIGN.md        ← STİL REHBERİ (onaylı)
-        └── project_circle_.../code.html     ← ORB SHADER KAYNAĞI
+├── agents\
+│   └── kuroshin_chancellor_http.py    ← FAZ-2'de yazılacak (WSL :9005 aiohttp)
+│                                         GET /status, POST /message, SSE /stream
+│                                         chancellor.py import eder, ortak venv
+│
+└── kuroshin-downloads\
+    └── stitch_kuroshin_floating_desktop_assistant\
+    │   ├── kuroshin_assistant_main_view\code.html  ← FAZ-1 HTML temel kaynağı ✅
+    │   └── kuroshin_assistant_main_view\screen.png ← Onaylı görsel
+    └── stitch_kuroshin_floating_desktop_widget\
+        ├── kuroshin_system\DESIGN.md               ← Tasarım sistemi (güncellenmiş)
+        └── project_circle_...\code.html            ← Orb WebGL shader kaynağı
+```
+
+### 7.1 Bat Entegrasyon Sırası
+
+```batch
+:: [1/6] FloatingUI — EN ÖNCE (Lite mod ile hemen açılır, arka plan yüklenir)
+start "Kuroshin FloatingUI" /B pythonw "C:\Kuroshin\kuroshin_floating_ui\main.py"
+timeout /t 2 /nobreak >nul
+
+:: [2/6] Llama-server (240s)
+:: [3/6] Chancellor
+:: [4/6] Walker
+:: [5/6] Byparr
+:: [6/6] ChromaDB
+```
+
+### 7.2 Windows Startup (Lite Otomatik)
+
+```
+shell:startup klasörü:
+  C:\Users\pc\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\
+  └── Kuroshin FloatingUI.lnk
+      Target: pythonw "C:\Kuroshin\kuroshin_floating_ui\main.py" --mode lite
+```
+
+### 7.3 Bat [5] Kapatma
+
+```batch
+taskkill /F /IM pythonw.exe 2>nul
+:: (bridge thread de kapanır — aynı process)
 ```
 
 ---
