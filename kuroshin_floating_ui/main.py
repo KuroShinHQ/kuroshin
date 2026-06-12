@@ -114,6 +114,48 @@ def _make_icon() -> Image.Image:
 _window: webview.Window = None
 
 
+def _setup_orb_center_hotkey(save_pos_fn):
+    """
+    ü tuşu 5 saniye basılı tutulunca orb'u primary ekranın ortasına taşır.
+    Global hotkey — pywebview penceresi odakta olmasa da çalışır.
+    """
+    try:
+        import keyboard as _kb
+
+        _state = {'timer': None, 'pressed': False}
+
+        def _do_center():
+            _state['timer']   = None
+            _state['pressed'] = False
+            if not _window:
+                return
+            sw, sh = _screen_size()
+            cx = (sw - 92) // 2
+            cy = (sh - 92) // 2
+            _window.move(cx, cy)
+            save_pos_fn(cx, cy, 'center')
+
+        def _on_press(e):
+            if _state['pressed']:
+                return                    # auto-repeat → yoksay
+            _state['pressed'] = True
+            t = threading.Timer(5.0, _do_center)
+            _state['timer'] = t
+            t.start()
+
+        def _on_release(e):
+            _state['pressed'] = False
+            if _state['timer']:
+                _state['timer'].cancel()
+                _state['timer'] = None
+
+        _kb.on_press_key('ü', _on_press,   suppress=False)
+        _kb.on_release_key('ü', _on_release, suppress=False)
+
+    except Exception:
+        pass   # keyboard paketi yoksa veya hook başarısız → sessiz geç
+
+
 def _tray_loop():
     def on_show(icon, item):
         if _window:
@@ -195,6 +237,9 @@ def main():
     )
 
     api_obj.set_window(_window)
+
+    # ü tuşu 5sn basılı → orb ekran ortasına
+    _setup_orb_center_hotkey(api_obj.save_position)
 
     webview.start(debug=False)
 
