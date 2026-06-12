@@ -1,7 +1,7 @@
 {
-  "orb_x": 1812,
-  "orb_y": 972,
-  "orb_corner": "bottom-right",
+  "orb_x": 100,
+  "orb_y": 100,
+  "orb_corner": "free",
   "mode": "lite",
   "panel_open": false,
   "opacity": 0.92,

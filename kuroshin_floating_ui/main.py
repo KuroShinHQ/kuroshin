@@ -15,6 +15,11 @@ SETTINGS_PATH = os.path.join(HERE, 'settings.json')
 WEB_DIR       = os.path.join(HERE, 'web')
 ICON_PATH     = os.path.join(HERE, 'assets', 'icon.ico')
 
+# ── Tek instance kilidi (birden fazla başlatmayı engelle) ──
+_MUTEX = ctypes.windll.kernel32.CreateMutexW(None, True, 'KuroshinFloatingUI_SingleInstance')
+if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+    sys.exit(0)
+
 sys.path.insert(0, HERE)
 
 import webview
@@ -114,6 +119,30 @@ def _make_icon() -> Image.Image:
 _window: webview.Window = None
 
 
+def _apply_colorkey_transparency():
+    """
+    pywebview 6.x transparent=True Windows'ta DWM siyah artifact yaratıyor.
+    Fix: WS_EX_LAYERED + LWA_COLORKEY(#010203) → bu renk piksel şeffaf olur.
+    CSS body { background: #010203 } ve background_color='#010203' ile birlikte çalışır.
+    """
+    import time
+    time.sleep(1.8)   # pywebview window tamamen oluştuktan sonra uygula
+
+    GWL_EXSTYLE  = -20
+    WS_EX_LAYERED = 0x00080000
+    LWA_COLORKEY  = 0x00000001
+    # COLORREF = 0x00BBGGRR — #010203 (R=1,G=2,B=3) → COLORREF = 0x00030201
+    COLORREF_KEY  = 0x00030201
+
+    hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
+    if not hwnd:
+        return
+
+    old = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_LAYERED)
+    ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, COLORREF_KEY, 255, LWA_COLORKEY)
+
+
 def _setup_orb_center_hotkey(save_pos_fn):
     """
     ü tuşu 5 saniye basılı tutulunca orb'u primary ekranın ortasına taşır.
@@ -202,6 +231,9 @@ def main():
     # Taskbar gizleme → arka plan thread (pencere açıldıktan sonra çalışır)
     threading.Thread(target=_hide_from_taskbar, daemon=True).start()
 
+    # Colorkey transparency fix (pywebview 6.x DWM siyah artifact)
+    threading.Thread(target=_apply_colorkey_transparency, daemon=True).start()
+
     # Mod başlat
     mode_mgr.start(settings.get('mode', 'lite'))
 
@@ -229,11 +261,11 @@ def main():
         x=win_x,
         y=win_y,
         frameless=True,
-        transparent=True,
+        transparent=False,          # WS_EX_LAYERED ile manuel yönetiyoruz
         on_top=True,
         easy_drag=False,
         min_size=(64, 64),
-        background_color='#000000',
+        background_color='#010203', # colorkey rengi — CSS background ile eşleşmeli
     )
 
     api_obj.set_window(_window)

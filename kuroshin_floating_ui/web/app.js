@@ -69,7 +69,7 @@
       if (dragging) {
         const dx = ev.screenX - dragStartX;
         const dy = ev.screenY - dragStartY;
-        snapToCorner(winStartX + dx, winStartY + dy);
+        snapToCornerIfNear(winStartX + dx, winStartY + dy);
       } else {
         // Tıklama: panel aç/kapat
         if (panelOpen) closePanel(); else openPanel();
@@ -81,35 +81,40 @@
     document.addEventListener('mouseup', onUp);
   });
 
-  function snapToCorner(wx, wy) {
+  function snapToCornerIfNear(wx, wy) {
     const sw = window.screen.width;
     const sh = window.screen.height;
-    const ww = window.outerWidth;
-    const wh = window.outerHeight;
+    const WW  = 92;  // orb pencere boyutu (sabit)
     const PAD = 16;
+    const SNAP_DIST = 80;  // px — bu mesafeden yakınsa köşeye snap yap
 
     const corners = [
-      { name: 'top-left',     x: PAD,           y: PAD },
-      { name: 'top-right',    x: sw - ww - PAD, y: PAD },
-      { name: 'bottom-left',  x: PAD,           y: sh - wh - PAD },
-      { name: 'bottom-right', x: sw - ww - PAD, y: sh - wh - PAD },
+      { name: 'top-left',     x: PAD,            y: PAD },
+      { name: 'top-right',    x: sw - WW - PAD,  y: PAD },
+      { name: 'bottom-left',  x: PAD,            y: sh - WW - PAD },
+      { name: 'bottom-right', x: sw - WW - PAD,  y: sh - WW - PAD },
     ];
 
-    const cx = wx + ww / 2;
-    const cy = wy + wh / 2;
-    let best = corners[3], bestD = Infinity;
+    const cx = wx + WW / 2;
+    const cy = wy + WW / 2;
+    let best = null, bestD = Infinity;
     for (const c of corners) {
-      const d = Math.hypot(cx - (c.x + ww / 2), cy - (c.y + wh / 2));
+      const d = Math.hypot(cx - (c.x + WW / 2), cy - (c.y + WW / 2));
       if (d < bestD) { bestD = d; best = c; }
     }
 
-    window.pywebview?.api?.move_window?.(best.x, best.y);
-    // best.x/y = pencerenin sol-üst köşesi → doğrudan kaydet
-    window.pywebview?.api?.save_position?.(best.x, best.y, best.name);
+    if (best && bestD <= SNAP_DIST) {
+      // Köşeye yakın → snap
+      window.pywebview?.api?.move_window?.(best.x, best.y);
+      window.pywebview?.api?.save_position?.(best.x, best.y, best.name);
+    } else {
+      // Serbestçe bırak
+      window.pywebview?.api?.save_position?.(wx, wy, 'free');
+    }
   }
 
   // ── Auto-hide (2 dakika) ─────────────────────────────
-  const AUTO_HIDE_MS = 2 * 60 * 1000;
+  const AUTO_HIDE_MS = 10 * 60 * 1000;  // 10 dakika
   let autoHideTimer  = null;
 
   function resetAutoHide() {
