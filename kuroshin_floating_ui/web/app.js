@@ -77,21 +77,59 @@
   let winStartX  = 0, winStartY   = 0;
   const DRAG_THRESHOLD = 5;
 
+  // ── RAM Purge Balonu ────────────────────────────────
+  const ramBalloon    = document.getElementById('ram-balloon');
+  const ramBalloonBtn = document.getElementById('ram-balloon-btn');
+  let longPressTimer  = null;
+
+  function showRamBalloon() {
+    ramBalloon.classList.add('visible');
+  }
+  function hideRamBalloon() {
+    ramBalloon.classList.remove('visible');
+  }
+
+  ramBalloonBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    ramBalloonBtn.textContent = '⏳ Temizleniyor...';
+    ramBalloonBtn.disabled = true;
+    window.pywebview?.api?.ram_purge?.();
+    setTimeout(() => {
+      ramBalloonBtn.textContent = '✅ Temizlendi';
+      setTimeout(() => {
+        ramBalloonBtn.textContent = '🧹 RAM Temizle';
+        ramBalloonBtn.disabled = false;
+        hideRamBalloon();
+      }, 1200);
+    }, 800);
+  });
+
+  document.addEventListener('click', e => {
+    if (!ramBalloon.contains(e.target) && !orb.contains(e.target)) {
+      hideRamBalloon();
+    }
+  });
+
   orb.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     dragging   = false;
     dragStartX = e.screenX;
     dragStartY = e.screenY;
-    // window.screenX/Y = pywebview penceresinin ekrandaki pozisyonu
     winStartX  = window.screenX;
     winStartY  = window.screenY;
     e.preventDefault();
+
+    // Long-press 600ms → RAM balon
+    longPressTimer = setTimeout(() => {
+      if (!dragging) showRamBalloon();
+    }, 600);
 
     const onMove = ev => {
       const dx = ev.screenX - dragStartX;
       const dy = ev.screenY - dragStartY;
       if (!dragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
         dragging = true;
+        clearTimeout(longPressTimer);
         orb.classList.add('dragging');
         resetAutoHide();
       }
@@ -102,6 +140,7 @@
     };
 
     const onUp = ev => {
+      clearTimeout(longPressTimer);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       orb.classList.remove('dragging');
@@ -110,8 +149,8 @@
         const dx = ev.screenX - dragStartX;
         const dy = ev.screenY - dragStartY;
         snapToCornerIfNear(winStartX + dx, winStartY + dy);
-      } else {
-        // Tıklama: panel aç/kapat
+      } else if (!ramBalloon.classList.contains('visible')) {
+        // Normal tıklama (balon yok): panel aç/kapat
         if (panelOpen) closePanel(); else openPanel();
       }
       dragging = false;
