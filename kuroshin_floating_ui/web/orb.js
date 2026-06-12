@@ -56,6 +56,7 @@ precision highp float;
 uniform float u_time;
 uniform vec2  u_res;
 uniform float u_state; // 0=IDLE 1=PROC 2=DONE 3=ALARM 4=GHOST
+uniform float u_press; // 0.0-1.0: long-press RAM dolum animasyonu
 varying vec2  v_uv;
 
 const vec3 NAVY   = vec3(0.004, 0.016, 0.063);
@@ -90,11 +91,12 @@ void main() {
   vec2  uv   = (v_uv - 0.5) * 2.0;
   float dist = length(uv);
 
-  // Hız (state'e göre)
+  // Hız (state + press artışı)
   float spd = 1.0;
   if (u_state==1.0) spd=3.5;
   if (u_state==3.0) spd=5.0;
   if (u_state==4.0) spd=0.3; // GHOST: yavaş
+  spd += u_press * 4.0;       // basılı → hızlanır
   float t = u_time * spd;
 
   // Nefes
@@ -111,7 +113,21 @@ void main() {
   else if (u_state==2.0) { c1=vec3(0,0.15,0.08); c2=GREEN; rimC=GREEN; }
   else if (u_state==4.0) { c1=vec3(0.04,0.04,0.05); c2=GREY; rimC=GREY; }
 
+  // Press: rengi kırmızıya kaydır
+  if (u_press > 0.01) {
+    c1   = mix(c1,   vec3(0.08, 0.01, 0.01), u_press);
+    c2   = mix(c2,   vec3(0.90, 0.10, 0.02), u_press);
+    rimC = mix(rimC, vec3(1.00, 0.25, 0.05), u_press);
+  }
+
   vec3 color = mix(c1, c2, f);
+
+  // Press progress ring: dışarıdan içe dolum (0% → 100%)
+  if (u_press > 0.01) {
+    float innerR = 0.55 - u_press * 0.45; // 0.55→0.10 arası daralır
+    float ring = smoothstep(innerR - 0.06, innerR, dist) * (1.0 - smoothstep(0.88, 0.97, dist));
+    color = mix(color, vec3(1.0, 0.3, 0.05), ring * (0.6 + 0.4*sin(t*12.0)));
+  }
 
   // Rim glow (Stitch-inspired: 0.70 tighter)
   float rim = smoothstep(0.70, 1.0, dist * breath);
@@ -173,9 +189,14 @@ void main() {
   const uTime  = gl.getUniformLocation(prog, 'u_time');
   const uRes   = gl.getUniformLocation(prog, 'u_res');
   const uState = gl.getUniformLocation(prog, 'u_state');
+  const uPress = gl.getUniformLocation(prog, 'u_press');
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+  // press değeri (app.js'ten setOrbPress ile güncellenir)
+  let pressValue = 0;
+  window.setOrbPress = function (v) { pressValue = Math.max(0, Math.min(1, v)); };
 
   // setOrbState shader tarafını da günceller (WebGL uniform)
   const _baseSetOrbState = window.setOrbState;
@@ -192,6 +213,7 @@ void main() {
     gl.uniform1f(uTime, t * 0.001);
     gl.uniform2f(uRes, canvas.width, canvas.height);
     gl.uniform1f(uState, currentState);
+    gl.uniform1f(uPress, pressValue);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }

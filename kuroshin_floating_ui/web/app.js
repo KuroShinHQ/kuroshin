@@ -77,51 +77,37 @@
   let winStartX  = 0, winStartY   = 0;
   const DRAG_THRESHOLD = 5;
 
-  // ── RAM Purge Balonu ────────────────────────────────
-  const ramBalloon    = document.getElementById('ram-balloon');
-  const ramBalloonBtn = document.getElementById('ram-balloon-btn');
-  let longPressTimer  = null;
-
-  function showRamBalloon() {
-    ramBalloon.classList.add('visible');
-  }
-  function hideRamBalloon() {
-    ramBalloon.classList.remove('visible');
-  }
-
-  ramBalloonBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    ramBalloonBtn.textContent = '⏳ Temizleniyor...';
-    ramBalloonBtn.disabled = true;
-    window.pywebview?.api?.ram_purge?.();
-    setTimeout(() => {
-      ramBalloonBtn.textContent = '✅ Temizlendi';
-      setTimeout(() => {
-        ramBalloonBtn.textContent = '🧹 RAM Temizle';
-        ramBalloonBtn.disabled = false;
-        hideRamBalloon();
-      }, 1200);
-    }, 800);
-  });
-
-  document.addEventListener('click', e => {
-    if (!ramBalloon.contains(e.target) && !orb.contains(e.target)) {
-      hideRamBalloon();
-    }
-  });
+  // ── Long-press RAM Purge (3sn basılı → otomatik) ───
+  let longPressTimer = null;
+  let pressInterval  = null;
+  let pressStart     = 0;
 
   orb.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     dragging   = false;
+    pressStart = Date.now();
     dragStartX = e.screenX;
     dragStartY = e.screenY;
     winStartX  = window.screenX;
     winStartY  = window.screenY;
     e.preventDefault();
 
-    // Long-press 600ms → RAM balon
+    // Long-press: 600ms → animasyon başlar, 3000ms dolunca ram_purge
     longPressTimer = setTimeout(() => {
-      if (!dragging) showRamBalloon();
+      if (!dragging) {
+        pressInterval = setInterval(() => {
+          // 600ms'den itibaren 2400ms'de 0→1 dolum (toplam = 3sn)
+          const progress = Math.min(Math.max((Date.now() - pressStart - 600) / 2400, 0), 1.0);
+          window.setOrbPress?.(progress);
+          if (progress >= 1.0) {
+            clearInterval(pressInterval);
+            pressInterval = null;
+            window.setOrbPress?.(0);
+            window.pywebview?.api?.ram_purge?.();
+            ChatManager?.addMessage('🧹 RAM cache temizleniyor...', 'bot', true);
+          }
+        }, 30);
+      }
     }, 600);
 
     const onMove = ev => {
@@ -130,6 +116,9 @@
       if (!dragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
         dragging = true;
         clearTimeout(longPressTimer);
+        clearInterval(pressInterval);
+        pressInterval = null;
+        window.setOrbPress?.(0);
         orb.classList.add('dragging');
         resetAutoHide();
       }
@@ -141,17 +130,24 @@
 
     const onUp = ev => {
       clearTimeout(longPressTimer);
+      clearInterval(pressInterval);
+      pressInterval = null;
+      window.setOrbPress?.(0);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       orb.classList.remove('dragging');
+      orb.classList.remove('auto-hidden');  // BUG-2: görünmez kalma fix
 
       if (dragging) {
         const dx = ev.screenX - dragStartX;
         const dy = ev.screenY - dragStartY;
         snapToCornerIfNear(winStartX + dx, winStartY + dy);
-      } else if (!ramBalloon.classList.contains('visible')) {
-        // Normal tıklama (balon yok): panel aç/kapat
-        if (panelOpen) closePanel(); else openPanel();
+      } else {
+        // BUG-1: sadece <50ms gerçek click panel açar; 50-600ms = ignore
+        const elapsed = Date.now() - pressStart;
+        if (elapsed < 50) {
+          if (panelOpen) closePanel(); else openPanel();
+        }
       }
       dragging = false;
     };
