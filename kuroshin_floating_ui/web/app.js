@@ -9,18 +9,43 @@
 
   // ── Panel Toggle ──────────────────────────────────────
   let panelOpen = false;
+  let _closeListener = null;
 
   function openPanel() {
-    panel.classList.remove('collapsed');
+    if (_closeListener) {
+      panel.removeEventListener('transitionend', _closeListener);
+      _closeListener = null;
+    }
     panelOpen = true;
     resetAutoHide();
+    // 1) Önce window'u büyüt — body overflow:hidden clip'i kalksın
     window.pywebview?.api?.toggle_panel?.(true);
+    // 2) Window resize tamamlansın, sonra animasyon başlasın
+    setTimeout(() => {
+      panel.style.visibility = 'visible';
+      void panel.offsetHeight;  // reflow: "from" değerini kilitle
+      panel.classList.remove('collapsed', 'closing');  // transition başlar (0.82s)
+    }, 80);
   }
 
   function closePanel() {
-    panel.classList.add('collapsed');
+    if (!panelOpen) return;
     panelOpen = false;
-    window.pywebview?.api?.toggle_panel?.(false);
+    // 1) Animasyonu başlat (window hala büyük — görünür)
+    panel.classList.remove('collapsed');
+    panel.classList.add('closing');
+
+    _closeListener = function onDone(e) {
+      if (e.propertyName !== 'opacity') return;
+      panel.removeEventListener('transitionend', _closeListener);
+      _closeListener = null;
+      panel.classList.remove('closing');
+      panel.classList.add('collapsed');
+      panel.style.visibility = 'hidden';
+      // 2) Animasyon bitti, şimdi window'u küçült
+      window.pywebview?.api?.toggle_panel?.(false);
+    };
+    panel.addEventListener('transitionend', _closeListener);
   }
 
   closeBtn.addEventListener('click', e => { e.stopPropagation(); closePanel(); });
@@ -264,6 +289,9 @@
     }
     return false;
   };
+
+  // Sayfa başlangıcında panel gizli (collapsed class var, visibility JS yönetir)
+  panel.style.visibility = 'hidden';
 
   // pywebview API hazır olunca bağlan
   function init() {
