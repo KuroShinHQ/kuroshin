@@ -26,10 +26,16 @@ html, body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
+/* Kapanırken: önce opacity sıfıra iner (0.4s), sonra visibility:hidden (delay 0.4s) */
+/* Açılırken: .collapsed kaldırılır → base transition geçerli → visibility anında görünür */
 #chat-panel.collapsed {
-  transform: scale(0.85) translateY(12px) translateX(12px);
+  transform: scale(0.85);
   opacity: 0;
   pointer-events: none;
+  visibility: hidden;
+  transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              opacity  0.4s ease,
+              visibility 0s linear 0.4s;
 }
 
 /* ── Status Bar ── */
@@ -40,7 +46,10 @@ html, body {
   padding: 8px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   background: rgba(0,0,0,0.2);
+  cursor: grab;
+  user-select: none;
 }
+.status-bar:active { cursor: grabbing; }
 
 /* ── LED durumları ── */
 .led-dot { transition: color 0.4s; font-size: 10px; }
@@ -217,7 +226,7 @@ html, body {
   user-select: none;
 }
 #orb-btn:hover {
-  box-shadow: 0 0 30px rgba(255,255,255,0.18);
+  box-shadow: 0 0 16px rgba(255,255,255,0.14);
   transform: scale(1.06);
 }
 #orb-btn.dragging {
@@ -283,8 +292,32 @@ html, body {
   bottom: 16px;
   right: 16px;
   display: flex;
-  flex-direction: column;  /* panel üstte, orb altta */
+  flex-direction: column;
   align-items: flex-end;
   gap: 8px;
   z-index: 100;
 }
+
+/* 4 yön dinamik yerleşim (data-dir, Python/JS tarafından set edilir) */
+#ui-root[data-dir="bottom-right"] {
+  bottom: 16px; right: 16px; top: auto; left: auto;
+  flex-direction: column; align-items: flex-end;
+}
+#ui-root[data-dir="bottom-left"] {
+  bottom: 16px; left: 16px; top: auto; right: auto;
+  flex-direction: column; align-items: flex-start;
+}
+#ui-root[data-dir="top-right"] {
+  top: 16px; right: 16px; bottom: auto; left: auto;
+  flex-direction: column-reverse; align-items: flex-end;
+}
+#ui-root[data-dir="top-left"] {
+  top: 16px; left: 16px; bottom: auto; right: auto;
+  flex-direction: column-reverse; align-items: flex-start;
+}
+
+/* Panel animasyon kökeni yöne göre */
+#ui-root[data-dir="bottom-right"] #chat-panel { transform-origin: bottom right; }
+#ui-root[data-dir="bottom-left"]  #chat-panel { transform-origin: bottom left;  }
+#ui-root[data-dir="top-right"]    #chat-panel { transform-origin: top right;    }
+#ui-root[data-dir="top-left"]     #chat-panel { transform-origin: top left;     }

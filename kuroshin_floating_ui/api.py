@@ -24,11 +24,56 @@ class KuroshinAPI(QObject):
 
     @pyqtSlot(bool)
     def toggle_panel(self, open_state):
-        if self._win:
-            if open_state:
-                self._win.resize(370, 580)
+        if not self._win:
+            return
+        import ctypes as _ct
+        sw = _ct.windll.user32.GetSystemMetrics(0)
+        sh = _ct.windll.user32.GetSystemMetrics(1)
+        OW = 92; PW, PH = 370, 580
+
+        if open_state:
+            ox, oy = self._win.x(), self._win.y()
+            # Orb top-left screen pos (CSS: bottom:16, right:16 in 92×92 window)
+            orb_sx = ox + OW - 16 - 64   # ox+12
+            orb_sy = oy + OW - 16 - 64   # oy+12
+            on_right  = (orb_sx + 32) > sw // 2
+            on_bottom = (orb_sy + 32) > sh // 2
+
+            if on_right and on_bottom:
+                direction = 'bottom-right'
+                orb_in = (PW - 16 - 64, PH - 16 - 64)  # (290, 500)
+            elif not on_right and on_bottom:
+                direction = 'bottom-left'
+                orb_in = (16, PH - 16 - 64)             # (16, 500)
+            elif on_right:
+                direction = 'top-right'
+                orb_in = (PW - 16 - 64, 16)             # (290, 16)
             else:
-                self._win.resize(92, 92)
+                direction = 'top-left'
+                orb_in = (16, 16)
+
+            new_x = max(0, min(orb_sx - orb_in[0], sw - PW))
+            new_y = max(0, min(orb_sy - orb_in[1], sh - PH))
+            self._panel_dir = direction
+            self._win.setGeometry(new_x, new_y, PW, PH)
+            self._win.web.page().runJavaScript(
+                f"document.getElementById('ui-root').dataset.dir='{direction}';"
+            )
+        else:
+            direction = getattr(self, '_panel_dir', 'bottom-right')
+            px, py = self._win.x(), self._win.y()
+            if direction == 'bottom-right': orb_in = (PW-16-64, PH-16-64)
+            elif direction == 'bottom-left': orb_in = (16, PH-16-64)
+            elif direction == 'top-right':   orb_in = (PW-16-64, 16)
+            else:                            orb_in = (16, 16)
+            orb_sx = px + orb_in[0]
+            orb_sy = py + orb_in[1]
+            new_x = max(0, min(orb_sx - 12, sw - OW))
+            new_y = max(0, min(orb_sy - 12, sh - OW))
+            self._s['orb_x'] = new_x
+            self._s['orb_y'] = new_y
+            self._win.setGeometry(new_x, new_y, OW, OW)
+
         self._s['panel_open'] = bool(open_state)
         self._save()
 
@@ -52,18 +97,18 @@ class KuroshinAPI(QObject):
     # ── Status LED ───────────────────────────────────
     @pyqtSlot(result='QVariantMap')
     def get_status(self):
-        result = {}
-        for key, port, path in [('ch', 9005, '/health'),
-                                 ('lm', 8080, '/health'),
-                                 ('wk', 9002, '/health')]:
+        import concurrent.futures
+        def chk(port):
             try:
-                r = urllib.request.urlopen(
-                    f'http://localhost:{port}{path}', timeout=0.5
-                )
-                result[key] = r.status == 200
+                r = urllib.request.urlopen(f'http://localhost:{port}/health', timeout=0.5)
+                return r.status == 200
             except Exception:
-                result[key] = False
-        return result
+                return False
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            ch = ex.submit(chk, 9005)
+            lm = ex.submit(chk, 8080)
+            wk = ex.submit(chk, 9002)
+            return {'ch': ch.result(), 'lm': lm.result(), 'wk': wk.result()}
 
     # ── Mesaj ────────────────────────────────────────
     @pyqtSlot(str, result=str)

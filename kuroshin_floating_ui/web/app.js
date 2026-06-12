@@ -34,6 +34,7 @@
 
   // ── Drag + 4 Köşe Snap ──────────────────────────────
   let dragging   = false;
+  let lastMove   = 0;
   let dragStartX = 0, dragStartY  = 0;
   let winStartX  = 0, winStartY   = 0;
   const DRAG_THRESHOLD = 5;
@@ -56,7 +57,8 @@
         orb.classList.add('dragging');
         resetAutoHide();
       }
-      if (dragging) {
+      if (dragging && Date.now() - lastMove > 16) {
+        lastMove = Date.now();
         window.pywebview?.api?.move_window?.(winStartX + dx, winStartY + dy);
       }
     };
@@ -151,6 +153,45 @@
     ChatManager?.addMessage('[FAZ-3] Alarm listesi yapılandırılmadı.', 'bot');
   });
 
+  // ── Panel Drag (status-bar'dan) ─────────────────────
+  const statusBar = document.querySelector('.status-bar');
+  let panelDragging = false;
+  let pdStartX = 0, pdStartY = 0;
+  let pdWinX   = 0, pdWinY   = 0;
+  let pdLastMove = 0;
+
+  statusBar.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    panelDragging = true;
+    pdStartX = e.screenX;
+    pdStartY = e.screenY;
+    pdWinX   = window.screenX;
+    pdWinY   = window.screenY;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const onMove = ev => {
+      if (!panelDragging) return;
+      const now = Date.now();
+      if (now - pdLastMove < 16) return;
+      pdLastMove = now;
+      window.pywebview?.api?.move_window?.(
+        pdWinX + (ev.screenX - pdStartX),
+        pdWinY + (ev.screenY - pdStartY)
+      );
+    };
+
+    const onUp = ev => {
+      panelDragging = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      window.pywebview?.api?.save_position?.(window.screenX, window.screenY, 'free');
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
   // ── Status LED Güncelleme ────────────────────────────
   function setLED(id, online) {
     const el = document.getElementById(id);
@@ -164,10 +205,8 @@
     if (s.wk !== undefined) setLED('led-wk', s.wk);
   }
 
-  // 10 sn polling (pywebview HTTP health check)
-  setInterval(() => {
-    window.pywebview?.api?.get_status?.().then(s => { if (s) updateLEDs(s); });
-  }, 10000);
+  // Python background thread runJS ile LED'leri push eder (JS polling yok)
+  window.updateLEDs = updateLEDs;
 
   // ── Bridge WebSocket (:9003) ─────────────────────────
   let ws = null, wsRetries = 0;

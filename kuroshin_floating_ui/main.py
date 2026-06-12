@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor
 
 from api   import KuroshinAPI
@@ -64,6 +64,8 @@ def _hide_from_taskbar():
 
 
 class OrbWindow(QMainWindow):
+    runJS = pyqtSignal(str)
+
     def __init__(self, api_obj, settings):
         super().__init__()
         self._api = api_obj
@@ -98,6 +100,8 @@ class OrbWindow(QMainWindow):
 
         self.setCentralWidget(self.web)
         self.web.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
+        self.runJS.connect(lambda js: self.web.page().runJavaScript(js))
 
         index_path = os.path.join(WEB_DIR, 'index.html')
         self.web.load(QUrl.fromLocalFile(index_path))
@@ -158,12 +162,11 @@ def _setup_orb_mouse_hotkey(api_obj):
                 )
             api_obj.save_position(nx, ny, 'free')
 
-        for hk in ('ctrl+alt+u', 'ctrl+alt+u'):  # u ve u-umlaut
+        for hk in ('ctrl+alt+u', 'ctrl+alt+ü'):
             try:
                 _kb.add_hotkey(hk, _jump_to_mouse, suppress=True)
-                break
             except Exception:
-                continue
+                pass
 
     except Exception:
         pass
@@ -188,6 +191,21 @@ def main():
     threading.Thread(target=_hide_from_taskbar, daemon=True).start()
     _setup_orb_mouse_hotkey(api_obj)
     threading.Thread(target=_tray_loop, args=(qt_app, window), daemon=True).start()
+
+    def _led_poll(win):
+        import time, concurrent.futures, urllib.request as _req
+        def chk(port):
+            try: return _req.urlopen(f'http://localhost:{port}/health', timeout=0.5).status == 200
+            except: return False
+        while True:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                s = {'ch': ex.submit(chk, 9005).result(),
+                     'lm': ex.submit(chk, 8080).result(),
+                     'wk': ex.submit(chk, 9002).result()}
+            win.runJS.emit(f"typeof updateLEDs==='function'&&updateLEDs({json.dumps(s)})")
+            time.sleep(10)
+
+    threading.Thread(target=_led_poll, args=(window,), daemon=True).start()
 
     mode_mgr.start(settings.get('mode', 'lite'))
 
