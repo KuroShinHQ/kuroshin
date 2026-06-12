@@ -1,6 +1,6 @@
 """
-Kuroshin Floating UI — Ana giriş noktası
-Başlatma: pythonw main.py [--mode lite|full_power]
+Kuroshin Floating UI — PyQt6 + QWebEngineView
+Gercek seffaflik: WA_TranslucentBackground + transparent WebEngine background
 """
 import sys
 import os
@@ -15,290 +15,183 @@ SETTINGS_PATH = os.path.join(HERE, 'settings.json')
 WEB_DIR       = os.path.join(HERE, 'web')
 ICON_PATH     = os.path.join(HERE, 'assets', 'icon.ico')
 
-# ── Tek instance kilidi (birden fazla başlatmayı engelle) ──
+# Tek instance kilidi
 _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, True, 'KuroshinFloatingUI_SingleInstance')
-if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+if ctypes.windll.kernel32.GetLastError() == 183:
     sys.exit(0)
 
 sys.path.insert(0, HERE)
 
-import webview
 import pystray
 from PIL import Image, ImageDraw
 
-from api    import KuroshinAPI
-from modes  import ModeManager
-from bridge import start as bridge_start
+from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QColor
+
+from api   import KuroshinAPI
+from modes import ModeManager
 
 
-def _load_settings() -> dict:
+def _load_settings():
     try:
         with open(SETTINGS_PATH, encoding='utf-8') as f:
             return json.load(f)
     except Exception:
-        return {
-            'orb_x': None, 'orb_y': None,
-            'orb_corner': 'bottom-right',
-            'mode': 'lite', 'panel_open': False,
-            'opacity': 0.92, 'theme': 'dark',
-        }
+        return {}
 
 
-def _screen_size() -> tuple[int, int]:
-    """Primary ekranın fiziksel çözünürlüğünü döndür."""
-    user32 = ctypes.windll.user32
-    user32.SetProcessDPIAware()
-    w = user32.GetSystemMetrics(0)   # SM_CXSCREEN
-    h = user32.GetSystemMetrics(1)   # SM_CYSCREEN
-    return w, h
-
-
-def _default_pos(win_w: int, win_h: int) -> tuple[int, int]:
-    """Sağ alt köşe pozisyonunu hesapla (taskbar = ~48px)."""
-    sw, sh = _screen_size()
-    x = sw - win_w - 20
-    y = sh - win_h - 56   # 56 = taskbar yüksekliği
-    return x, y
+def _screen_size():
+    ctypes.windll.user32.SetProcessDPIAware()
+    return (ctypes.windll.user32.GetSystemMetrics(0),
+            ctypes.windll.user32.GetSystemMetrics(1))
 
 
 def _hide_from_taskbar():
-    """
-    Pencereyi Windows taskbar'dan gizle.
-    WS_EX_TOOLWINDOW → taskbar girişi yok.
-    hide+show döngüsü ile değişikliği uygula.
-    """
     import time
-    time.sleep(1.0)          # pencere oluşana kadar bekle
-
-    GWL_EXSTYLE      = -20
-    WS_EX_TOOLWINDOW = 0x00000080
-    WS_EX_APPWINDOW  = 0x00040000
-    SW_HIDE          = 0
-    SW_SHOW          = 5
-
-    pid = os.getpid()
-
-    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool,
-                                     ctypes.wintypes.HWND,
-                                     ctypes.wintypes.LPARAM)
-
-    targets = []
-
-    def _cb(hwnd, _):
-        win_pid = ctypes.c_ulong(0)
-        ctypes.windll.user32.GetWindowThreadProcessId(
-            hwnd, ctypes.byref(win_pid)
-        )
-        if win_pid.value == pid:
-            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            new   = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, new)
-            targets.append(hwnd)
-        return True
-
-    ctypes.windll.user32.EnumWindows(WNDENUMPROC(_cb), 0)
-
-    # hide → show döngüsü: Windows'un taskbar'ı yeniden değerlendirmesini sağlar
-    for hwnd in targets:
-        ctypes.windll.user32.ShowWindow(hwnd, SW_HIDE)
-        time.sleep(0.05)
-        ctypes.windll.user32.ShowWindow(hwnd, SW_SHOW)
-
-
-def _make_icon() -> Image.Image:
-    try:
-        return Image.open(ICON_PATH).convert('RGBA')
-    except Exception:
-        img = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
-        d   = ImageDraw.Draw(img)
-        d.ellipse([2, 2, 62, 62],   fill=(180, 180, 200, 230))
-        d.ellipse([18, 18, 46, 46], fill=(10,  10,  15,  255))
-        return img
-
-
-_window: webview.Window = None
-
-
-def _apply_dwm_transparency():
-    """
-    winforms.py AllowTransparency=True + Color.Transparent ile form şeffaf.
-    DWM extend + Win11 Acrylic arka plan efekti ekler.
-    """
-    import time
-    time.sleep(1.5)
-
+    time.sleep(0.8)
     hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
     if not hwnd:
         return
-
-    # WS_EX_LAYERED ekle
-    GWL_EXSTYLE   = -20
-    WS_EX_LAYERED = 0x00080000
+    GWL_EXSTYLE      = -20
+    WS_EX_TOOLWINDOW = 0x00000080
+    WS_EX_APPWINDOW  = 0x00040000
     old = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-    ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_LAYERED)
+    ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE,
+                                        (old | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)
 
-    # SetWindowCompositionAttribute: Acrylic alpha=0 (tam bypass)
-    try:
-        class ACCENT_POLICY(ctypes.Structure):
-            _fields_ = [('AccentState',   ctypes.c_uint),
-                        ('AccentFlags',   ctypes.c_uint),
-                        ('GradientColor', ctypes.c_uint),
-                        ('AnimationId',   ctypes.c_uint)]
 
-        class WINCOMPATTRDATA(ctypes.Structure):
-            _fields_ = [('Attribute',  ctypes.c_uint),
-                        ('Data',       ctypes.c_void_p),
-                        ('SizeOfData', ctypes.c_size_t)]
+class OrbWindow(QMainWindow):
+    def __init__(self, api_obj, settings):
+        super().__init__()
+        self._api = api_obj
 
-        accent = ACCENT_POLICY()
-        accent.AccentState   = 4           # ACCENT_ENABLE_ACRYLICBLURBEHIND
-        accent.AccentFlags   = 2
-        accent.GradientColor = 0x00000000  # alpha=0 — tam şeffaf bypass
+        self.setWindowTitle('Kuroshin')
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
 
-        data = WINCOMPATTRDATA()
-        data.Attribute  = 19               # WCA_ACCENT_POLICY
-        data.Data       = ctypes.addressof(accent)
-        data.SizeOfData = ctypes.sizeof(accent)
+        # Boyut + pozisyon
+        sw, sh = _screen_size()
+        panel_open = settings.get('panel_open', False)
+        w = 370 if panel_open else 92
+        h = 580 if panel_open else 92
+        x = int(settings.get('orb_x', sw - w - 16))
+        y = int(settings.get('orb_y', sh - h - 16))
+        self.setGeometry(x, y, w, h)
 
-        ctypes.windll.user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
-    except Exception:
-        pass
+        # WebEngine — transparan
+        self.web = QWebEngineView()
+        self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
+        self.web.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-    # DWM extend frame → tüm client area DWM'e dahil
-    class MARGINS(ctypes.Structure):
-        _fields_ = [('cxLeftWidth',  ctypes.c_int), ('cxRightWidth', ctypes.c_int),
-                    ('cyTopHeight',  ctypes.c_int), ('cyBottomHeight', ctypes.c_int)]
-    try:
-        ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(MARGINS(-1, -1, -1, -1)))
-    except Exception:
-        pass
+        # QWebChannel — JS <-> Python koprusu
+        self.channel = QWebChannel()
+        self.channel.registerObject('api', api_obj)
+        self.web.page().setWebChannel(self.channel)
+
+        self.setCentralWidget(self.web)
+        self.web.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
+        index_path = os.path.join(WEB_DIR, 'index.html')
+        self.web.load(QUrl.fromLocalFile(index_path))
+
+        api_obj.set_window(self)
+
+
+def _make_tray_icon():
+    img = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+    d   = ImageDraw.Draw(img)
+    d.ellipse([2, 2, 62, 62],   fill=(180, 180, 200, 230))
+    d.ellipse([18, 18, 46, 46], fill=(10,  10,  15,  255))
+    return img
+
+
+def _tray_loop(qt_app, window):
+    def on_show(icon, item):
+        window.show()
+
+    def on_hide(icon, item):
+        window.hide()
+
+    def on_quit(icon, item):
+        icon.stop()
+        qt_app.quit()
+
+    icon = pystray.Icon(
+        'Kuroshin',
+        _make_tray_icon(),
+        menu=pystray.Menu(
+            pystray.MenuItem('Goster',  on_show),
+            pystray.MenuItem('Gizle',   on_hide),
+            pystray.MenuItem('Cikis',   on_quit),
+        )
+    )
+    icon.run()
 
 
 def _setup_orb_mouse_hotkey(api_obj):
-    """
-    Ctrl+Alt+Ü → orb anında mouse imlecinin olduğu konuma ışınlanır.
-    Oyun dahil her şeyin önüne çıkar (HWND_TOPMOST).
-    Bekleme yok — tuşa basınca hemen tetiklenir.
-    """
+    """Ctrl+Alt+U/U-umlaut → orb mouse konumuna isinlanir, HWND_TOPMOST."""
     try:
         import keyboard as _kb
 
         def _jump_to_mouse():
-            if not _window:
-                return
             pt = ctypes.wintypes.POINT()
             ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
             mx, my = int(pt.x), int(pt.y)
-            nx = max(0, mx - 46)   # 92px pencere → mouse ortada
+            nx = max(0, mx - 46)
             ny = max(0, my - 46)
 
             hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
             if hwnd:
-                HWND_TOPMOST = -1
-                SWP_NOSIZE   = 0x0001
+                HWND_TOPMOST   = -1
+                SWP_NOSIZE     = 0x0001
                 SWP_SHOWWINDOW = 0x0040
-                ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, nx, ny, 0, 0,
-                                                  SWP_NOSIZE | SWP_SHOWWINDOW)
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, HWND_TOPMOST, nx, ny, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW
+                )
             api_obj.save_position(nx, ny, 'free')
 
-        try:
-            _kb.add_hotkey('ctrl+alt+ü', _jump_to_mouse, suppress=True)
-        except Exception:
-            _kb.add_hotkey('ctrl+alt+u', _jump_to_mouse, suppress=True)
+        for hk in ('ctrl+alt+u', 'ctrl+alt+u'):  # u ve u-umlaut
+            try:
+                _kb.add_hotkey(hk, _jump_to_mouse, suppress=True)
+                break
+            except Exception:
+                continue
 
     except Exception:
         pass
 
 
-def _tray_loop():
-    def on_show(icon, item):
-        if _window:
-            _window.show()
-
-    def on_hide(icon, item):
-        if _window:
-            _window.hide()
-
-    def on_quit(icon, item):
-        icon.stop()
-        if _window:
-            _window.destroy()
-
-    menu = pystray.Menu(
-        pystray.MenuItem('Göster',  on_show),
-        pystray.MenuItem('Gizle',   on_hide),
-        pystray.MenuItem('Kapat',   on_quit),
-    )
-    tray = pystray.Icon('Kuroshin', _make_icon(), 'Kuroshin', menu)
-    tray.run()
-
-
 def main():
-    global _window
-
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--mode', default=None)
-    args, _ = parser.parse_known_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--mode', default='lite')
+    args = parser.parse_args()
 
     settings = _load_settings()
-    if args.mode:
-        settings['mode'] = args.mode
+
+    qt_app = QApplication(sys.argv)
+    qt_app.setQuitOnLastWindowClosed(False)
 
     api_obj  = KuroshinAPI(settings, SETTINGS_PATH)
     mode_mgr = ModeManager(settings)
 
-    # Bridge: WS :9003 hub + SSE poller (Chancellor :9005)
-    bridge_start()
+    window = OrbWindow(api_obj, settings)
+    window.show()
 
-    # Tray → arka plan thread
-    threading.Thread(target=_tray_loop, daemon=True).start()
-
-    # Taskbar gizleme → arka plan thread (pencere açıldıktan sonra çalışır)
     threading.Thread(target=_hide_from_taskbar, daemon=True).start()
+    _setup_orb_mouse_hotkey(api_obj)
+    threading.Thread(target=_tray_loop, args=(qt_app, window), daemon=True).start()
 
-    # DWM composition fix — WebView2 şeffaflığı için
-    threading.Thread(target=_apply_dwm_transparency, daemon=True).start()
-
-    # Mod başlat
     mode_mgr.start(settings.get('mode', 'lite'))
 
-    # Pencere boyutu
-    panel_open = settings.get('panel_open', False)
-    win_w = 370 if panel_open else 92
-    win_h = 580 if panel_open else 92
-
-    # Pozisyon: settings'ten al, yoksa ekrana göre hesapla
-    saved_x = settings.get('orb_x')
-    saved_y = settings.get('orb_y')
-    if saved_x and saved_y:
-        win_x, win_y = int(saved_x), int(saved_y)
-    else:
-        win_x, win_y = _default_pos(win_w, win_h)
-
-    index_url = 'file:///' + WEB_DIR.replace('\\', '/') + '/index.html'
-
-    _window = webview.create_window(
-        title='Kuroshin',
-        url=index_url,
-        js_api=api_obj,
-        width=win_w,
-        height=win_h,
-        x=win_x,
-        y=win_y,
-        frameless=True,
-        transparent=True,
-        on_top=True,
-        easy_drag=False,
-        min_size=(64, 64),
-        background_color='#000000',
-    )
-
-    api_obj.set_window(_window)
-
-    # Ctrl+Alt+Ü → orb mouse konumuna ışınla (anında, bekleme yok)
-    _setup_orb_mouse_hotkey(api_obj)
-
-    webview.start(debug=False)
+    sys.exit(qt_app.exec())
 
 
 if __name__ == '__main__':

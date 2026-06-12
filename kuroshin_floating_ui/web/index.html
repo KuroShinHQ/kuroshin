@@ -5,6 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Kuroshin</title>
   <link rel="stylesheet" href="style.css"/>
+  <!-- QWebChannel koprusu — pywebview.api shimini saglar -->
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+  <script>
+  (function() {
+    function initChannel() {
+      if (typeof QWebChannel === 'undefined' || typeof qt === 'undefined') {
+        setTimeout(initChannel, 50);
+        return;
+      }
+      new QWebChannel(qt.webChannelTransport, function(channel) {
+        var _a = channel.objects.api;
+        window.pywebview = {
+          api: {
+            move_window:        function(x,y)   { _a.move_window(x,y); },
+            toggle_panel:       function(s)     { _a.toggle_panel(s); },
+            save_position:      function(x,y,c) { _a.save_position(x,y,c); },
+            quit:               function()      { _a.quit(); },
+            get_settings:       function()      { return new Promise(function(r){ _a.get_settings(r); }); },
+            get_status:         function()      { return new Promise(function(r){ _a.get_status(r); }); },
+            send_message:       function(t)     { return new Promise(function(r){ _a.send_message(t,r); }); },
+            ram_purge:          function()      { _a.ram_purge(); },
+            llm_toggle:         function()      { _a.llm_toggle(); },
+            chancellor_restart: function()      { _a.chancellor_restart(); },
+            show_alarms:        function()      { _a.show_alarms(); },
+          }
+        };
+        window.dispatchEvent(new Event('pywebviewready'));
+      });
+    }
+    initChannel();
+  })();
+  </script>
 </head>
 <body>
 
