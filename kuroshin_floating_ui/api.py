@@ -170,17 +170,53 @@ class KuroshinAPI(QObject):
         MemoryFlushModifiedList     = 3   # modified page list temizle
         MemoryPurgeStandbyList      = 4   # standby list temizle
 
-        for cmd_val in (MemoryEmptyWorkingSet, MemoryFlushModifiedList, MemoryPurgeStandbyList):
-            cmd = ctypes.c_uint32(cmd_val)
-            ntdll.NtSetSystemInformation(SystemMemoryListInformation,
-                                         ctypes.byref(cmd), ctypes.sizeof(cmd))
+        # İlk çağrının return değeri: 0=OK, 0xC0000022=ACCESS_DENIED (admin yok)
+        ntdll.NtSetSystemInformation.restype = ctypes.c_long
+        first_cmd = ctypes.c_uint32(MemoryEmptyWorkingSet)
+        status = ntdll.NtSetSystemInformation(SystemMemoryListInformation,
+                                              ctypes.byref(first_cmd), 4)
 
-        time.sleep(0.5)
-        mem_after   = _ps.virtual_memory()
-        freed_mb    = (mem_after.available - mem_before) // (1024 * 1024)
-        free_gb     = round(mem_after.available / 1073741824, 1)
-        msg = f"+{freed_mb} MB boşaldı · {free_gb} GB serbest" if freed_mb > 30 \
-              else f"RAM zaten temiz · {free_gb} GB serbest"
+        ACCESS_DENIED = -1073741790  # 0xC0000022 signed
+
+        if status == ACCESS_DENIED or status != 0:
+            # Admin yetkisi yok → scheduled task üzerinden çalıştır
+            import subprocess as _sp
+            TASK = 'KuroshinRAMPurge'
+            helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  'ram_purge_helper.py')
+            # Task yoksa oluşturmayı dene (admin terminal gerekir — ilk seferlik)
+            chk = _sp.run(['schtasks', '/query', '/TN', TASK],
+                          capture_output=True, creationflags=0x08000000)
+            if chk.returncode != 0:
+                _sp.run(
+                    ['schtasks', '/create', '/TN', TASK,
+                     '/TR', f'pythonw "{helper}"',
+                     '/SC', 'ONCE', '/ST', '00:00', '/RU', 'SYSTEM', '/F'],
+                    capture_output=True, creationflags=0x08000000
+                )
+            result = _sp.run(['schtasks', '/run', '/TN', TASK],
+                             capture_output=True, creationflags=0x08000000)
+            if result.returncode == 0:
+                time.sleep(2)
+                mem_after = _ps.virtual_memory()
+                freed_mb  = (mem_after.available - mem_before) // (1024 * 1024)
+                free_gb   = round(mem_after.available / 1073741824, 1)
+                msg = f"+{freed_mb} MB · {free_gb} GB serbest (SYSTEM)"
+            else:
+                free_gb = round(_ps.virtual_memory().available / 1073741824, 1)
+                msg = f"🔐 Admin gerekli · Bat [1] ile başlat · {free_gb} GB serbest"
+        else:
+            # Admin var → kalan iki komutu da çalıştır
+            for cmd_val in (MemoryFlushModifiedList, MemoryPurgeStandbyList):
+                cmd = ctypes.c_uint32(cmd_val)
+                ntdll.NtSetSystemInformation(SystemMemoryListInformation,
+                                             ctypes.byref(cmd), 4)
+            time.sleep(0.5)
+            mem_after = _ps.virtual_memory()
+            freed_mb  = (mem_after.available - mem_before) // (1024 * 1024)
+            free_gb   = round(mem_after.available / 1073741824, 1)
+            msg = f"+{freed_mb} MB boşaldı · {free_gb} GB serbest" if freed_mb > 30 \
+                  else f"RAM zaten temiz · {free_gb} GB serbest"
 
         if self._win:
             self._win.runJS.emit(
