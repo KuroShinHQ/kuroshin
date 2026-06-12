@@ -146,9 +146,9 @@
         const dy = ev.screenY - dragStartY;
         snapToCornerIfNear(winStartX + dx, winStartY + dy);
       } else {
-        // BUG-1: sadece <50ms gerçek click panel açar; 50ms+ veya longPress geçmişse = ignore
+        // gerçek click: <250ms VE longPress hiç tetiklenmemiş (QWebChannel IPC gecikmesi 50ms+ olabilir)
         const elapsed = Date.now() - pressStart;
-        if (elapsed < 50 && !longPressTriggered) {
+        if (elapsed < 250 && !longPressTriggered) {
           if (panelOpen) closePanel(); else openPanel();
         }
       }
@@ -293,6 +293,33 @@
 
   // Python background thread runJS ile LED'leri push eder (JS polling yok)
   window.updateLEDs = updateLEDs;
+
+  // ── Hardware Monitor Güncelleme ──────────────────────
+  function updateHW(s) {
+    const cpuEl = document.getElementById('hw-cpu-val');
+    if (cpuEl && s.cpu_pct >= 0) {
+      const t = s.cpu_temp > 0 ? ` ${s.cpu_temp}°` : '';
+      cpuEl.textContent = `${Math.round(s.cpu_pct)}%${t}`;
+      cpuEl.style.color = s.cpu_pct > 80 ? '#ffb4ab' : s.cpu_pct > 55 ? '#ffd966' : '#6ffbbe';
+    }
+    const ramEl = document.getElementById('hw-ram-val');
+    if (ramEl) {
+      ramEl.textContent = `${s.ram_used_gb}/${s.ram_total_gb}G ${Math.round(s.ram_pct)}%`;
+      ramEl.style.color = s.ram_pct > 85 ? '#ffb4ab' : s.ram_pct > 65 ? '#ffd966' : '#6ffbbe';
+    }
+    const gpuEl = document.getElementById('hw-gpu-val');
+    if (gpuEl) {
+      if (s.gpu_pct >= 0) {
+        const gt = s.gpu_temp >= 0 ? ` ${s.gpu_temp}°` : '';
+        gpuEl.textContent = `${s.gpu_pct}%${gt}`;
+        gpuEl.style.color = s.gpu_temp > 80 ? '#ffb4ab' : s.gpu_temp > 65 ? '#ffd966' : '#6ffbbe';
+      } else {
+        gpuEl.textContent = '--';
+      }
+    }
+  }
+
+  window.updateHW = updateHW;
 
   // ── Bridge WebSocket (:9003) ─────────────────────────
   let ws = null, wsRetries = 0;

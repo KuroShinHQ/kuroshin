@@ -123,35 +123,96 @@ class KuroshinAPI(QObject):
         threading.Thread(target=self._do_ram_purge, daemon=True).start()
 
     def _do_ram_purge(self):
-        import ctypes
-        import ctypes.wintypes
+        import ctypes, ctypes.wintypes, time
+        import psutil as _ps
+
         kernel32 = ctypes.windll.kernel32
-        psapi    = ctypes.windll.psapi
+        advapi32 = ctypes.windll.advapi32
+        ntdll    = ctypes.windll.ntdll
 
-        pids  = (ctypes.c_ulong * 2048)()
-        cb    = ctypes.c_ulong()
-        psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(cb))
-        count = cb.value // ctypes.sizeof(ctypes.c_ulong)
+        mem_before = _ps.virtual_memory().available
 
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        PROCESS_SET_QUOTA                 = 0x0100
-        PROCESS_VM_OPERATION              = 0x0008
-        access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA | PROCESS_VM_OPERATION
+        # NtSetSystemInformation için SeProfileSingleProcessPrivilege gerekir
+        class _LUID(ctypes.Structure):
+            _fields_ = [('LowPart', ctypes.c_ulong), ('HighPart', ctypes.c_long)]
 
-        emptied = 0
-        for pid in list(pids)[:count]:
-            if not pid:
-                continue
-            h = kernel32.OpenProcess(access, False, pid)
-            if h:
-                psapi.EmptyWorkingSet(h)
-                kernel32.CloseHandle(h)
-                emptied += 1
+        class _LUID_ATTR(ctypes.Structure):
+            _fields_ = [('Luid', _LUID), ('Attributes', ctypes.c_ulong)]
+
+        class _TOKEN_PRIVS(ctypes.Structure):
+            _fields_ = [('PrivilegeCount', ctypes.c_ulong),
+                        ('Privileges', _LUID_ATTR * 1)]
+
+        def _enable_priv(name):
+            TOKEN_ADJUST_PRIVILEGES = 0x0020
+            TOKEN_QUERY             = 0x0008
+            SE_PRIVILEGE_ENABLED    = 0x00000002
+            h = ctypes.wintypes.HANDLE()
+            if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(),
+                                             TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+                                             ctypes.byref(h)):
+                return
+            luid = _LUID()
+            if advapi32.LookupPrivilegeValueW(None, name, ctypes.byref(luid)):
+                tp = _TOKEN_PRIVS()
+                tp.PrivilegeCount = 1
+                tp.Privileges[0].Luid = luid
+                tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
+                advapi32.AdjustTokenPrivileges(h, False, ctypes.byref(tp),
+                                               ctypes.sizeof(tp), None, None)
+            kernel32.CloseHandle(h)
+
+        _enable_priv("SeProfileSingleProcessPrivilege")
+        _enable_priv("SeLockMemoryPrivilege")
+
+        # SystemMemoryListInformation = 80
+        # 2=EmptyWorkingSet (tüm process'ler), 3=FlushModifiedList, 4=PurgeStandbyList
+        for cmd_val in (2, 3, 4):
+            cmd = ctypes.c_uint32(cmd_val)
+            ntdll.NtSetSystemInformation(80, ctypes.byref(cmd), ctypes.sizeof(cmd))
+
+        time.sleep(0.5)
+        freed_mb = (_ps.virtual_memory().available - mem_before) // (1024 * 1024)
+        msg = f"+{freed_mb} MB boşaldı" if freed_mb > 0 else "tamamlandı"
 
         if self._win:
             self._win.runJS.emit(
-                f"ChatManager?.addMessage('🧹 RAM temizlendi — {emptied} process working set boşaltıldı', 'bot', true);"
+                f"ChatManager?.addMessage('🧹 RAM temizlendi — {msg}', 'bot', true);"
             )
+
+    @pyqtSlot(result='QVariantMap')
+    def get_hw_stats(self):
+        import psutil as _ps, subprocess as _sp
+        cpu_pct = _ps.cpu_percent(interval=None)
+        vm = _ps.virtual_memory()
+        gpu_pct, gpu_temp, cpu_temp = -1, -1, -1
+        try:
+            r = _sp.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu',
+                 '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=2
+            )
+            if r.returncode == 0:
+                p = r.stdout.strip().split(',')
+                gpu_pct, gpu_temp = int(p[0].strip()), int(p[1].strip())
+        except Exception:
+            pass
+        try:
+            t = _ps.sensors_temperatures()
+            for k in ('coretemp', 'acpitz', 'k10temp', 'it8'):
+                if k in t:
+                    cpu_temp = int(t[k][0].current); break
+        except Exception:
+            pass
+        return {
+            'cpu_pct':      round(cpu_pct, 1),
+            'ram_used_gb':  round(vm.used   / 1073741824, 1),
+            'ram_total_gb': round(vm.total  / 1073741824, 1),
+            'ram_pct':      round(vm.percent, 1),
+            'gpu_pct':      gpu_pct,
+            'gpu_temp':     gpu_temp,
+            'cpu_temp':     cpu_temp,
+        }
 
     @pyqtSlot()
     def llm_toggle(self):

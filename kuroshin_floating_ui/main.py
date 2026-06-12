@@ -213,6 +213,50 @@ def main():
 
     threading.Thread(target=_led_poll, args=(window,), daemon=True).start()
 
+    def _hw_poll(win):
+        import time, psutil as _ps, subprocess as _sp
+        _ps.cpu_percent()   # ilk çağrı her zaman 0 döner — ısındırma
+        while True:
+            time.sleep(3)
+            try:
+                cpu_pct  = _ps.cpu_percent()
+                vm       = _ps.virtual_memory()
+                gpu_pct  = -1; gpu_temp = -1; cpu_temp = -1
+                try:
+                    r = _sp.run(
+                        ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu',
+                         '--format=csv,noheader,nounits'],
+                        capture_output=True, text=True, timeout=2
+                    )
+                    if r.returncode == 0:
+                        p = r.stdout.strip().split(',')
+                        gpu_pct, gpu_temp = int(p[0].strip()), int(p[1].strip())
+                except Exception:
+                    pass
+                try:
+                    t = _ps.sensors_temperatures()
+                    for k in ('coretemp', 'acpitz', 'k10temp', 'it8'):
+                        if k in t:
+                            cpu_temp = int(t[k][0].current); break
+                except Exception:
+                    pass
+                s = {
+                    'cpu_pct':      round(cpu_pct, 1),
+                    'ram_used_gb':  round(vm.used   / 1073741824, 1),
+                    'ram_total_gb': round(vm.total  / 1073741824, 1),
+                    'ram_pct':      round(vm.percent, 1),
+                    'gpu_pct':      gpu_pct,
+                    'gpu_temp':     gpu_temp,
+                    'cpu_temp':     cpu_temp,
+                }
+                win.runJS.emit(
+                    f"typeof updateHW==='function'&&updateHW({json.dumps(s)})"
+                )
+            except Exception:
+                pass
+
+    threading.Thread(target=_hw_poll, args=(window,), daemon=True).start()
+
     mode_mgr.start(settings.get('mode', 'lite'))
 
     sys.exit(qt_app.exec())

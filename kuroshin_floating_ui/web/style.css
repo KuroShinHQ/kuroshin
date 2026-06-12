@@ -67,6 +67,24 @@ html, body {
 .led-offline { color: #ffb4ab; }
 .led-unknown { color: #444748; }
 
+/* ── Hardware Monitor Bar ── */
+.hw-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: rgba(0,0,0,0.12);
+  font-size: 9.5px;
+  color: #4b5060;
+  user-select: none;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+}
+.hw-item { color: #6b7280; letter-spacing: 0.3px; }
+.hw-val  { color: #6ffbbe; transition: color 0.5s; }
+.hw-sep  { color: #2a2a3a; }
+
 /* ── Chat Area ── */
 #chat-area {
   flex: 1;

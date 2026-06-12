@@ -29,6 +29,7 @@
             llm_toggle:         function()      { _a.llm_toggle(); },
             chancellor_restart: function()      { _a.chancellor_restart(); },
             show_alarms:        function()      { _a.show_alarms(); },
+            get_hw_stats:       function()      { return new Promise(function(r){ _a.get_hw_stats(r); }); },
           }
         };
         window.dispatchEvent(new Event('pywebviewready'));
@@ -67,6 +68,15 @@
                padding:2px 4px;transition:color 0.2s;"
         onmouseover="this.style.color='#fff'"
         onmouseout="this.style.color='#A3A3A3'">✕</button>
+    </div>
+
+    <!-- Hardware Monitor Bar -->
+    <div class="hw-bar">
+      <span class="hw-item">CPU <span id="hw-cpu-val" class="hw-val">--</span></span>
+      <span class="hw-sep">·</span>
+      <span class="hw-item">RAM <span id="hw-ram-val" class="hw-val">--</span></span>
+      <span class="hw-sep">·</span>
+      <span class="hw-item">GPU <span id="hw-gpu-val" class="hw-val">--</span></span>
     </div>
 
     <!-- Chat Area -->
