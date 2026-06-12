@@ -1,7 +1,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  background: #010203 !important; /* WS_EX_LAYERED colorkey — bu renk piksel olarak şeffaf olur */
+  background: transparent !important;
   overflow: hidden;
   font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
   color: #e1e2ec;

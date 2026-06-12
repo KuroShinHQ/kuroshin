@@ -119,70 +119,75 @@ def _make_icon() -> Image.Image:
 _window: webview.Window = None
 
 
-def _apply_colorkey_transparency():
+def _apply_dwm_transparency():
     """
-    pywebview 6.x transparent=True Windows'ta DWM siyah artifact yaratıyor.
-    Fix: WS_EX_LAYERED + LWA_COLORKEY(#010203) → bu renk piksel şeffaf olur.
-    CSS body { background: #010203 } ve background_color='#010203' ile birlikte çalışır.
+    winforms.py AllowTransparency=True + Color.Transparent ile form şeffaf.
+    DWM extend + Win11 Acrylic arka plan efekti ekler.
     """
     import time
-    time.sleep(1.8)   # pywebview window tamamen oluştuktan sonra uygula
-
-    GWL_EXSTYLE  = -20
-    WS_EX_LAYERED = 0x00080000
-    LWA_COLORKEY  = 0x00000001
-    # COLORREF = 0x00BBGGRR — #010203 (R=1,G=2,B=3) → COLORREF = 0x00030201
-    COLORREF_KEY  = 0x00030201
+    time.sleep(1.5)
 
     hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
     if not hwnd:
         return
 
+    # WS_EX_LAYERED ekle
+    GWL_EXSTYLE   = -20
+    WS_EX_LAYERED = 0x00080000
     old = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_LAYERED)
-    ctypes.windll.user32.SetLayeredWindowAttributes(hwnd, COLORREF_KEY, 255, LWA_COLORKEY)
+
+    # Windows 11: Acrylic backdrop (DWMWA_SYSTEMBACKDROP_TYPE=38, TRANSIENT=3)
+    try:
+        val = ctypes.c_int(3)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(val), ctypes.sizeof(val))
+    except Exception:
+        pass
+
+    # DWM extend frame → tüm client area DWM'e dahil
+    class MARGINS(ctypes.Structure):
+        _fields_ = [('cxLeftWidth',  ctypes.c_int), ('cxRightWidth', ctypes.c_int),
+                    ('cyTopHeight',  ctypes.c_int), ('cyBottomHeight', ctypes.c_int)]
+    try:
+        ctypes.windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(MARGINS(-1, -1, -1, -1)))
+    except Exception:
+        pass
 
 
-def _setup_orb_center_hotkey(save_pos_fn):
+def _setup_orb_mouse_hotkey(api_obj):
     """
-    ü tuşu 5 saniye basılı tutulunca orb'u primary ekranın ortasına taşır.
-    Global hotkey — pywebview penceresi odakta olmasa da çalışır.
+    Ctrl+Alt+Ü → orb anında mouse imlecinin olduğu konuma ışınlanır.
+    Oyun dahil her şeyin önüne çıkar (HWND_TOPMOST).
+    Bekleme yok — tuşa basınca hemen tetiklenir.
     """
     try:
         import keyboard as _kb
 
-        _state = {'timer': None, 'pressed': False}
-
-        def _do_center():
-            _state['timer']   = None
-            _state['pressed'] = False
+        def _jump_to_mouse():
             if not _window:
                 return
-            sw, sh = _screen_size()
-            cx = (sw - 92) // 2
-            cy = (sh - 92) // 2
-            _window.move(cx, cy)
-            save_pos_fn(cx, cy, 'center')
+            pt = ctypes.wintypes.POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            mx, my = int(pt.x), int(pt.y)
+            nx = max(0, mx - 46)   # 92px pencere → mouse ortada
+            ny = max(0, my - 46)
 
-        def _on_press(e):
-            if _state['pressed']:
-                return                    # auto-repeat → yoksay
-            _state['pressed'] = True
-            t = threading.Timer(5.0, _do_center)
-            _state['timer'] = t
-            t.start()
+            hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
+            if hwnd:
+                HWND_TOPMOST = -1
+                SWP_NOSIZE   = 0x0001
+                SWP_SHOWWINDOW = 0x0040
+                ctypes.windll.user32.SetWindowPos(hwnd, HWND_TOPMOST, nx, ny, 0, 0,
+                                                  SWP_NOSIZE | SWP_SHOWWINDOW)
+            api_obj.save_position(nx, ny, 'free')
 
-        def _on_release(e):
-            _state['pressed'] = False
-            if _state['timer']:
-                _state['timer'].cancel()
-                _state['timer'] = None
-
-        _kb.on_press_key('ü', _on_press,   suppress=False)
-        _kb.on_release_key('ü', _on_release, suppress=False)
+        try:
+            _kb.add_hotkey('ctrl+alt+ü', _jump_to_mouse, suppress=True)
+        except Exception:
+            _kb.add_hotkey('ctrl+alt+u', _jump_to_mouse, suppress=True)
 
     except Exception:
-        pass   # keyboard paketi yoksa veya hook başarısız → sessiz geç
+        pass
 
 
 def _tray_loop():
@@ -231,8 +236,8 @@ def main():
     # Taskbar gizleme → arka plan thread (pencere açıldıktan sonra çalışır)
     threading.Thread(target=_hide_from_taskbar, daemon=True).start()
 
-    # Colorkey transparency fix (pywebview 6.x DWM siyah artifact)
-    threading.Thread(target=_apply_colorkey_transparency, daemon=True).start()
+    # DWM composition fix — WebView2 şeffaflığı için
+    threading.Thread(target=_apply_dwm_transparency, daemon=True).start()
 
     # Mod başlat
     mode_mgr.start(settings.get('mode', 'lite'))
@@ -261,17 +266,17 @@ def main():
         x=win_x,
         y=win_y,
         frameless=True,
-        transparent=False,          # WS_EX_LAYERED ile manuel yönetiyoruz
+        transparent=True,
         on_top=True,
         easy_drag=False,
         min_size=(64, 64),
-        background_color='#010203', # colorkey rengi — CSS background ile eşleşmeli
+        background_color='#000000',
     )
 
     api_obj.set_window(_window)
 
-    # ü tuşu 5sn basılı → orb ekran ortasına
-    _setup_orb_center_hotkey(api_obj.save_position)
+    # Ctrl+Alt+Ü → orb mouse konumuna ışınla (anında, bekleme yok)
+    _setup_orb_mouse_hotkey(api_obj)
 
     webview.start(debug=False)
 
