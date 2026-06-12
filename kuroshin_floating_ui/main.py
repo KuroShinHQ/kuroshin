@@ -137,10 +137,30 @@ def _apply_dwm_transparency():
     old = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_LAYERED)
 
-    # Windows 11: Acrylic backdrop (DWMWA_SYSTEMBACKDROP_TYPE=38, TRANSIENT=3)
+    # SetWindowCompositionAttribute: Acrylic alpha=0 (tam bypass)
     try:
-        val = ctypes.c_int(3)
-        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(val), ctypes.sizeof(val))
+        class ACCENT_POLICY(ctypes.Structure):
+            _fields_ = [('AccentState',   ctypes.c_uint),
+                        ('AccentFlags',   ctypes.c_uint),
+                        ('GradientColor', ctypes.c_uint),
+                        ('AnimationId',   ctypes.c_uint)]
+
+        class WINCOMPATTRDATA(ctypes.Structure):
+            _fields_ = [('Attribute',  ctypes.c_uint),
+                        ('Data',       ctypes.c_void_p),
+                        ('SizeOfData', ctypes.c_size_t)]
+
+        accent = ACCENT_POLICY()
+        accent.AccentState   = 4           # ACCENT_ENABLE_ACRYLICBLURBEHIND
+        accent.AccentFlags   = 2
+        accent.GradientColor = 0x00000000  # alpha=0 — tam şeffaf bypass
+
+        data = WINCOMPATTRDATA()
+        data.Attribute  = 19               # WCA_ACCENT_POLICY
+        data.Data       = ctypes.addressof(accent)
+        data.SizeOfData = ctypes.sizeof(accent)
+
+        ctypes.windll.user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
     except Exception:
         pass
 
