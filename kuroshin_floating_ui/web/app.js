@@ -78,15 +78,17 @@
   const DRAG_THRESHOLD = 5;
 
   // ── Long-press RAM Purge (3sn basılı → otomatik) ───
-  let longPressTimer = null;
-  let pressInterval  = null;
-  let pressStart     = 0;
+  let longPressTimer     = null;
+  let pressInterval      = null;
+  let pressStart         = 0;
+  let longPressTriggered = false;
 
   orb.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
-    dragging   = false;
-    pressStart = Date.now();
-    dragStartX = e.screenX;
+    dragging           = false;
+    longPressTriggered = false;
+    pressStart         = Date.now();
+    dragStartX         = e.screenX;
     dragStartY = e.screenY;
     winStartX  = window.screenX;
     winStartY  = window.screenY;
@@ -95,6 +97,7 @@
     // Long-press: 600ms → animasyon başlar, 3000ms dolunca ram_purge
     longPressTimer = setTimeout(() => {
       if (!dragging) {
+        longPressTriggered = true;
         pressInterval = setInterval(() => {
           // 600ms'den itibaren 2400ms'de 0→1 dolum (toplam = 3sn)
           const progress = Math.min(Math.max((Date.now() - pressStart - 600) / 2400, 0), 1.0);
@@ -143,9 +146,9 @@
         const dy = ev.screenY - dragStartY;
         snapToCornerIfNear(winStartX + dx, winStartY + dy);
       } else {
-        // BUG-1: sadece <50ms gerçek click panel açar; 50-600ms = ignore
+        // BUG-1: sadece <50ms gerçek click panel açar; 50ms+ veya longPress geçmişse = ignore
         const elapsed = Date.now() - pressStart;
-        if (elapsed < 50) {
+        if (elapsed < 50 && !longPressTriggered) {
           if (panelOpen) closePanel(); else openPanel();
         }
       }
@@ -281,9 +284,11 @@
   }
 
   function updateLEDs(s) {
-    if (s.ch !== undefined) setLED('led-ch', s.ch);
-    if (s.lm !== undefined) setLED('led-lm', s.lm);
-    if (s.wk !== undefined) setLED('led-wk', s.wk);
+    if (s.ch  !== undefined) setLED('led-ch',  s.ch);
+    if (s.lm  !== undefined) setLED('led-lm',  s.lm);   // bridge compat
+    if (s.lm1 !== undefined) setLED('led-lm',  s.lm1);  // L1 = Huihui :8080
+    if (s.lm2 !== undefined) setLED('led-lm2', s.lm2);  // L2 = Mod-2 :8082
+    if (s.wk  !== undefined) setLED('led-wk',  s.wk);
   }
 
   // Python background thread runJS ile LED'leri push eder (JS polling yok)

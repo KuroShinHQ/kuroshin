@@ -201,12 +201,13 @@ def main():
         while True:
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
                 ch  = ex.submit(chk, 9005)
-                lm1 = ex.submit(chk, 8080)   # ana LLM (Huihui-35B)
-                lm2 = ex.submit(chk, 8082)   # Mod-2 (Qwen3-1.7B)
+                lm1 = ex.submit(chk, 8080)   # L1 = Huihui-35B
+                lm2 = ex.submit(chk, 8082)   # L2 = Mod-2 Qwen3-1.7B
                 wk  = ex.submit(chk, 9002)
-                s = {'ch': ch.result(),
-                     'lm': lm1.result() or lm2.result(),
-                     'wk': wk.result()}
+                s = {'ch':  ch.result(),
+                     'lm1': lm1.result(),
+                     'lm2': lm2.result(),
+                     'wk':  wk.result()}
             win.runJS.emit(f"typeof updateLEDs==='function'&&updateLEDs({json.dumps(s)})")
             time.sleep(10)
 

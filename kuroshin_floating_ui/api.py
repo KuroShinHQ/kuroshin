@@ -106,10 +106,10 @@ class KuroshinAPI(QObject):
                 return False
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
             ch   = ex.submit(chk, 9005)
-            lm1  = ex.submit(chk, 8080)   # ana LLM (Huihui-35B)
-            lm2  = ex.submit(chk, 8082)   # Mod-2 (Qwen3-1.7B)
+            lm1  = ex.submit(chk, 8080)   # L1 = Huihui-35B
+            lm2  = ex.submit(chk, 8082)   # L2 = Mod-2 Qwen3-1.7B
             wk   = ex.submit(chk, 9002)
-            return {'ch': ch.result(), 'lm': lm1.result() or lm2.result(), 'wk': wk.result()}
+            return {'ch': ch.result(), 'lm1': lm1.result(), 'lm2': lm2.result(), 'wk': wk.result()}
 
     # ── Mesaj ────────────────────────────────────────
     @pyqtSlot(str, result=str)
@@ -119,11 +119,39 @@ class KuroshinAPI(QObject):
     # ── Sistem butonlari ─────────────────────────────
     @pyqtSlot()
     def ram_purge(self):
-        subprocess.Popen(
-            ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
-             'sync && echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true'],
-            shell=False, creationflags=0x08000000
-        )
+        import threading
+        threading.Thread(target=self._do_ram_purge, daemon=True).start()
+
+    def _do_ram_purge(self):
+        import ctypes
+        import ctypes.wintypes
+        kernel32 = ctypes.windll.kernel32
+        psapi    = ctypes.windll.psapi
+
+        pids  = (ctypes.c_ulong * 2048)()
+        cb    = ctypes.c_ulong()
+        psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(cb))
+        count = cb.value // ctypes.sizeof(ctypes.c_ulong)
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        PROCESS_SET_QUOTA                 = 0x0100
+        PROCESS_VM_OPERATION              = 0x0008
+        access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SET_QUOTA | PROCESS_VM_OPERATION
+
+        emptied = 0
+        for pid in list(pids)[:count]:
+            if not pid:
+                continue
+            h = kernel32.OpenProcess(access, False, pid)
+            if h:
+                psapi.EmptyWorkingSet(h)
+                kernel32.CloseHandle(h)
+                emptied += 1
+
+        if self._win:
+            self._win.runJS.emit(
+                f"ChatManager?.addMessage('🧹 RAM temizlendi — {emptied} process working set boşaltıldı', 'bot', true);"
+            )
 
     @pyqtSlot()
     def llm_toggle(self):
