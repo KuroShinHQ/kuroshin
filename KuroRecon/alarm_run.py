@@ -108,7 +108,7 @@ def main():
         sys.exit(0 if ok else 1)
 
     if args.test_bridge:
-        print("FloatingUI bridge WS alarm push test...")
+        print("FloatingUI bridge HTTP :9004 alarm push test...")
         from scraper_paketi.alarm import Alert
         mock = Alert(
             watch_name="Test İzleme",

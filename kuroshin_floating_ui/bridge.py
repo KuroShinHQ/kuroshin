@@ -2,16 +2,19 @@
 Kuroshin Bridge — Windows :9003 WebSocket hub
 Chancellor WSL :9005 SSE → WS broadcast → UI
 UI → WS → Chancellor :9005 POST /message
+alarm.py → HTTP POST :9004/alarm → asyncio broadcast (WS event loop bypass)
 """
 import asyncio
 import http.client
+import http.server
 import json
+import socketserver
 import threading
 
 import websockets
 
 
-_WS_CLIENTS: set                      = set()
+_WS_CLIENTS: set                        = set()
 _BRIDGE_LOOP: asyncio.AbstractEventLoop = None
 
 
@@ -111,12 +114,50 @@ def _forward_to_chancellor(text: str):
         pass
 
 
+# ── HTTP push endpoint :9004 ──────────────────────────────────────────────────
+
+class _AlarmHTTPHandler(http.server.BaseHTTPRequestHandler):
+    """
+    alarm.py gibi harici kaynaklar HTTP POST :9004/alarm ile push yapar.
+    asyncio.run_coroutine_threadsafe ile _broadcast doğrudan event loop'a enjekte edilir.
+    """
+    def do_POST(self):
+        if self.path == '/alarm':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                body   = self.rfile.read(length)
+                data   = json.loads(body)
+                if _BRIDGE_LOOP and not _BRIDGE_LOOP.is_closed():
+                    asyncio.run_coroutine_threadsafe(_broadcast(data), _BRIDGE_LOOP)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'ok')
+            except Exception:
+                self.send_response(500)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *args):
+        pass  # sessiz
+
+
+class _AlarmTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+
+def _start_alarm_http():
+    with _AlarmTCPServer(('localhost', 9004), _AlarmHTTPHandler) as srv:
+        srv.serve_forever()
+
+
 # ── Başlatma ──────────────────────────────────────────────────────────────────
 
 def start():
     """
     kuroshin_floating_ui/main.py'den daemon thread olarak çağrılır.
-    WS :9003 + SSE poller aynı event loop'ta çalışır.
+    WS :9003 + SSE poller + HTTP :9004 aynı anda başlar.
     """
     def _run():
         global _BRIDGE_LOOP
@@ -131,4 +172,5 @@ def start():
 
         loop.run_until_complete(_serve())
 
-    threading.Thread(target=_run, name='bridge', daemon=True).start()
+    threading.Thread(target=_run, name='bridge',      daemon=True).start()
+    threading.Thread(target=_start_alarm_http, name='bridge-http', daemon=True).start()

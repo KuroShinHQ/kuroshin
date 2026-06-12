@@ -189,7 +189,8 @@ class PriceWatcher:
     # ── FloatingUI Bridge Push ────────────────────────────────────────────────
 
     def _push_to_bridge(self, alert: 'Alert'):
-        """Alarm tetiklenince FloatingUI bridge WS :9003'e push (opsiyonel)."""
+        """Alarm tetiklenince FloatingUI bridge HTTP :9004/alarm'a push."""
+        import urllib.request
         payload = json.dumps({
             'type':      'alarm',
             'text':      f"{alert.watch_name}: {alert.new_price:,.0f} ₺",
@@ -197,17 +198,17 @@ class PriceWatcher:
             'price':     alert.new_price,
             'old_price': alert.old_price,
             'reason':    alert.reason,
-        })
+        }).encode()
         try:
-            import asyncio
-            import websockets as _wss
-            async def _send():
-                async with _wss.connect(
-                    'ws://localhost:9003', open_timeout=2, close_timeout=1
-                ) as ws:
-                    await ws.send(payload)
-            asyncio.run(_send())
-            print("  ✅ Bridge alarm push OK (FloatingUI)")
+            req = urllib.request.Request(
+                'http://localhost:9004/alarm',
+                data=payload,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=3) as r:
+                r.read()
+            print("  ✅ Bridge alarm push OK (FloatingUI HTTP)")
         except Exception as e:
             print(f"  ⚠  Bridge push atlandı (FloatingUI kapalı?): {type(e).__name__}")
 
