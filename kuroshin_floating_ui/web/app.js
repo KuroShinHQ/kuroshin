@@ -212,6 +212,15 @@
     }
   }
 
+  // FAZ-2: chat.js'den WS üzerinden mesaj gönderme
+  window.kuroshinSendWS = function (text) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'user_message', text }));
+      return true;
+    }
+    return false;
+  };
+
   // pywebview API hazır olunca bağlan
   function init() {
     connectBridge();

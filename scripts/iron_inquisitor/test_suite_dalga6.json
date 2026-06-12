@@ -739,5 +739,93 @@
     "check": "file_exists",
     "file": "scripts/_test_scihub.py",
     "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-http-server-file",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: kuroshin_chancellor_http.py dosyası var",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "agents/kuroshin_chancellor_http.py",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-http-server-start",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: kuroshin_chancellor_http.py start() fonksiyonu var",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor_http.py",
+    "pattern": "def start(",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-push-to-sse",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: push_to_sse fonksiyonu thread-safe SSE broadcast yapar",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor_http.py",
+    "pattern": "run_coroutine_threadsafe",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-aiohttp-sse-stream",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: SSE stream endpoint text/event-stream content-type ile tanımlı",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor_http.py",
+    "pattern": "text/event-stream",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-bridge-file",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: kuroshin_floating_ui/bridge.py dosyası var",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/bridge.py",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-bridge-sse-poller",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: Bridge SSE poller asyncio.open_connection ile :9005 dinliyor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/bridge.py",
+    "pattern": "open_connection",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-bridge-ws-server",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: Bridge websockets.serve :9003 WS hub açıyor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/bridge.py",
+    "pattern": "websockets.serve",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-chancellor-http-hook",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: chancellor.py send_msg içinde push_to_sse hook var",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "agents/kuroshin_chancellor.py",
+    "pattern": "_CHANCELLOR_HTTP.push_to_sse",
+    "expected": { "blocked": false }
+  },
+  {
+    "id": "verify-faz2-main-bridge-import",
+    "category": "verify_faz2_floating_ui",
+    "description": "FAZ-2: FloatingUI main.py bridge import + start çağrısı var",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "bridge_start",
+    "expected": { "blocked": false }
   }
 ]

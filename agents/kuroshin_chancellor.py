@@ -500,6 +500,12 @@ def send_msg(chat_id: int, text: str):
             else:
                 # FIX-ALL (3 Haz 2026): TELEGRAM_OUT log atılması — kanıt zinciri için
                 _log(f"[TELEGRAM_OUT] [{chat_id}] {chunk[:300]}")
+                # FAZ-2 FloatingUI: SSE push (chat_id == ALLOWED_ID kontrolü gereksiz — hepsi push)
+                if _CHANCELLOR_HTTP:
+                    try:
+                        _CHANCELLOR_HTTP.push_to_sse('chat', chunk)
+                    except Exception:
+                        pass
         except Exception as e:
             _log(f"[CHANCELLOR] send_msg HATA ({chunk[:30]}...): {e}")
 
@@ -511,6 +517,7 @@ def send_typing(chat_id: int):
         pass
 
 # ── GLOBAL DURUM ─────────────────────────────────────
+_CHANCELLOR_HTTP = None      # kuroshin_chancellor_http module — FAZ-2 FloatingUI bridge
 _PENDING_PUSH: dict  = {}   # {"msg": str, "force": bool}
 _PENDING_TASKS: dict = {}   # {task_id: task_dict} — onay bekleyen otonom görevler (F5-04)
 _CURRENT_CHAT_ID: int = 0   # process_message her çağrıda günceller
@@ -5378,6 +5385,27 @@ def main():
         kwargs={"port": 8201},
         daemon=True, name="internal-tool-srv"
     ).start()
+
+    # FAZ-2 FloatingUI: Chancellor HTTP mini server :9005
+    try:
+        global _CHANCELLOR_HTTP
+        import sys as _sys_http
+        if "/mnt/c/Kuroshin/agents" not in _sys_http.path:
+            _sys_http.path.insert(0, "/mnt/c/Kuroshin/agents")
+        import kuroshin_chancellor_http as _ch_http
+
+        def _ui_msg_handler(text: str):
+            """UI'dan gelen mesajı Telegram mesajı gibi işle."""
+            try:
+                process_message(ALLOWED_ID, f"[UI] {text}")
+            except Exception as _e:
+                _log(f"[HTTP] UI mesaj işleme hatası: {_e}")
+
+        _ch_http.start(msg_callback=_ui_msg_handler)
+        _CHANCELLOR_HTTP = _ch_http
+        _log("[HTTP] Kuroshin Chancellor HTTP server :9005 aktif")
+    except Exception as _http_e:
+        _log(f"[HTTP] Server başlatma hatası: {_http_e}")
 
     # F5-04: Pending tasks dosyasını yükle (chancellor restart sonrası kayıp önleme)
     _pending_file = Path("/tmp/kuroshin_pending_tasks.json")

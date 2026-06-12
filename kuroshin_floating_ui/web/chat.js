@@ -65,6 +65,13 @@ const ChatManager = (function () {
     addMessage(text, 'user');
     input.value = '';
 
+    // FAZ-2: Bridge WS üzerinden chancellor'a ilet
+    if (window.kuroshinSendWS?.(text)) {
+      window.setOrbState?.('PROCESSING');
+      return;
+    }
+
+    // Fallback: doğrudan pywebview API (bridge henüz bağlı değil)
     if (window.pywebview?.api?.send_message) {
       window.setOrbState?.('PROCESSING');
       const msgDiv = addMessage('...', 'bot', false, true);
@@ -78,7 +85,7 @@ const ChatManager = (function () {
         window.setOrbState?.('IDLE');
       });
     } else {
-      addMessage('[pywebview bağlantısı yok]', 'bot');
+      addMessage('[Bağlantı bekleniyor...]', 'bot');
     }
   }
 

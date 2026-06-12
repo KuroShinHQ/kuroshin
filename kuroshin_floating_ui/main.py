@@ -21,8 +21,9 @@ import webview
 import pystray
 from PIL import Image, ImageDraw
 
-from api   import KuroshinAPI
-from modes import ModeManager
+from api    import KuroshinAPI
+from modes  import ModeManager
+from bridge import start as bridge_start
 
 
 def _load_settings() -> dict:
@@ -149,6 +150,9 @@ def main():
 
     api_obj  = KuroshinAPI(settings, SETTINGS_PATH)
     mode_mgr = ModeManager(settings)
+
+    # Bridge: WS :9003 hub + SSE poller (Chancellor :9005)
+    bridge_start()
 
     # Tray → arka plan thread
     threading.Thread(target=_tray_loop, daemon=True).start()
