@@ -25,6 +25,9 @@ async def _ws_handler(websocket):
                 data = json.loads(msg)
                 if data.get('type') == 'user_message':
                     _forward_to_chancellor(data.get('text', ''))
+                elif data.get('type') in ('alarm', 'status', 'chat', 'processing', 'done'):
+                    # Harici push (alarm.py gibi) → UI'ya broadcast
+                    await _broadcast(data)
             except Exception:
                 pass
     finally:
