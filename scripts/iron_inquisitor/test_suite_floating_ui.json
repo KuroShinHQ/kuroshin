@@ -289,5 +289,171 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Mod-2 toggle: CREATE_NO_WINDOW (gizli terminal, Mod-2 başlangıcı)"
+  },
+
+  {
+    "id": "fui-css-display-block",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/style.css",
+    "pattern": "display: block",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: chat-area display:block (Qt WebEngine flex+overflow bug fix)"
+  },
+  {
+    "id": "fui-css-min-height-zero",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/style.css",
+    "pattern": "min-height: 0",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: min-height:0 (flex item shrink bug — varsayılan min-height:auto overflow'u öldürüyor)"
+  },
+  {
+    "id": "fui-css-max-height-panel",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/style.css",
+    "pattern": "max-height: 460px",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: chat-panel max-height:460px (580px pencerede overflow trigger için panel cap)"
+  },
+  {
+    "id": "fui-css-fit-content",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/style.css",
+    "pattern": "fit-content",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: width:fit-content msg balonlarında (display:block'ta içerik genişliği için)"
+  },
+  {
+    "id": "fui-css-margin-left-auto",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/style.css",
+    "pattern": "margin-left: auto",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: msg-user margin-left:auto (align-self:flex-end yerine — display:block compat)"
+  },
+  {
+    "id": "fui-js-raf-scroll",
+    "category": "fui_scroll_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/chat.js",
+    "pattern": "requestAnimationFrame",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Scroll fix: scrollBottom requestAnimationFrame (DOM render tamamlanmadan scroll timing fix)"
+  },
+  {
+    "id": "fui-bat-timer-t0",
+    "category": "fui_bat_timer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "WALKER_T0",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat timer: WALKER_T0 başlangıç stamp (Walker Mode toplam süre ölçümü)"
+  },
+  {
+    "id": "fui-bat-timer-total",
+    "category": "fui_bat_timer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "WALKER_TOTAL",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat timer: WALKER_TOTAL toplam süre gösterimi (Walker bitişinde)"
+  },
+  {
+    "id": "fui-bat-time-stamp-echo",
+    "category": "fui_bat_timer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "TIME:~0,8",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat timer: [HH:MM:SS] damgası her adım echo'sunda (TIME:~0,8 slice)"
+  },
+  {
+    "id": "fui-bat-stamp-helper",
+    "category": "fui_bat_timer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": ":stamp",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat timer: :stamp helper fonksiyon (PowerShell epoch saniyesi)"
+  },
+  {
+    "id": "fui-bat-purge-goto-menu",
+    "category": "fui_bat_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "Ana menuye donuluyor",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat purge→menu: [5] kapatma sonrası 'Ana menuye donuluyor' mesajı (exit/b yerine goto MAIN_MENU)"
+  },
+  {
+    "id": "fui-bat-shutdown-orb-stop",
+    "category": "fui_bat_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "orb_start.bat\" stop",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat purge: [5] SYSTEM_SHUTDOWN orb_start.bat stop çağırıyor (circle kill fix)"
+  },
+  {
+    "id": "fui-bat-mod2-orb-start",
+    "category": "fui_bat_mod2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "orb_start.bat\" start",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat [2] Mod-2: orb_start.bat start çağırıyor (circle olmadan açılma fix)"
+  },
+  {
+    "id": "fui-bat-mod2-no-backslash-escape",
+    "category": "fui_bat_mod2",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "llama-server.exe\\\"",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Bat [2] Mod-2: llama-server.exe yolunda \\\" escape YOK (cmd /c parse hatası fix)"
+  },
+  {
+    "id": "fui-main-app-display-name",
+    "category": "fui_taskmanager",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "setApplicationDisplayName",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Görev Yöneticisi: setApplicationDisplayName Kuroshin (Python Launcher yerine Kuroshin)"
   }
 ]

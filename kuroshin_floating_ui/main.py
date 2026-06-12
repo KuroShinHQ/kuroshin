@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QIcon
 
 from api    import KuroshinAPI
 from modes  import ModeManager
@@ -118,6 +118,19 @@ def _make_tray_icon():
     return img
 
 
+def _ensure_icon():
+    """icon.ico yoksa tray ikonundan üret — Görev Yöneticisi ikonu."""
+    if os.path.exists(ICON_PATH):
+        return ICON_PATH
+    try:
+        os.makedirs(os.path.dirname(ICON_PATH), exist_ok=True)
+        img = _make_tray_icon().resize((32, 32), Image.LANCZOS)
+        img.save(ICON_PATH, format='ICO', sizes=[(32, 32), (16, 16)])
+        return ICON_PATH
+    except Exception:
+        return None
+
+
 def _tray_loop(qt_app, window):
     def on_show(icon, item):
         window.show()
@@ -181,6 +194,11 @@ def main():
 
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)
+    qt_app.setApplicationName("Kuroshin")
+    qt_app.setApplicationDisplayName("Kuroshin")
+    ico = _ensure_icon()
+    if ico:
+        qt_app.setWindowIcon(QIcon(ico))
 
     api_obj  = KuroshinAPI(settings, SETTINGS_PATH)
     mode_mgr = ModeManager(settings)
