@@ -11,6 +11,17 @@
   let panelOpen = false;
   let _closeListener = null;
 
+  function calcDir() {
+    const sw = window.screen.width;
+    const sh = window.screen.height;
+    const cx = window.screenX + 46;
+    const cy = window.screenY + 46;
+    if (cx > sw / 2 && cy > sh / 2) return 'bottom-right';
+    if (cx <= sw / 2 && cy > sh / 2) return 'bottom-left';
+    if (cx > sw / 2)                 return 'top-right';
+    return 'top-left';
+  }
+
   function openPanel() {
     if (_closeListener) {
       panel.removeEventListener('transitionend', _closeListener);
@@ -18,13 +29,15 @@
     }
     panelOpen = true;
     resetAutoHide();
-    // 1) Önce window'u büyüt — body overflow:hidden clip'i kalksın
+    // 1) transform-origin'i anında doğru köşeye ayarla (async IPC'ye bağımlı değil)
+    document.getElementById('ui-root').dataset.dir = calcDir();
+    // 2) Window'u büyüt
     window.pywebview?.api?.toggle_panel?.(true);
-    // 2) Window resize tamamlansın, sonra animasyon başlasın
+    // 3) Window resize tamamlansın, sonra animasyon başlasın
     setTimeout(() => {
       panel.style.visibility = 'visible';
-      void panel.offsetHeight;  // reflow: "from" değerini kilitle
-      panel.classList.remove('collapsed', 'closing');  // transition başlar (0.82s)
+      void panel.offsetHeight;
+      panel.classList.remove('collapsed', 'closing');
     }, 80);
   }
 
