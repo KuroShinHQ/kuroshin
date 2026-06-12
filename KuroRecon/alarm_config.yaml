@@ -1,0 +1,60 @@
+# ============================================================
+# KuroRecon — Fiyat Alarm Konfigürasyonu
+# Kullanım: python alarm_run.py [--config alarm_config.yaml]
+# ============================================================
+
+telegram:
+  token:   "YOUR_TELEGRAM_TOKEN_HERE"
+  chat_id: "YOUR_TELEGRAM_CHAT_ID_HERE"
+
+# ── Takip listesi ────────────────────────────────────────────
+watches:
+
+  # Örnek 1: Sahibinden araç takibi (cookie gerektirir)
+  - name:        "Ford Focus Sahibinden"
+    url:         "https://www.sahibinden.com/otomobil-ford-focus?pagingSize=50&sorting=price_asc"
+    mode:        "static"
+    parser:      "sahibinden"
+    cookie_file: ""          # Sahibinden cookie dosyası (boşsa anonim)
+    enabled:     false
+    alert_if:
+      below_price:  150000   # Fiyat 150.000₺ altına düşerse bildir
+      drop_percent: 5        # VEYA %5'ten fazla düşüş olursa bildir
+
+  # Örnek 2: Hepsiburada ürün takibi (cookie yok)
+  - name:        "Laptop HB"
+    url:         "https://www.hepsiburada.com/ara?q=laptop&siralama=artanFiyat"
+    mode:        "static"
+    parser:      "hepsiburada"
+    cookie_file: ""
+    enabled:     false
+    alert_if:
+      below_price:  15000    # 15.000₺ altına düşerse bildir
+      drop_percent: 10       # veya %10 düşüş
+
+  # Örnek 3: Trendyol ürün takibi
+  - name:        "Kulaklık Trendyol"
+    url:         "https://www.trendyol.com/sr?q=kulaklık&sst=BEST_SELLER"
+    mode:        "playwright"
+    parser:      "trendyol"
+    cookie_file: ""
+    enabled:     false
+    alert_if:
+      drop_percent: 15       # Sadece %15+ düşüş bildir
+
+  # Eşik tanımlanmazsa: sadece yeni en düşük fiyat tespit edilir
+  # - name: "Bisiklet"
+  #   url: "..."
+  #   mode: "static"
+  #   parser: "sahibinden"
+  #   enabled: true
+  #   alert_if: {}           # boş = her yeni en düşük fiyatta bildir
+
+# ── Scraper ayarları ─────────────────────────────────────────
+scraper:
+  delay_min:   4     # İstekler arası minimum bekleme (saniye)
+  delay_max:   10    # İstekler arası maksimum bekleme (saniye)
+  timeout:     30    # Sayfa yükleme zaman aşımı
+  max_retries: 3
+  proxy:       ""
+  user_agent:  "auto"
