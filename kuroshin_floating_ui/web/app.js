@@ -104,7 +104,8 @@
     }
 
     window.pywebview?.api?.move_window?.(best.x, best.y);
-    window.pywebview?.api?.save_position?.(best.x + ww, best.y + wh, best.name);
+    // best.x/y = pencerenin sol-üst köşesi → doğrudan kaydet
+    window.pywebview?.api?.save_position?.(best.x, best.y, best.name);
   }
 
   // ── Auto-hide (2 dakika) ─────────────────────────────
