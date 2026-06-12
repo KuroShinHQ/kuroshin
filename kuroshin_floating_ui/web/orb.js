@@ -113,20 +113,22 @@ void main() {
   else if (u_state==2.0) { c1=vec3(0,0.15,0.08); c2=GREEN; rimC=GREEN; }
   else if (u_state==4.0) { c1=vec3(0.04,0.04,0.05); c2=GREY; rimC=GREY; }
 
-  // Press: rengi kırmızıya kaydır
-  if (u_press > 0.01) {
-    c1   = mix(c1,   vec3(0.08, 0.01, 0.01), u_press);
-    c2   = mix(c2,   vec3(0.90, 0.10, 0.02), u_press);
-    rimC = mix(rimC, vec3(1.00, 0.25, 0.05), u_press);
+  // Press: rengi kırmızıya kaydır (smooth, sadece FBM paletine)
+  if (u_press > 0.0) {
+    c1   = mix(c1,   vec3(0.05, 0.00, 0.00), u_press * 0.7);
+    c2   = mix(c2,   vec3(0.85, 0.08, 0.01), u_press * 0.7);
+    rimC = mix(rimC, vec3(1.00, 0.20, 0.04), u_press);
   }
 
   vec3 color = mix(c1, c2, f);
 
-  // Press progress ring: dışarıdan içe dolum (0% → 100%)
-  if (u_press > 0.01) {
-    float innerR = 0.55 - u_press * 0.45; // 0.55→0.10 arası daralır
-    float ring = smoothstep(innerR - 0.06, innerR, dist) * (1.0 - smoothstep(0.88, 0.97, dist));
-    color = mix(color, vec3(1.0, 0.3, 0.05), ring * (0.6 + 0.4*sin(t*12.0)));
+  // Press: dışarıdan içe dolum — u_press=0 tamamen görünmez
+  // threshold=1.0(dışarıda) → 0.08(neredeyse tümü), fill sadece dist>threshold bölgesine
+  if (u_press > 0.0) {
+    float threshold = 1.0 - u_press * 0.92;
+    float fill = smoothstep(threshold - 0.12, threshold + 0.04, dist);
+    vec3 fireColor = vec3(0.95, 0.15, 0.02) * (0.75 + 0.25 * sin(t * 10.0));
+    color = mix(color, fireColor, fill * sqrt(u_press));
   }
 
   // Rim glow (Stitch-inspired: 0.70 tighter)
@@ -194,9 +196,10 @@ void main() {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  // press değeri (app.js'ten setOrbPress ile güncellenir)
-  let pressValue = 0;
-  window.setOrbPress = function (v) { pressValue = Math.max(0, Math.min(1, v)); };
+  // press değeri — lerp ile smooth geçiş (ani flash engeli)
+  let pressValue  = 0;
+  let pressTarget = 0;
+  window.setOrbPress = function (v) { pressTarget = Math.max(0, Math.min(1, v)); };
 
   // setOrbState shader tarafını da günceller (WebGL uniform)
   const _baseSetOrbState = window.setOrbState;
@@ -207,6 +210,9 @@ void main() {
 
   function render(t) {
     if (typeof ResizeObserver === 'undefined') syncSize();
+    // smooth lerp: her frame'de hedefe %25 yaklaş (~400ms tam geçiş @ 60fps)
+    pressValue += (pressTarget - pressValue) * 0.25;
+    if (pressValue < 0.001) pressValue = 0;
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
