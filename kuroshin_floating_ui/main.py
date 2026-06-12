@@ -162,11 +162,10 @@ def _setup_orb_mouse_hotkey(api_obj):
                 )
             api_obj.save_position(nx, ny, 'free')
 
-        for hk in ('ctrl+alt+u', 'ctrl+alt+ü'):
-            try:
-                _kb.add_hotkey(hk, _jump_to_mouse, suppress=True)
-            except Exception:
-                pass
+        try:
+            _kb.add_hotkey('ctrl+alt+0', _jump_to_mouse, suppress=True)
+        except Exception:
+            pass
 
     except Exception:
         pass
