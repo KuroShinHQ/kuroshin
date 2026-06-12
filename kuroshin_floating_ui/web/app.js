@@ -263,7 +263,7 @@
         try { msg = JSON.parse(e.data); } catch { return; }
 
         if (msg.type === 'chat') {
-          ChatManager?.addMessage(msg.text, 'bot', false);
+          ChatManager?.addMessage(msg.text, 'bot', true);
           window.setOrbState?.('IDLE');
         } else if (msg.type === 'processing') {
           window.setOrbState?.('PROCESSING');

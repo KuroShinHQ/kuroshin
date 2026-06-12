@@ -113,12 +113,25 @@ void main() {
 
   vec3 color = mix(c1, c2, f);
 
-  // Rim glow
-  float rim = smoothstep(0.6, 1.0, dist * breath);
+  // Rim glow (Stitch-inspired: 0.70 tighter)
+  float rim = smoothstep(0.70, 1.0, dist * breath);
   color = mix(color, rimC, rim*(0.5+0.5*sin(t+f*10.0)));
 
-  // Daire kırpma (şeffaf kenar)
-  float alpha = smoothstep(1.0, 0.94, dist);
+  // PROCESSING: dönen tarama halkası
+  if (u_state==1.0) {
+    float ring  = sin(dist*28.0 - t*12.0)*0.5 + 0.5;
+    float rMask = smoothstep(0.25,0.55,dist) * smoothstep(1.0,0.60,dist);
+    color += vec3(0.0, 0.55, 1.0) * ring * rMask * 0.45;
+  }
+
+  // ALARM: nabız (sinüs darbe)
+  if (u_state==3.0) {
+    float pulse = sin(t*6.0)*0.22 + 0.78;
+    color *= pulse;
+  }
+
+  // Daire kırpma (Stitch-inspired: 0.97 daha keskin kenar)
+  float alpha = smoothstep(1.0, 0.97, dist);
 
   gl_FragColor = vec4(color, alpha);
 }`;

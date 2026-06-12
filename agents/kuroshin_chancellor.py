@@ -5397,7 +5397,13 @@ def main():
         def _ui_msg_handler(text: str):
             """UI'dan gelen mesajı Telegram mesajı gibi işle."""
             try:
+                if _CHANCELLOR_HTTP:
+                    try: _CHANCELLOR_HTTP.push_to_sse('processing', '')
+                    except Exception: pass
                 process_message(ALLOWED_ID, f"[UI] {text}")
+                if _CHANCELLOR_HTTP:
+                    try: _CHANCELLOR_HTTP.push_to_sse('done', '')
+                    except Exception: pass
             except Exception as _e:
                 _log(f"[HTTP] UI mesaj işleme hatası: {_e}")
 
