@@ -18,6 +18,7 @@ html, body {
   border-radius: 16px;
   overflow: hidden;
   width: 320px;
+  max-height: 460px;
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
@@ -88,13 +89,15 @@ html, body {
 /* ── Chat Area ── */
 #chat-area {
   flex: 1;
-  height: 240px;
+  min-height: 0;
   padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: block;
   overflow-y: auto;
   font-size: 11px;
+}
+
+#chat-area > div {
+  margin-bottom: 10px;
 }
 
 /* Minimal scrollbar */
@@ -107,23 +110,27 @@ html, body {
 
 /* ── Mesaj balonları ── */
 .msg-user {
-  align-self: flex-end;
+  display: block;
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
   padding: 8px 12px;
-  max-width: 85%;
   line-height: 1.5;
   color: #e1e2ec;
 }
 
 .msg-bot {
-  align-self: flex-start;
+  display: block;
+  width: fit-content;
+  max-width: 90%;
+  margin-left: 0;
   background: transparent;
   border: 1px solid rgba(255,255,255,0.04);
   border-radius: 10px;
   padding: 8px 12px;
-  max-width: 90%;
   line-height: 1.5;
   color: #A3A3A3;
   position: relative;

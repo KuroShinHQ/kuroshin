@@ -7,7 +7,7 @@ const ChatManager = (function () {
   const send  = document.getElementById('send-btn');
 
   function scrollBottom() {
-    area.scrollTop = area.scrollHeight;
+    requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
   }
 
   function typeText(el, text, onDone) {
