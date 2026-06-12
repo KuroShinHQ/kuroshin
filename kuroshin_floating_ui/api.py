@@ -104,11 +104,12 @@ class KuroshinAPI(QObject):
                 return r.status == 200
             except Exception:
                 return False
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
-            ch = ex.submit(chk, 9005)
-            lm = ex.submit(chk, 8080)
-            wk = ex.submit(chk, 9002)
-            return {'ch': ch.result(), 'lm': lm.result(), 'wk': wk.result()}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            ch   = ex.submit(chk, 9005)
+            lm1  = ex.submit(chk, 8080)   # ana LLM (Huihui-35B)
+            lm2  = ex.submit(chk, 8082)   # Mod-2 (Qwen3-1.7B)
+            wk   = ex.submit(chk, 9002)
+            return {'ch': ch.result(), 'lm': lm1.result() or lm2.result(), 'wk': wk.result()}
 
     # ── Mesaj ────────────────────────────────────────
     @pyqtSlot(str, result=str)

@@ -207,8 +207,16 @@
 
   // ── Sistem Butonları ─────────────────────────────────
   document.getElementById('btn-ram')?.addEventListener('click', () => {
+    // Orb press animasyonu: 450ms'de 0→1 dolum
+    let pv = 0;
+    const anim = setInterval(() => {
+      pv = Math.min(pv + 0.08, 1.0);
+      window.setOrbPress?.(pv);
+      if (pv >= 1.0) clearInterval(anim);
+    }, 30);
+    setTimeout(() => window.setOrbPress?.(0), 2000);
     window.pywebview?.api?.ram_purge?.();
-    ChatManager?.addMessage('RAM cache temizleniyor...', 'bot', true);
+    ChatManager?.addMessage('🧹 RAM cache temizleniyor...', 'bot', true);
   });
 
   document.getElementById('btn-llm')?.addEventListener('click', () => {
