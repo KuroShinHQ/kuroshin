@@ -226,7 +226,8 @@ def main():
                     r = _sp.run(
                         ['nvidia-smi', '--query-gpu=utilization.gpu,temperature.gpu',
                          '--format=csv,noheader,nounits'],
-                        capture_output=True, text=True, timeout=2
+                        capture_output=True, text=True, timeout=2,
+                        creationflags=0x08000000  # CREATE_NO_WINDOW
                     )
                     if r.returncode == 0:
                         p = r.stdout.strip().split(',')
