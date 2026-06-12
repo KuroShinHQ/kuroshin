@@ -1,6 +1,37 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 11 Haziran 2026 22:30
-**Süreç:** 🚀 **v11.33.4** — Byparr etik rate limit ✅ + ML-free test suite 12/12 ✅ + SAH-MOBILE araştırması ✅
+**Son Güncelleme:** 12 Haziran 2026 03:00
+**Süreç:** 🚀 **v11.33.4** — KuroRecon Fiyat Alarm ✅ + Floating UI mimari ✅ + SAH-MOBILE kapatıldı ✅
+
+---
+
+## 🔵 FLOATING UI — Kuroshin Masaüstü Asistanı (12 Haz 2026)
+
+**Hedef:** Pluely/Omi tarzı, Windows 11 Mica cam efektli, always-on-top yüzen asistan penceresi.  
+**Mimari:** `docs/FLOATING_UI_MIMARISI.md` — tam diyagram + faz planı  
+**Stack:** PyQt6 + PyQt-Frameless-Window + win32mica + WebSocket (9003)
+
+**FAZ-1 — Temel Pencere:**
+- [ ] **F1-1** `kuroshin_floating_ui/` dizini oluştur, `requirements.txt` hazırla
+- [ ] **F1-2** `floating_window.py` — FramelessWindow + Mica efekti + always-on-top
+- [ ] **F1-3** Sürüklenebilir başlık, system tray ikonu, sağ tık menü
+- [ ] **F1-4** `settings.json` — pozisyon + opacity kalıcı kayıt
+- [ ] **F1-5** Bat [1]'e FloatingUI başlatma + Bat [5]'e kapatma ekle
+- [ ] **F1-TEST** Bat ile açılıp kapandığı canlı kanıtlanır
+
+**FAZ-2 — IPC Köprüsü:**
+- [ ] **F2-1** `kuroshin_floating_bridge.py` — WebSocket sunucu :9003
+- [ ] **F2-2** `bridge_client.py` — asyncio WebSocket istemci (QThread içinde)
+- [ ] **F2-3** Sistem durum yayını (Chancellor/Llama/Walker LED'leri — 5s)
+- [ ] **F2-4** Chancellor hook: `send_msg()` → bridge'e bildir
+- [ ] **F2-TEST** Gerçek Chancellor mesajı FloatingUI'da görünüyor (canlı log)
+
+**FAZ-3 — Tam İnteraktif:**
+- [ ] **F3-1** `input_widget.py` — mesaj yaz → Chancellor'a gönder
+- [ ] **F3-2** Akan yazı animasyonu (typewriter, QTimer)
+- [ ] **F3-3** Pulse animasyonu (işleme göstergesi)
+- [ ] **F3-4** Fiyat alarm bildirimi (shake + köşe popup)
+- [ ] **F3-5** Market stream progress bar
+- [ ] **F3-TEST** Uçtan uca: FloatingUI yaz → Chancellor → akan yanıt
 
 ---
 
