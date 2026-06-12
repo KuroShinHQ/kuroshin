@@ -165,19 +165,26 @@ class KuroshinAPI(QObject):
         _enable_priv("SeProfileSingleProcessPrivilege")
         _enable_priv("SeLockMemoryPrivilege")
 
-        # SystemMemoryListInformation = 80
-        # 2=EmptyWorkingSet (tüm process'ler), 3=FlushModifiedList, 4=PurgeStandbyList
-        for cmd_val in (2, 3, 4):
+        SystemMemoryListInformation = 80
+        MemoryEmptyWorkingSet       = 2   # tüm process working setleri boşalt
+        MemoryFlushModifiedList     = 3   # modified page list temizle
+        MemoryPurgeStandbyList      = 4   # standby list temizle
+
+        for cmd_val in (MemoryEmptyWorkingSet, MemoryFlushModifiedList, MemoryPurgeStandbyList):
             cmd = ctypes.c_uint32(cmd_val)
-            ntdll.NtSetSystemInformation(80, ctypes.byref(cmd), ctypes.sizeof(cmd))
+            ntdll.NtSetSystemInformation(SystemMemoryListInformation,
+                                         ctypes.byref(cmd), ctypes.sizeof(cmd))
 
         time.sleep(0.5)
-        freed_mb = (_ps.virtual_memory().available - mem_before) // (1024 * 1024)
-        msg = f"+{freed_mb} MB boşaldı" if freed_mb > 0 else "tamamlandı"
+        mem_after   = _ps.virtual_memory()
+        freed_mb    = (mem_after.available - mem_before) // (1024 * 1024)
+        free_gb     = round(mem_after.available / 1073741824, 1)
+        msg = f"+{freed_mb} MB boşaldı · {free_gb} GB serbest" if freed_mb > 30 \
+              else f"RAM zaten temiz · {free_gb} GB serbest"
 
         if self._win:
             self._win.runJS.emit(
-                f"ChatManager?.addMessage('🧹 RAM temizlendi — {msg}', 'bot', true);"
+                f"ChatManager?.addMessage('🧹 {msg}', 'bot', true);"
             )
 
     @pyqtSlot(result='QVariantMap')
@@ -217,7 +224,40 @@ class KuroshinAPI(QObject):
 
     @pyqtSlot()
     def llm_toggle(self):
-        pass
+        import threading
+        threading.Thread(target=self._do_llm_toggle, daemon=True).start()
+
+    def _do_llm_toggle(self):
+        import subprocess, os
+        LLAMA = r'C:\Users\pc\.docker\bin\inference\llama-server.exe'
+        MODEL = r'C:\Kuroshin\kuroshin-downloads\Qwen_Qwen3-1.7B-IQ4_XS.gguf'
+        LOG   = r'C:\Kuroshin\logs\llama_1.7b.log'
+        NWIN  = 0x08000000  # CREATE_NO_WINDOW
+
+        running = False
+        try:
+            r = urllib.request.urlopen('http://localhost:8082/health', timeout=1)
+            running = (r.status == 200)
+        except Exception:
+            pass
+
+        if running:
+            subprocess.Popen(['taskkill', '/f', '/im', 'llama-server.exe'],
+                             creationflags=NWIN)
+            msg = '⬛ Mod-2 (Qwen3-1.7B) durduruldu'
+        else:
+            os.makedirs(os.path.dirname(LOG), exist_ok=True)
+            with open(LOG, 'a') as lf:
+                subprocess.Popen(
+                    [LLAMA, '--model', MODEL, '--port', '8082',
+                     '--ctx-size', '8192', '--n-gpu-layers', '99',
+                     '--no-warmup', '--cache-type-k', 'q8_0', '--cache-type-v', 'q8_0'],
+                    stdout=lf, stderr=lf, creationflags=NWIN
+                )
+            msg = '🟢 Mod-2 başlatılıyor... (Qwen3-1.7B IQ4_XS · port 8082)'
+
+        if self._win:
+            self._win.runJS.emit(f"ChatManager?.addMessage('{msg}', 'bot', true);")
 
     @pyqtSlot()
     def chancellor_restart(self):

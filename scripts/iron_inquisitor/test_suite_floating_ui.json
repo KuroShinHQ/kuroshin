@@ -1,0 +1,293 @@
+[
+  {
+    "id": "fui-file-main",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/main.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: main.py mevcut"
+  },
+  {
+    "id": "fui-file-api",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/api.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: api.py mevcut"
+  },
+  {
+    "id": "fui-file-bridge",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/bridge.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: bridge.py mevcut (WS :9003 + HTTP :9004)"
+  },
+  {
+    "id": "fui-file-index",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/web/index.html",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: web/index.html mevcut"
+  },
+  {
+    "id": "fui-file-orb",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/web/orb.js",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: web/orb.js mevcut (WebGL shader)"
+  },
+  {
+    "id": "fui-file-appjs",
+    "category": "fui_structure",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "FloatingUI: web/app.js mevcut"
+  },
+  {
+    "id": "fui-ram-ntsetsystem",
+    "category": "fui_ram_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "NtSetSystemInformation",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM purge: NtSetSystemInformation kullanıyor (gerçek working set temizleme)"
+  },
+  {
+    "id": "fui-ram-privilege",
+    "category": "fui_ram_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "SeProfileSingleProcessPrivilege",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM purge: SeProfileSingleProcessPrivilege elevation (ASCService yöntemi)"
+  },
+  {
+    "id": "fui-ram-standby-purge",
+    "category": "fui_ram_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "MemoryPurgeStandbyList",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM purge: MemoryPurgeStandbyList sabiti (standby list temizleme)"
+  },
+  {
+    "id": "fui-ram-psutil-before-after",
+    "category": "fui_ram_purge",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "mem_before",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM purge: öncesi/sonrası psutil ölçümü (freed MB hesaplama)"
+  },
+  {
+    "id": "fui-hw-bar-html",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/index.html",
+    "pattern": "hw-bar",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: hw-bar div index.html'de mevcut"
+  },
+  {
+    "id": "fui-hw-cpu-val",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/index.html",
+    "pattern": "hw-cpu-val",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: hw-cpu-val span mevcut"
+  },
+  {
+    "id": "fui-hw-gpu-val",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/index.html",
+    "pattern": "hw-gpu-val",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: hw-gpu-val span mevcut (GPU kullanım + sıcaklık)"
+  },
+  {
+    "id": "fui-hw-updatehw-js",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "pattern": "window.updateHW = updateHW",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: updateHW global export (Python runJS.emit için)"
+  },
+  {
+    "id": "fui-hw-nvidia-smi",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "nvidia-smi",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: nvidia-smi subprocess (GPU kullanım + sıcaklık)"
+  },
+  {
+    "id": "fui-hw-no-window",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "creationflags=0x08000000",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: nvidia-smi CREATE_NO_WINDOW (terminal flash fix)"
+  },
+  {
+    "id": "fui-hw-psutil-requirements",
+    "category": "fui_hw_monitor",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/requirements.txt",
+    "pattern": "psutil",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "HW Monitor: psutil requirements.txt'de kayıtlı"
+  },
+  {
+    "id": "fui-led-l1-l2",
+    "category": "fui_led",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/index.html",
+    "pattern": "led-lm2",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "LED: led-lm2 (L2 = Mod-2 Qwen3-1.7B :8082) ayrı LED mevcut"
+  },
+  {
+    "id": "fui-led-main-poll-lm1-lm2",
+    "category": "fui_led",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "lm1",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "LED: main.py _led_poll lm1/lm2 ayrı key gönderiliyor"
+  },
+  {
+    "id": "fui-led-api-lm1-lm2",
+    "category": "fui_led",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "lm1",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "LED: api.py get_status lm1/lm2 ayrı döndürüyor"
+  },
+  {
+    "id": "fui-click-long-press-guard",
+    "category": "fui_click_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "pattern": "longPressTriggered",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Click fix: longPressTriggered bayrağı (3sn basılı tutunca panel açılma engeli)"
+  },
+  {
+    "id": "fui-click-threshold-250",
+    "category": "fui_click_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "pattern": "elapsed < 250",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Click fix: 250ms threshold (PyQt6 IPC gecikmesi tolere — önceki 50ms çok kısa)"
+  },
+  {
+    "id": "fui-click-stop-propagation",
+    "category": "fui_click_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "pattern": "stopPropagation",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Click fix: stopPropagation panel butonlarında (event interference önleme)"
+  },
+  {
+    "id": "fui-llm-toggle-impl",
+    "category": "fui_mod2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "_do_llm_toggle",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Mod-2 toggle: _do_llm_toggle implement edildi (önceki pass stub değil)"
+  },
+  {
+    "id": "fui-llm-toggle-model-path",
+    "category": "fui_mod2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "Qwen3-1.7B-IQ4_XS",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Mod-2 toggle: doğru model path (Qwen3-1.7B-IQ4_XS.gguf)"
+  },
+  {
+    "id": "fui-llm-toggle-port",
+    "category": "fui_mod2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "8082",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Mod-2 toggle: port 8082 kullanıyor"
+  },
+  {
+    "id": "fui-llm-toggle-no-window",
+    "category": "fui_mod2",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "CREATE_NO_WINDOW",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Mod-2 toggle: CREATE_NO_WINDOW (gizli terminal, Mod-2 başlangıcı)"
+  }
+]
