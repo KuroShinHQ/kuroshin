@@ -77,9 +77,10 @@ def cmd_reset(history_file: Path, watch_name: str):
 def main():
     ap = argparse.ArgumentParser(description="KuroRecon Fiyat Alarm")
     ap.add_argument("--config", default="alarm_config.yaml", help="Alarm config dosyası")
-    ap.add_argument("--test",   action="store_true", help="Telegram bağlantısını test et")
-    ap.add_argument("--status", action="store_true", help="Son kontrol özetini göster")
-    ap.add_argument("--reset",  metavar="İZLEME_ADI", help="Bir izlemenin geçmişini sıfırla")
+    ap.add_argument("--test",         action="store_true", help="Telegram bağlantısını test et")
+    ap.add_argument("--test-bridge",  action="store_true", help="FloatingUI bridge WS push test et")
+    ap.add_argument("--status",       action="store_true", help="Son kontrol özetini göster")
+    ap.add_argument("--reset",        metavar="İZLEME_ADI", help="Bir izlemenin geçmişini sıfırla")
     args = ap.parse_args()
 
     # --status ve --reset config gerektirmez
@@ -105,6 +106,21 @@ def main():
         print("Telegram test mesajı gönderiliyor...")
         ok = watcher.send_test()
         sys.exit(0 if ok else 1)
+
+    if args.test_bridge:
+        print("FloatingUI bridge WS alarm push test...")
+        from scraper_paketi.alarm import Alert
+        mock = Alert(
+            watch_name="Test İzleme",
+            title="Test Ürün — Mock Alarm",
+            url="https://example.com",
+            site="test-site",
+            old_price=1500.0,
+            new_price=1200.0,
+            reason="drop_percent",
+        )
+        watcher._push_to_bridge(mock)
+        sys.exit(0)
 
     # Normal çalıştırma
     active = [w for w in watches if w.get("enabled", True)]

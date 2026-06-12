@@ -2,6 +2,7 @@
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 pyyaml>=6.0
+websockets>=12.0
 
 # Birincil fetcher (TLS/JA3 impersonate — Akamai/CF bypass için şiddetle önerilir)
 curl_cffi>=0.6.0

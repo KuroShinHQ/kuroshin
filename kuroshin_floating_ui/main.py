@@ -31,8 +31,9 @@ from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor
 
-from api   import KuroshinAPI
-from modes import ModeManager
+from api    import KuroshinAPI
+from modes  import ModeManager
+from bridge import start as bridge_start
 
 
 def _load_settings():
@@ -187,6 +188,7 @@ def main():
     window = OrbWindow(api_obj, settings)
     window.show()
 
+    bridge_start()
     threading.Thread(target=_hide_from_taskbar, daemon=True).start()
     _setup_orb_mouse_hotkey(api_obj)
     threading.Thread(target=_tray_loop, args=(qt_app, window), daemon=True).start()

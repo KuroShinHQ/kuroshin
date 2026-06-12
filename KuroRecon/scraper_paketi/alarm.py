@@ -186,6 +186,31 @@ class PriceWatcher:
             ]
         }
 
+    # ── FloatingUI Bridge Push ────────────────────────────────────────────────
+
+    def _push_to_bridge(self, alert: 'Alert'):
+        """Alarm tetiklenince FloatingUI bridge WS :9003'e push (opsiyonel)."""
+        payload = json.dumps({
+            'type':      'alarm',
+            'text':      f"{alert.watch_name}: {alert.new_price:,.0f} ₺",
+            'watch':     alert.watch_name,
+            'price':     alert.new_price,
+            'old_price': alert.old_price,
+            'reason':    alert.reason,
+        })
+        try:
+            import asyncio
+            import websockets as _wss
+            async def _send():
+                async with _wss.connect(
+                    'ws://localhost:9003', open_timeout=2, close_timeout=1
+                ) as ws:
+                    await ws.send(payload)
+            asyncio.run(_send())
+            print("  ✅ Bridge alarm push OK (FloatingUI)")
+        except Exception as e:
+            print(f"  ⚠  Bridge push atlandı (FloatingUI kapalı?): {type(e).__name__}")
+
     # ── Telegram ──────────────────────────────────────────────────────────────
 
     def send_telegram(self, text: str) -> bool:
@@ -244,6 +269,7 @@ class PriceWatcher:
             for alert in alerts:
                 print(f"  🔔 ALARM: {alert.reason} | {alert.new_price:,.0f} ₺")
                 self.send_telegram(alert.telegram_text())
+                self._push_to_bridge(alert)
                 total_alerts += 1
 
             self._update_history(history, watch, items)
