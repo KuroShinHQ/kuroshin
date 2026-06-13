@@ -326,6 +326,9 @@
   window.updateLEDs = updateLEDs;
 
   // ── Hardware Monitor Güncelleme ──────────────────────
+  // CPU/RAM yükü → shader renk kaydırma
+  window.orbLoad = 0.0;
+
   function updateHW(s) {
     const cpuEl = document.getElementById('hw-cpu-val');
     if (cpuEl && s.cpu_pct >= 0) {
@@ -348,6 +351,10 @@
         gpuEl.textContent = '--';
       }
     }
+    // CPU/RAM yükü → shader için orbLoad güncelle (0.0-1.0)
+    // Ağırlık: CPU %70, RAM %30 — CPU ani spike'ları daha görünür olsun
+    const load = Math.max(0, Math.min(1, (s.cpu_pct * 0.7 + s.ram_pct * 0.3) / 100));
+    window.orbLoad = load;
   }
 
   window.updateHW = updateHW;
