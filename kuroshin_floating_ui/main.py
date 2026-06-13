@@ -11,19 +11,21 @@ import ctypes
 import ctypes.wintypes
 
 if getattr(sys, 'frozen', False):
-    HERE = os.path.dirname(sys.executable)
+    _RES  = sys._MEIPASS
+    _DATA = os.path.dirname(sys.executable)
 else:
-    HERE = os.path.dirname(os.path.abspath(__file__))
-SETTINGS_PATH = os.path.join(HERE, 'settings.json')
-WEB_DIR       = os.path.join(HERE, 'web')
-ICON_PATH     = os.path.join(HERE, 'assets', 'icon.ico')
+    _RES  = os.path.dirname(os.path.abspath(__file__))
+    _DATA = _RES
+SETTINGS_PATH = os.path.join(_DATA, 'settings.json')
+WEB_DIR       = os.path.join(_RES,  'web')
+ICON_PATH     = os.path.join(_DATA, 'icon.ico')
 
 # Tek instance kilidi
 _MUTEX = ctypes.windll.kernel32.CreateMutexW(None, True, 'KuroshinFloatingUI_SingleInstance')
 if ctypes.windll.kernel32.GetLastError() == 183:
     sys.exit(0)
 
-sys.path.insert(0, HERE)
+sys.path.insert(0, _RES)
 
 import pystray
 from PIL import Image, ImageDraw
@@ -126,7 +128,7 @@ def _ensure_icon():
     if os.path.exists(ICON_PATH):
         return ICON_PATH
     try:
-        os.makedirs(os.path.dirname(ICON_PATH), exist_ok=True)
+        os.makedirs(os.path.dirname(ICON_PATH) or '.', exist_ok=True)
         img = _make_tray_icon().resize((32, 32), Image.LANCZOS)
         img.save(ICON_PATH, format='ICO', sizes=[(32, 32), (16, 16)])
         return ICON_PATH
@@ -286,3 +288,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
