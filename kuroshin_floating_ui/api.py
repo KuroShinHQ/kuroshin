@@ -386,12 +386,8 @@ class KuroshinAPI(QObject):
             msg = '⬛ Mod-2 (Qwen3-1.7B) durduruldu'
         else:
             subprocess.Popen(
-                ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
-                 '/opt/llama-turboquant/bin/llama-server'
-                 ' --model /mnt/c/Kuroshin/kuroshin-downloads/gemma-3-4b-it-Q4_K_M.gguf'
-                 ' --port 8082 --host 0.0.0.0 --ctx-size 8192 --n-gpu-layers 99'
-                 ' --cache-type-k tq3_0 --cache-type-v tq3_0 --no-warmup -fa'
-                 ' >> /tmp/llama_gemma3.log 2>&1'],
+                ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash',
+                 '/mnt/c/Kuroshin/scripts/start_gemma3_l2.sh'],
                 creationflags=NWIN
             )
             msg = '🔄 Mod-2 başlatılıyor... (Gemma 3 4B · port 8082 · hazır olunca bildirim)'
