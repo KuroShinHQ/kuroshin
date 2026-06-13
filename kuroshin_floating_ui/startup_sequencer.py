@@ -1,10 +1,11 @@
 """
-Kuroshin FloatingUI Startup Sequencer v1.0
+Kuroshin FloatingUI Startup Sequencer v1.1
 - Önceki instance temizle
 - SYSTEM_PAUSED flag kaldır
 - Chancellor :9005 hazır mı → değilse başlat + bekle
 - Kuroshin.exe başlat
-- Bridge :9003 hazır mı → bekle
+- 5s bekle (bridge thread gecikmeli açılıyor)
+- Bridge :9003 hazır mı → bekle (30s timeout)
 - Tüm adımları logs/floatingui_startup.log'a yaz
 """
 import datetime, os, socket, subprocess, sys, time, urllib.request
@@ -133,14 +134,14 @@ def start_exe() -> bool:
 
 def wait_bridge() -> bool:
     _log("🔌 Bridge WS :9003 bekleniyor...")
-    return wait_service(9003, "Bridge", _tcp_ok, timeout=20, interval=1.5)
+    return wait_service(9003, "Bridge", _tcp_ok, timeout=30, interval=1.5)
 
 
 # ── Ana akış ─────────────────────────────────────────────────────────────────
 
 def main():
     _log("=" * 52)
-    _log("🟡 FloatingUI Startup Sequencer v1.0")
+    _log("🟡 FloatingUI Startup Sequencer v1.1")
     _log(f"   Log: {LOG}")
     _log("=" * 52)
 
@@ -155,7 +156,7 @@ def main():
         _log("❌ HATA: EXE başlatılamadı — çıkılıyor")
         sys.exit(1)
 
-    time.sleep(2)   # exe'nin bridge'i başlatması için kısa bekleme
+    time.sleep(5)   # exe bridge thread'ini gecikmeli açıyor; 5s bekle
     br_ok = wait_bridge()
     if not br_ok:
         _log("⚠️ Bridge gecikti — orb açık, WS bağlantısı kendiliğinden kurulacak")

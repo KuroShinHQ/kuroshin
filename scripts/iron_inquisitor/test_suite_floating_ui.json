@@ -642,5 +642,38 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Alarm fix: app.js hardcoded '[FAZ-3] Alarm listesi yapılandırılmadı.' mesajı kaldırıldı"
+  },
+
+  {
+    "id": "fui-seq-file-exists",
+    "category": "fui_startup_sequencer",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "kuroshin_floating_ui/startup_sequencer.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Startup Sequencer: startup_sequencer.py mevcut (FloatingUI tek-nokta başlatıcı)"
+  },
+  {
+    "id": "fui-seq-sleep5-before-bridge",
+    "category": "fui_startup_sequencer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/startup_sequencer.py",
+    "pattern": "time.sleep(5)",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Startup Sequencer: sleep(5) bridge öncesi (exe bridge thread gecikmeli açılıyor — 20s timeout fix)"
+  },
+  {
+    "id": "fui-seq-bridge-timeout-30",
+    "category": "fui_startup_sequencer",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/startup_sequencer.py",
+    "pattern": "timeout=30",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Startup Sequencer: Bridge wait timeout 30s (önceki 20s — exe Start-Process gecikmesine yeterli)"
   }
 ]
