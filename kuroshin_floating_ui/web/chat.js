@@ -11,12 +11,14 @@ const ChatManager = (function () {
   }
 
   function typeText(el, text, onDone) {
+    // HTML taglarını soyup typing'de plain text göster, bitince HTML render
+    const plain = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '');
     el.textContent = '';
     el.classList.add('typing-cursor');
     let i = 0;
     const iv = setInterval(() => {
-      if (i < text.length) {
-        el.textContent += text[i++];
+      if (i < plain.length) {
+        el.textContent += plain[i++];
         scrollBottom();
       } else {
         clearInterval(iv);

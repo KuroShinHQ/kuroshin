@@ -4775,7 +4775,7 @@ def process_message(chat_id: int, text: str, test_mode: bool = False):
             response = call_qwen(messages, kullan_arac=arac_kullan)
         except Exception as e:
             _log(f"[TELEGRAM_OUT] [{chat_id}] ⚠️ Qwen3 hatası: {str(e)[:80]}")
-            send_msg(chat_id, f"⚠️ Qwen3 hatası: {e}")
+            send_msg(chat_id, "⚠️ LLM bağlantısı yok — llama-server kapalı. Bat [1] ile başlatın.")
             return
 
         choice = response["choices"][0]

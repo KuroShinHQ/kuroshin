@@ -364,9 +364,9 @@ class KuroshinAPI(QObject):
                 else:
                     enabled.append(f'· {name}')
             if not enabled:
-                msg = '🔔 Aktif alarm yok\nalarm_config.yaml → enabled: true yap'
+                msg = '🔔 Aktif alarm yok<br>alarm_config.yaml → enabled: true yap'
             else:
-                msg = f'🔔 {len(enabled)} aktif:\n' + '\n'.join(enabled)
+                msg = f'🔔 {len(enabled)} aktif:<br>' + '<br>'.join(enabled)
         except FileNotFoundError:
             msg = '⚠️ alarm_config.yaml bulunamadı'
         except Exception as e:
