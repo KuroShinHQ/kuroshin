@@ -357,7 +357,7 @@ class KuroshinAPI(QObject):
                 ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
                  '/opt/llama-turboquant/bin/llama-server'
                  ' --model /mnt/c/Kuroshin/kuroshin-downloads/Qwen_Qwen3-1.7B-IQ4_XS.gguf'
-                 ' --port 8082 --ctx-size 4096 --n-gpu-layers 99'
+                 ' --port 8082 --host 0.0.0.0 --ctx-size 4096 --n-gpu-layers 99'
                  ' --cache-type-k tq3_0 --cache-type-v tq3_0 --no-warmup'
                  ' >> /tmp/llama_1.7b.log 2>&1'],
                 creationflags=NWIN
