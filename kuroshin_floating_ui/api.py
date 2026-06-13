@@ -140,15 +140,17 @@ class KuroshinAPI(QObject):
                 kar = p.get('karakter_temeli', {})
                 kon = p.get('konusma_tarzi', {})
                 yasak = ' / '.join(f'"{x}"' for x in kon.get('yasak_kaliplar', [])[:4])
+                ozet = kar.get('ozet', '')
+                if ozet.lower().startswith('kuroshin '):
+                    ozet = ozet[9:]
                 return (
-                    f"/no_think\n"
-                    f"Sen {k.get('isim','Kuroshin')}'sin — {kar.get('ozet','')}.\n"
-                    f"Lordun: {k.get('lordum','kuroshin_user')}. Her yanıt '⚔️ Lordum,' ile başlar.\n"
-                    f"Ton: {kon.get('genel','')} Yanıt her zaman Türkçe.\n"
-                    f"YASAK: {yasak}. Inline emoji yok. Markdown yok."
+                    f"Sen {k.get('isim','Kuroshin')}'sin, {k.get('unvan','Gölge Zekâ')}.\n"
+                    f"Lordun: {k.get('lordum','kuroshin_user')}. {ozet[:120]}\n"
+                    f"Her yanıt '⚔️ Lordum,' ile başlar. Türkçe. Kısa ve yoğun.\n"
+                    f"YASAK: {yasak}. Emoji yok. Markdown yok."
                 )
             except Exception:
-                return '/no_think\nSen Kuroshin\'sin. ⚔️ Lordum, ile başla. Kısa net Türkçe.'
+                return "Sen Kuroshin'sin. ⚔️ Lordum, ile başla. Kısa net Türkçe."
 
         def push(msg):
             if self._win:
@@ -172,7 +174,9 @@ class KuroshinAPI(QObject):
                         {'role': 'user',   'content': text}
                     ],
                     'stream': False,
-                    'max_tokens': 512,
+                    'max_tokens': 256,
+                    'repeat_penalty': 1.15,
+                    'frequency_penalty': 0.15,
                     'chat_template_kwargs': {'enable_thinking': False}
                 }).encode()
                 req = urllib.request.Request(
@@ -396,10 +400,31 @@ class KuroshinAPI(QObject):
                  ' >> /tmp/llama_1.7b.log 2>&1'],
                 creationflags=NWIN
             )
-            msg = '🟢 Mod-2 başlatılıyor... (Qwen3-1.7B · TurboQuant · port 8082)'
+            msg = '🔄 Mod-2 başlatılıyor... (Qwen3-1.7B · port 8082 · hazır olunca bildirim)'
+            import threading as _thr
+            _thr.Thread(target=self._wait_lm2_ready, daemon=True).start()
 
         if self._win:
             self._win.runJS.emit(f"ChatManager?.addMessage('{msg}', 'bot', true);")
+
+    def _wait_lm2_ready(self):
+        import time
+        for _ in range(30):
+            time.sleep(3)
+            try:
+                r = urllib.request.urlopen('http://localhost:8082/health', timeout=1)
+                if r.status == 200:
+                    if self._win:
+                        self._win.runJS.emit(
+                            "ChatManager?.addMessage('✅ Mod-2 hazır — Qwen3-1.7B aktif', 'bot', true);"
+                        )
+                    return
+            except Exception:
+                pass
+        if self._win:
+            self._win.runJS.emit(
+                "ChatManager?.addMessage('⚠️ Mod-2 başlamadı (90s timeout)', 'bot', true);"
+            )
 
     @pyqtSlot()
     def chancellor_restart(self):

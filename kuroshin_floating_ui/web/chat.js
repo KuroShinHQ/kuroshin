@@ -30,6 +30,10 @@ const ChatManager = (function () {
   }
 
   function addMessage(text, type = 'bot', typing = false, withProgress = false) {
+    if (window.__chatAborted && type === 'bot') {
+      window.__chatAborted = false;
+      return null;
+    }
     const div = document.createElement('div');
     div.className = type === 'user' ? 'msg-user' : 'msg-bot';
 
@@ -95,7 +99,7 @@ const ChatManager = (function () {
   }
 
   input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
-  send.addEventListener('click', sendMessage);
+  send.onclick = sendMessage;
 
   // Welcome
   window.addEventListener('pywebviewready', () => {
@@ -106,10 +110,30 @@ const ChatManager = (function () {
     setTimeout(() => addMessage('Kuroshin hazır. [dev mod]', 'bot', true), 800);
   }
 
+  // ── Input kilidi (yanıt beklenirken) ──
+  window.__chatAborted = false;
+  function _disableInput() {
+    input.disabled = true;
+    send.textContent = '⬛';
+    send.title = 'İptal';
+    send.onclick = function () {
+      window.__chatAborted = true;
+      _restoreInput();
+    };
+  }
+  function _restoreInput() {
+    input.disabled = false;
+    input.focus();
+    send.textContent = '▶';
+    send.title = '';
+    send.onclick = sendMessage;
+  }
+
   // ── Thinking bar (pending) ──
   let __pendingDiv = null;
   window.__addPending = function () {
     if (__pendingDiv) return;
+    _disableInput();
     const div  = document.createElement('div');
     div.className = 'msg-bot msg-pending';
     div.innerHTML  = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
@@ -119,6 +143,7 @@ const ChatManager = (function () {
   };
   window.__removePending = function () {
     if (__pendingDiv) { __pendingDiv.remove(); __pendingDiv = null; }
+    _restoreInput();
   };
 
   return { addMessage, clearChat };
