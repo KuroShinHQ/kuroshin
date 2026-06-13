@@ -94,13 +94,13 @@
     winStartY  = window.screenY;
     e.preventDefault();
 
-    // Long-press: 600ms → animasyon başlar, 3000ms dolunca ram_purge
+    // Long-press: 600ms → animasyon başlar, 2000ms dolunca ram_purge
     longPressTimer = setTimeout(() => {
       if (!dragging) {
         longPressTriggered = true;
         pressInterval = setInterval(() => {
-          // 600ms'den itibaren 2400ms'de 0→1 dolum (toplam = 3sn)
-          const progress = Math.min(Math.max((Date.now() - pressStart - 600) / 2400, 0), 1.0);
+          // 600ms'den itibaren 1400ms'de 0→1 dolum (toplam = 2sn)
+          const progress = Math.min(Math.max((Date.now() - pressStart - 600) / 1400, 0), 1.0);
           window.setOrbPress?.(progress);
           if (progress >= 1.0) {
             clearInterval(pressInterval);

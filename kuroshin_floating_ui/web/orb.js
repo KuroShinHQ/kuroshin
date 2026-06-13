@@ -40,6 +40,11 @@
     return;
   }
 
+  // setOrbPress burada tanımla — shader derleme hatasından bağımsız çalışsın
+  let pressValue  = 0;
+  let pressTarget = 0;
+  window.setOrbPress = function (v) { pressTarget = Math.max(0, Math.min(1, v)); };
+
   const fallback = document.getElementById('orb-fallback');
   if (fallback) fallback.style.display = 'none';
 
@@ -208,7 +213,7 @@ void main() {
   color.b -= ca * 0.42;
 
   // İç kenar bandı: mavi/cyan geri dönüşü → net R/B split hissi
-  float caInner = smoothstep(0.80, 0.56, dist) * ca * 0.65;
+  float caInner = (1.0 - smoothstep(0.56, 0.80, dist)) * (1.0 - smoothstep(0.30, 0.56, dist)) * ca * 0.65;
   color.b += caInner * 0.58;
   color.r -= caInner * 0.22;
 
@@ -340,10 +345,6 @@ void main() {
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-  let pressValue  = 0;
-  let pressTarget = 0;
-  window.setOrbPress = function (v) { pressTarget = Math.max(0, Math.min(1, v)); };
 
   // Tıklama ripple — canvas'ta pointerdown anında UV koordinatı hesapla
   canvas.addEventListener('pointerdown', function (e) {
