@@ -18,7 +18,7 @@
 
   // Exponential moving average — attack hızlı, release yavaş
   function ema(prev, next) {
-    const alpha = next > prev ? 0.30 : 0.07;
+    const alpha = next > prev ? 0.10 : 0.04;  // yavaş ve akıcı
     return prev + alpha * (next - prev);
   }
 

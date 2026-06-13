@@ -123,8 +123,15 @@ float sparkle(vec2 uv, float t) {
 }
 
 void main() {
-  vec2  uv   = (v_uv - 0.5) * 2.0;
-  float dist = length(uv);
+  vec2  uv_raw = (v_uv - 0.5) * 2.0;
+
+  // Lens bulge (#3) — fare yakınken merkez şişiyor (dome/fish-eye)
+  // k > 0: barrel → merkez büyüyor, kenarlar sıkışıyor
+  float lensK = u_pull * 0.42;
+  float rawR  = length(uv_raw);
+  float lensR = rawR * (1.0 - lensK * (1.0 - rawR * rawR));
+  vec2  uv    = (rawR > 0.001) ? normalize(uv_raw) * lensR : uv_raw;
+  float dist  = length(uv);
 
   // Hız — mid frekanslar akışı hızlandırıyor
   float spd = 1.0 + u_mid * 2.5;
@@ -185,9 +192,9 @@ void main() {
 
   vec3 color = mix(c1, c2, f);
 
-  // Sparkle — treble frekanslar noktaları parlatıyor
+  // Sparkle — fare çekimine + treble'a tepki veriyor
   if (u_state == 0.0 || u_state == 2.0) {
-    float sp = sparkle(uv * 0.9, t * 0.4);
+    float sp = sparkle((uv + magBias * 0.65) * 0.9, t * 0.4);
     color += rimC * sp * (0.6 + u_treble * 1.4);
   }
 
