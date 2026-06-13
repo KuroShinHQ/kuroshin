@@ -21,6 +21,7 @@ const ChatManager = (function () {
       } else {
         clearInterval(iv);
         el.classList.remove('typing-cursor');
+        el.innerHTML = text;
         onDone?.();
       }
     }, 28);
@@ -48,6 +49,9 @@ const ChatManager = (function () {
         if (withProgress) div.querySelector('.progress-bar')?.remove();
         scrollBottom();
       });
+    } else if (type === 'bot') {
+      span.innerHTML = text;
+      scrollBottom();
     } else {
       span.textContent = text;
       scrollBottom();

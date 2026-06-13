@@ -500,12 +500,12 @@ def send_msg(chat_id: int, text: str):
             else:
                 # FIX-ALL (3 Haz 2026): TELEGRAM_OUT log atılması — kanıt zinciri için
                 _log(f"[TELEGRAM_OUT] [{chat_id}] {chunk[:300]}")
-                # FAZ-2 FloatingUI: SSE push (chat_id == ALLOWED_ID kontrolü gereksiz — hepsi push)
-                if _CHANCELLOR_HTTP:
-                    try:
-                        _CHANCELLOR_HTTP.push_to_sse('chat', chunk)
-                    except Exception:
-                        pass
+            # FAZ-2 FloatingUI: SSE push — Telegram fail olsa da UI yanıt görmeli
+            if _CHANCELLOR_HTTP:
+                try:
+                    _CHANCELLOR_HTTP.push_to_sse('chat', chunk)
+                except Exception:
+                    pass
         except Exception as e:
             _log(f"[CHANCELLOR] send_msg HATA ({chunk[:30]}...): {e}")
 
