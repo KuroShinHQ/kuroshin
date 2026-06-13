@@ -286,6 +286,12 @@ html, body {
   transition: box-shadow 0.3s, transform 0.2s, width 0.4s, height 0.4s, opacity 0.4s;
   flex-shrink: 0;
   user-select: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#orb-btn:focus,
+#orb-btn:focus-visible {
+  outline: none;
 }
 #orb-btn:hover {
   box-shadow: 0 0 16px rgba(255,255,255,0.14);
