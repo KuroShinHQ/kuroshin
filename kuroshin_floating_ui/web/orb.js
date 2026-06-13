@@ -19,7 +19,10 @@
 
   const STATE = { IDLE: 0, PROCESSING: 1, DONE: 2, ALARM: 3, GHOST: 4 };
   let currentState = 0;
-  let doneBurst    = 0.0; // DONE flash timer
+  let doneBurst    = 0.0;
+  // Su dalgalanma (ripple) — tıklanan noktadan yayılan dalga
+  let ripPos = [0.0, 0.0]; // UV [-1,1] koordinatı
+  let ripT   = 0.0;        // 1.0 → 0.0 azalır (~1.2s)
 
   window.setOrbState = function (name) {
     const prev = currentState;
@@ -56,7 +59,9 @@ uniform float u_time;
 uniform vec2  u_res;
 uniform float u_state;
 uniform float u_press;
-uniform float u_burst; // DONE flash (1.0→0.0)
+uniform float u_burst;   // DONE flash (1.0→0.0)
+uniform vec2  u_rip_pos; // tıklanan UV [-1,1]
+uniform float u_rip_t;   // 1.0→0.0 dalga ömrü
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -203,6 +208,32 @@ void main() {
     color += GREEN * (1.0 - dist) * u_burst * 1.2;
   }
 
+  // Su dalgalanma ripple — tıklanan noktadan yayılan halkalar
+  if (u_rip_t > 0.0) {
+    float fade    = u_rip_t * u_rip_t;            // ease-out fade
+    float elapsed = 1.0 - u_rip_t;                // 0→1 zaman ilerledikçe
+    vec2  ripDir  = uv - u_rip_pos;
+    float rd      = length(ripDir);
+    // UV distortion: dalgalanma noktasına yakın bölgeleri büker (su optik)
+    float wFront  = elapsed * 1.6;
+    float distort = exp(-abs(rd - wFront) * 14.0) * sin((rd - wFront) * 28.0) * 0.045 * fade;
+    vec2  uvD     = uv + normalize(ripDir + 0.0001) * distort;
+    // Distort edilmiş UV ile rengi yeniden örnekle (basit: rengi kaydır)
+    float fD      = fbm(uvD + 4.0 * s2);
+    color         = mix(color, mix(c1, c2, fD), abs(distort) * 18.0 * fade);
+    // 3 yayılan halka (dış kenarlarda sönümleme)
+    float ripple  = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float fi  = float(i);
+      float wc  = elapsed * 1.6 - fi * 0.18;
+      float ring = sin((rd - wc) * 32.0) * exp(-abs(rd - wc) * 10.0);
+      ripple   += ring * (1.0 - fi * 0.28);
+    }
+    ripple *= fade;
+    color  += rimC * max(0.0, ripple) * 0.55;
+    color  -= vec3(1.0) * max(0.0, -ripple) * 0.18;
+  }
+
   // Daire kırpma
   float alpha = smoothstep(1.0, 0.97, dist);
 
@@ -238,11 +269,13 @@ void main() {
   gl.enableVertexAttribArray(aPos);
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-  const uTime  = gl.getUniformLocation(prog, 'u_time');
-  const uRes   = gl.getUniformLocation(prog, 'u_res');
-  const uState = gl.getUniformLocation(prog, 'u_state');
-  const uPress = gl.getUniformLocation(prog, 'u_press');
-  const uBurst = gl.getUniformLocation(prog, 'u_burst');
+  const uTime   = gl.getUniformLocation(prog, 'u_time');
+  const uRes    = gl.getUniformLocation(prog, 'u_res');
+  const uState  = gl.getUniformLocation(prog, 'u_state');
+  const uPress  = gl.getUniformLocation(prog, 'u_press');
+  const uBurst  = gl.getUniformLocation(prog, 'u_burst');
+  const uRipPos = gl.getUniformLocation(prog, 'u_rip_pos');
+  const uRipT   = gl.getUniformLocation(prog, 'u_rip_t');
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -250,6 +283,16 @@ void main() {
   let pressValue  = 0;
   let pressTarget = 0;
   window.setOrbPress = function (v) { pressTarget = Math.max(0, Math.min(1, v)); };
+
+  // Tıklama ripple — canvas'ta pointerdown anında UV koordinatı hesapla
+  canvas.addEventListener('pointerdown', function (e) {
+    const rect = canvas.getBoundingClientRect();
+    const nx   = (e.clientX - rect.left)  / rect.width;
+    const ny   = (e.clientY - rect.top)   / rect.height;
+    // UV [-1,1] aralığına çevir (Y ekseni WebGL'de tersine)
+    ripPos = [(nx - 0.5) * 2.0, -(ny - 0.5) * 2.0];
+    ripT   = 1.0;
+  });
 
   const _baseSetOrbState = window.setOrbState;
   window.setOrbState = function (name) {
@@ -262,17 +305,21 @@ void main() {
     // smooth lerp press
     pressValue += (pressTarget - pressValue) * 0.25;
     if (pressValue < 0.001) pressValue = 0;
-    // DONE burst decay (~0.8s)
-    if (doneBurst > 0) { doneBurst = Math.max(0, doneBurst - 0.016); }
+    // DONE burst decay (~0.8s @ 60fps)
+    if (doneBurst > 0) doneBurst = Math.max(0, doneBurst - 0.020);
+    // Ripple decay (~1.2s @ 60fps)
+    if (ripT > 0) ripT = Math.max(0, ripT - 0.014);
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.uniform1f(uTime,  t * 0.001);
-    gl.uniform2f(uRes,   canvas.width, canvas.height);
-    gl.uniform1f(uState, currentState);
-    gl.uniform1f(uPress, pressValue);
-    gl.uniform1f(uBurst, doneBurst);
+    gl.uniform1f(uTime,   t * 0.001);
+    gl.uniform2f(uRes,    canvas.width, canvas.height);
+    gl.uniform1f(uState,  currentState);
+    gl.uniform1f(uPress,  pressValue);
+    gl.uniform1f(uBurst,  doneBurst);
+    gl.uniform2f(uRipPos, ripPos[0], ripPos[1]);
+    gl.uniform1f(uRipT,   ripT);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
