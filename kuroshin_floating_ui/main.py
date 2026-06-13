@@ -10,7 +10,10 @@ import argparse
 import ctypes
 import ctypes.wintypes
 
-HERE          = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    HERE = os.path.dirname(sys.executable)
+else:
+    HERE = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_PATH = os.path.join(HERE, 'settings.json')
 WEB_DIR       = os.path.join(HERE, 'web')
 ICON_PATH     = os.path.join(HERE, 'assets', 'icon.ico')

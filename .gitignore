@@ -84,6 +84,10 @@ memory/genparams_ab_reports/
 memory/ab_test_reports/
 memory/runtime/
 
+# PyInstaller build çıktıları
+dist/
+build_pyi/
+
 # Iron Inquisitor raporları (runtime kanıt)
 scripts/iron_inquisitor/reports/
 
