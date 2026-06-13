@@ -1,5 +1,4 @@
-// Kuroshin WebGL Orb Shader
-// Kaynak: stitch shader/code.html + project_circle GLSL
+// Kuroshin WebGL Orb Shader — FAZ-4 Physics Pro
 // Durumlar: 0=IDLE, 1=PROCESSING, 2=DONE, 3=ALARM, 4=GHOST
 
 (function () {
@@ -18,26 +17,26 @@
   }
   syncSize();
 
-  // setOrbState WebGL'den bağımsız — CSS class + shader state
   const STATE = { IDLE: 0, PROCESSING: 1, DONE: 2, ALARM: 3, GHOST: 4 };
   let currentState = 0;
+  let doneBurst    = 0.0; // DONE flash timer
 
   window.setOrbState = function (name) {
+    const prev = currentState;
     currentState = STATE[name] ?? 0;
     const btn = document.getElementById('orb-btn');
     if (!btn) return;
     if (name === 'ALARM') btn.classList.add('alarm-state');
     else btn.classList.remove('alarm-state');
+    if (name === 'DONE' && prev !== STATE.DONE) doneBurst = 1.0;
   };
 
   const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
   if (!gl) {
-    // WebGL yok — fallback dot göster, canvas gizle; setOrbState CSS-only çalışır
     canvas.style.display = 'none';
     return;
   }
 
-  // WebGL çalışıyor → fallback gizle
   const fallback = document.getElementById('orb-fallback');
   if (fallback) fallback.style.display = 'none';
 
@@ -50,70 +49,104 @@ void main() {
   gl_Position = vec4(a_pos, 0.0, 1.0);
 }`;
 
-  // ── Fragment Shader ──
+  // ── Fragment Shader — FAZ-4 Physics Pro ──
   const fs = `
 precision highp float;
 uniform float u_time;
 uniform vec2  u_res;
-uniform float u_state; // 0=IDLE 1=PROC 2=DONE 3=ALARM 4=GHOST
-uniform float u_press; // 0.0-1.0: long-press RAM dolum animasyonu
+uniform float u_state;
+uniform float u_press;
+uniform float u_burst; // DONE flash (1.0→0.0)
 varying vec2  v_uv;
 
+// Kuroshin renk paleti
 const vec3 NAVY   = vec3(0.004, 0.016, 0.063);
 const vec3 PURPLE = vec3(0.447, 0.063, 0.565);
 const vec3 CYAN   = vec3(0.000, 0.902, 0.851);
-const vec3 ALARM  = vec3(1.000, 0.290, 0.180);
 const vec3 GREEN  = vec3(0.435, 0.980, 0.745);
 const vec3 GREY   = vec3(0.200, 0.200, 0.220);
 
 float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453);
+  p = fract(p * vec2(127.1, 311.7));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
 }
 
 float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
-  f = f*f*(3.0-2.0*f);
+  f = f * f * (3.0 - 2.0 * f);
   return mix(
-    mix(hash(i), hash(i+vec2(1,0)), f.x),
-    mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x),
+    mix(hash(i), hash(i + vec2(1,0)), f.x),
+    mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x),
     f.y
   );
 }
 
 float fbm(vec2 p) {
-  float v=0.0, a=0.5;
-  mat2 rot = mat2(1.6,1.2,-1.2,1.6);
-  for (int i=0;i<5;i++) { v+=a*noise(p); p=rot*p*2.0; a*=0.5; }
+  float v = 0.0, a = 0.5;
+  mat2 rot = mat2(1.6, 1.2, -1.2, 1.6);
+  for (int i = 0; i < 5; i++) { v += a * noise(p); p = rot * p * 2.0; a *= 0.5; }
   return v;
+}
+
+// Vortex: açısal döndürme (sıvı dönme efekti)
+vec2 vortex(vec2 p, float str) {
+  float r = length(p);
+  float angle = str * (1.0 - r);
+  float s = sin(angle), c = cos(angle);
+  return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+// Sparkle: orb içinde parlayan noktalar
+float sparkle(vec2 uv, float t) {
+  float v = 0.0;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    vec2 seed = vec2(fi * 1.37, fi * 2.71);
+    vec2 pos  = vec2(noise(seed + t * 0.3) - 0.5, noise(seed + t * 0.3 + 5.0) - 0.5) * 0.8;
+    float d   = length(uv - pos);
+    float bri = noise(seed + t * 1.5 + 3.0);
+    v += bri * smoothstep(0.08, 0.0, d);
+  }
+  return clamp(v, 0.0, 1.0);
 }
 
 void main() {
   vec2  uv   = (v_uv - 0.5) * 2.0;
   float dist = length(uv);
 
-  // Hız (state + press artışı)
+  // Hız (state)
   float spd = 1.0;
-  if (u_state==1.0) spd=3.5;
-  if (u_state==3.0) spd=5.0;
-  if (u_state==4.0) spd=0.3; // GHOST: yavaş
-  spd += u_press * 4.0;       // basılı → hızlanır
+  if (u_state == 1.0) spd = 3.5;
+  if (u_state == 3.0) spd = 5.0;
+  if (u_state == 4.0) spd = 0.3;
+  spd += u_press * 4.0;
   float t = u_time * spd;
 
-  // Nefes
-  float breath = sin(t*0.5)*0.04 + 0.96;
+  // Nefes (GHOST'ta daha derin)
+  float breathAmp = (u_state == 4.0) ? 0.08 : 0.04;
+  float breath    = sin(t * 0.5) * breathAmp + (1.0 - breathAmp);
 
-  // FBM gürültüsü
-  vec2 q = vec2(fbm(uv+t*0.2), fbm(uv+1.0));
-  vec2 r = vec2(fbm(uv+4.0*q+t*0.1), fbm(uv+4.0*q+1.0));
-  float f = fbm(uv + 4.0*r);
+  // Vortex kuvveti (PROCESSING'de güçlü döner)
+  float vStr = 1.2 + u_press * 2.0;
+  if (u_state == 1.0) vStr = 3.0 + sin(t) * 1.5;
+  if (u_state == 3.0) vStr = -4.0; // ters dönüş
+  if (u_state == 4.0) vStr = 0.4;
+  vec2 uv_v = vortex(uv, vStr * 0.4);
 
-  // Renk paleti (state'e göre)
+  // 3 katman domain warping (FAZ-4: daha derin sıvı hissi)
+  vec2 q  = vec2(fbm(uv_v + t * 0.20), fbm(uv_v + 1.0));
+  vec2 r  = vec2(fbm(uv_v + 4.0 * q + t * 0.10), fbm(uv_v + 4.0 * q + 1.0));
+  vec2 s2 = vec2(fbm(uv_v + 3.0 * r + t * 0.05), fbm(uv_v + 3.0 * r + 2.7));
+  float f = fbm(uv_v + 4.0 * s2);
+
+  // Renk paleti (state)
   vec3 c1 = NAVY, c2 = PURPLE, rimC = CYAN;
-  if (u_state==3.0) { c1=vec3(0.04,0.0,0.0); c2=vec3(0.92,0.06,0.06); rimC=vec3(1.0,0.22,0.05); }
-  else if (u_state==2.0) { c1=vec3(0,0.15,0.08); c2=GREEN; rimC=GREEN; }
-  else if (u_state==4.0) { c1=vec3(0.04,0.04,0.05); c2=GREY; rimC=GREY; }
+  if (u_state == 3.0) { c1 = vec3(0.04,0.0,0.0); c2 = vec3(0.92,0.06,0.06); rimC = vec3(1.0,0.22,0.05); }
+  else if (u_state == 2.0) { c1 = vec3(0.0,0.15,0.08); c2 = GREEN; rimC = GREEN; }
+  else if (u_state == 4.0) { c1 = vec3(0.04,0.04,0.05); c2 = GREY; rimC = GREY; }
 
-  // Press: rengi kırmızıya kaydır (smooth, sadece FBM paletine)
+  // Press: kırmızıya kaydır
   if (u_press > 0.0) {
     c1   = mix(c1,   vec3(0.05, 0.00, 0.00), u_press * 0.7);
     c2   = mix(c2,   vec3(0.85, 0.08, 0.01), u_press * 0.7);
@@ -122,8 +155,13 @@ void main() {
 
   vec3 color = mix(c1, c2, f);
 
-  // Press: dışarıdan içe dolum — u_press=0 tamamen görünmez
-  // threshold=1.0(dışarıda) → 0.08(neredeyse tümü), fill sadece dist>threshold bölgesine
+  // Sparkle (IDLE + DONE için)
+  if (u_state == 0.0 || u_state == 2.0) {
+    float sp = sparkle(uv * 0.9, t * 0.4);
+    color += rimC * sp * 0.6;
+  }
+
+  // Press dolum (dıştan içe)
   if (u_press > 0.0) {
     float threshold = 1.0 - u_press * 0.92;
     float fill = smoothstep(threshold - 0.12, threshold + 0.04, dist);
@@ -131,29 +169,41 @@ void main() {
     color = mix(color, fireColor, fill * sqrt(u_press));
   }
 
-  // Rim glow (Stitch-inspired: 0.70 tighter)
-  float rim = smoothstep(0.70, 1.0, dist * breath);
-  color = mix(color, rimC, rim*(0.5+0.5*sin(t+f*10.0)));
+  // Iridescent rim — RGB split (Liquid Glass)
+  float rimR = smoothstep(0.68, 1.0, dist * breath);
+  float rimG = smoothstep(0.72, 1.0, dist * breath);
+  float rimB = smoothstep(0.70, 1.0, dist * breath);
+  float rimMod = 0.5 + 0.5 * sin(t + f * 10.0);
+  color.r = mix(color.r, rimC.r, rimR * rimMod);
+  color.g = mix(color.g, rimC.g, rimG * rimMod);
+  color.b = mix(color.b, rimC.b, rimB * rimMod * 1.2);
 
-  // PROCESSING: dönen tarama halkası (belirgin)
-  if (u_state==1.0) {
-    // ring: radyal sinüs dalgası (içten dışa döner)
-    float ring  = sin(dist*20.0 - t*15.0)*0.5 + 0.5;
-    ring = ring * ring; // keskinleştir
-    // rMask: orb merkezinden kenara bant (edge0 < edge1 zorunlu)
+  // PROCESSING: çift tarama halkası
+  if (u_state == 1.0) {
+    float ring1 = sin(dist * 20.0 - t * 15.0) * 0.5 + 0.5;
+    float ring2 = sin(dist * 12.0 + t * 10.0) * 0.5 + 0.5;
+    ring1 *= ring1;
+    ring2 *= ring2 * 0.6;
     float rMask = smoothstep(0.10, 0.45, dist) * (1.0 - smoothstep(0.55, 0.92, dist));
-    // temel rengi de aydınlat
     color = mix(color, vec3(0.05, 0.35, 0.90), 0.35);
-    color += vec3(0.15, 0.75, 1.0) * ring * rMask * 0.90;
+    color += vec3(0.15, 0.75, 1.0) * (ring1 + ring2) * rMask * 0.85;
   }
 
-  // ALARM: nabız (sinüs darbe)
-  if (u_state==3.0) {
-    float pulse = sin(t*6.0)*0.22 + 0.78;
-    color *= pulse;
+  // ALARM: nabız + titreme
+  if (u_state == 3.0) {
+    float pulse  = sin(t * 6.0) * 0.22 + 0.78;
+    float jitter = noise(uv * 8.0 + t * 12.0) * 0.08;
+    color *= (pulse + jitter);
   }
 
-  // Daire kırpma (Stitch-inspired: 0.97 daha keskin kenar)
+  // DONE: flash burst (u_burst 1→0)
+  if (u_burst > 0.0) {
+    float ring = smoothstep(u_burst, u_burst - 0.15, dist);
+    color = mix(color, vec3(1.0), ring * u_burst * 2.5);
+    color += GREEN * (1.0 - dist) * u_burst * 1.2;
+  }
+
+  // Daire kırpma
   float alpha = smoothstep(1.0, 0.97, dist);
 
   gl_FragColor = vec4(color, alpha);
@@ -184,7 +234,7 @@ void main() {
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
 
-  const aPos  = gl.getAttribLocation(prog, 'a_pos');
+  const aPos   = gl.getAttribLocation(prog, 'a_pos');
   gl.enableVertexAttribArray(aPos);
   gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
@@ -192,16 +242,15 @@ void main() {
   const uRes   = gl.getUniformLocation(prog, 'u_res');
   const uState = gl.getUniformLocation(prog, 'u_state');
   const uPress = gl.getUniformLocation(prog, 'u_press');
+  const uBurst = gl.getUniformLocation(prog, 'u_burst');
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-  // press değeri — lerp ile smooth geçiş (ani flash engeli)
   let pressValue  = 0;
   let pressTarget = 0;
   window.setOrbPress = function (v) { pressTarget = Math.max(0, Math.min(1, v)); };
 
-  // setOrbState shader tarafını da günceller (WebGL uniform)
   const _baseSetOrbState = window.setOrbState;
   window.setOrbState = function (name) {
     _baseSetOrbState(name);
@@ -210,16 +259,20 @@ void main() {
 
   function render(t) {
     if (typeof ResizeObserver === 'undefined') syncSize();
-    // smooth lerp: her frame'de hedefe %25 yaklaş (~400ms tam geçiş @ 60fps)
+    // smooth lerp press
     pressValue += (pressTarget - pressValue) * 0.25;
     if (pressValue < 0.001) pressValue = 0;
+    // DONE burst decay (~0.8s)
+    if (doneBurst > 0) { doneBurst = Math.max(0, doneBurst - 0.016); }
+
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.uniform1f(uTime, t * 0.001);
-    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uTime,  t * 0.001);
+    gl.uniform2f(uRes,   canvas.width, canvas.height);
     gl.uniform1f(uState, currentState);
     gl.uniform1f(uPress, pressValue);
+    gl.uniform1f(uBurst, doneBurst);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
