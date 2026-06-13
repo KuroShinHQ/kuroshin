@@ -229,6 +229,20 @@ void main() {
 
   vec3 color = mix(c1, c2, f);
 
+  // ── FAZ-5 #6 Subsurface Scattering — cam/jade derinliği, içten ışık saçılımı ──
+  // sssThick: gerçek küre kalınlık haritası → merkez=1.0 (kalın), kenar=0.0 (ince)
+  float sssThick = sqrt(max(0.0, 1.0 - dist * dist));
+  // iç derinlik: merkeze doğru yoğunlaşan glow (pow 1.8 → sert ama güzel gradyan)
+  float sssInner = pow(sssThick, 1.8) * 0.40;
+  // limb scatter: dist≈0.46 bandında peak → kenardan giren ışık içe dağılıyor (jade efekti)
+  float sssLimb  = exp(-pow((dist - 0.46) / 0.20, 2.0)) * 0.30;
+  // nefes + bass senkron (orb nefes alırken iç ışık da titriyor)
+  float sssMod   = (1.0 + sin(t * 0.5) * 0.08) * (1.0 + u_bass * 0.25);
+  if (u_state == 4.0) sssMod *= 0.30; // GHOST: soluk — iç ışık neredeyse yok
+  // rimC zaten state'e göre ayarlı: IDLE=cyan, PROC=cyan, DONE=yeşil, ALARM=kızıl, GHOST=gri
+  vec3 sssColor  = rimC * 0.50 + vec3(0.02, 0.01, 0.08); // rimC + derin mor alt ton
+  color += sssColor * (sssInner + sssLimb) * sssMod;
+
   // Dış rim: kırmızı saçak (prizma kırmızıyı en çok kırar)
   color.r += ca * 0.85;
   color.g -= ca * 0.30;
