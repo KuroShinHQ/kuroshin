@@ -223,6 +223,14 @@
   orb.addEventListener('mouseenter', () => { orb.classList.remove('auto-hidden'); resetAutoHide(); });
   resetAutoHide();
 
+  // ── Scroll ile Opacity ───────────────────────────────
+  window.orbOpacityTarget = 1.0;
+  orb.addEventListener('wheel', e => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.08 : 0.08; // aşağı=soluk, yukarı=parlak
+    window.orbOpacityTarget = Math.min(1.0, Math.max(0.15, (window.orbOpacityTarget) + delta));
+  }, { passive: false });
+
   // ── Sağ tık Zoom Toggle ──────────────────────────────
   let orbZoomed = false;
   // Bu WebView'da context menü gerekmez — her yerde engelle

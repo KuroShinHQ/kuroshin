@@ -75,6 +75,7 @@ uniform vec2  u_mag;     // fare yön vektörü normalize [-1,1]
 uniform float u_pull;    // 0-1 fare yakınlık kuvveti
 uniform vec2  u_vel;     // sürükleme yön vektörü normalize [-1,1]
 uniform float u_speed;   // 0-1 sürükleme hızı (trail yoğunluğu)
+uniform float u_opacity; // 0.15-1.0 scroll ile soluklaşma
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -353,6 +354,10 @@ void main() {
   // Daire kırpma — sert kenar: zoom'da edge glow taşmasın
   float alpha = smoothstep(0.98, 0.93, dist);
 
+  // ── FAZ-5 #9 Scroll Opacity — iç glow + alpha birlikte solar (organik) ──
+  color *= mix(0.25, 1.0, u_opacity); // SSS/sparkle/trail hepsi birlikte kararır
+  alpha *= u_opacity;
+
   gl_FragColor = vec4(color, alpha);
 }`;
 
@@ -400,9 +405,12 @@ void main() {
   const uPull    = gl.getUniformLocation(prog, 'u_pull');
   const uVel     = gl.getUniformLocation(prog, 'u_vel');
   const uSpeed   = gl.getUniformLocation(prog, 'u_speed');
+  const uOpacity = gl.getUniformLocation(prog, 'u_opacity');
 
   // Trail EMA decay — sürükleme bitti → iz yavaş söner
   let trailVx = 0, trailVy = 0, trailSpeed = 0;
+  // Opacity EMA smooth — scroll kesik değil, akıcı geçiş
+  let orbOpacityVal = 1.0;
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -432,6 +440,9 @@ void main() {
     if (doneBurst > 0) doneBurst = Math.max(0, doneBurst - 0.020);
     // Ripple decay (~1.2s @ 60fps)
     if (ripT > 0) ripT = Math.max(0, ripT - 0.014);
+    // Opacity EMA smooth (attack+release = 0.10)
+    orbOpacityVal += ((window.orbOpacityTarget ?? 1.0) - orbOpacityVal) * 0.10;
+
     // Trail decay — sürükleme bitti → ~0.5s'de söner (EMA release 0.88)
     const ov = window.orbVelocity || { vx: 0, vy: 0, speed: 0 };
     trailSpeed = trailSpeed * 0.88 + ov.speed * 0.12;
@@ -459,6 +470,7 @@ void main() {
     gl.uniform1f(uPull,   mi.pull);
     gl.uniform2f(uVel,    trailVx, trailVy);
     gl.uniform1f(uSpeed,  trailSpeed);
+    gl.uniform1f(uOpacity, orbOpacityVal);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
