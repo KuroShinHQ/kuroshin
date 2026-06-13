@@ -1,9 +1,9 @@
 """
-Kuroshin FloatingUI Startup Sequencer v1.1
+Kuroshin FloatingUI Startup Sequencer v1.2
 - Önceki instance temizle
 - SYSTEM_PAUSED flag kaldır
 - Chancellor :9005 hazır mı → değilse başlat + bekle
-- Kuroshin.exe başlat
+- pythonw main.py başlat (PyInstaller exe bundle bozuk — pythonw stabil)
 - 5s bekle (bridge thread gecikmeli açılıyor)
 - Bridge :9003 hazır mı → bekle (30s timeout)
 - Tüm adımları logs/floatingui_startup.log'a yaz
@@ -11,12 +11,13 @@ Kuroshin FloatingUI Startup Sequencer v1.1
 import datetime, os, socket, subprocess, sys, time, urllib.request
 from pathlib import Path
 
-ROOT    = Path(r"C:\Kuroshin")
-EXE     = ROOT / "dist" / "Kuroshin" / "Kuroshin.exe"
-LOG     = ROOT / "logs" / "floatingui_startup.log"
-PAUSED  = Path(r"/mnt/c/Kuroshin/memory/SYSTEM_PAUSED.flag")  # WSL path
+ROOT       = Path(r"C:\Kuroshin")
+HERE       = ROOT / "kuroshin_floating_ui"
+MAIN_PY    = HERE / "main.py"
+PYTHONW    = Path(sys.executable).with_name("pythonw.exe")
+LOG        = ROOT / "logs" / "floatingui_startup.log"
 PAUSED_WIN = ROOT / "memory" / "SYSTEM_PAUSED.flag"
-NWIN    = 0x08000000  # CREATE_NO_WINDOW
+NWIN       = 0x08000000  # CREATE_NO_WINDOW
 
 
 def _log(msg: str):
@@ -76,7 +77,7 @@ def kill_old():
     _log("🧹 Eski instance'lar temizleniyor...")
     subprocess.run(
         ["powershell", "-WindowStyle", "Hidden", "-Command",
-         "Get-Process Kuroshin,pythonw,QtWebEngineProcess -ErrorAction SilentlyContinue"
+         "Get-Process pythonw,QtWebEngineProcess -ErrorAction SilentlyContinue"
          " | Stop-Process -Force"],
         creationflags=NWIN, capture_output=True
     )
@@ -122,11 +123,14 @@ def ensure_chancellor() -> bool:
 # ── Adım 4: Kuroshin.exe ─────────────────────────────────────────────────────
 
 def start_exe() -> bool:
-    if not EXE.exists():
-        _log(f"❌ EXE bulunamadı: {EXE}")
+    if not MAIN_PY.exists():
+        _log(f"❌ main.py bulunamadı: {MAIN_PY}")
         return False
-    subprocess.Popen([str(EXE), "--mode", "lite"])
-    _log(f"🚀 Kuroshin.exe başlatıldı")
+    if not PYTHONW.exists():
+        _log(f"❌ pythonw bulunamadı: {PYTHONW}")
+        return False
+    subprocess.Popen([str(PYTHONW), str(MAIN_PY), "--mode", "lite"])
+    _log(f"🚀 FloatingUI başlatıldı: pythonw main.py")
     return True
 
 
@@ -141,7 +145,7 @@ def wait_bridge() -> bool:
 
 def main():
     _log("=" * 52)
-    _log("🟡 FloatingUI Startup Sequencer v1.1")
+    _log("🟡 FloatingUI Startup Sequencer v1.2")
     _log(f"   Log: {LOG}")
     _log("=" * 52)
 
