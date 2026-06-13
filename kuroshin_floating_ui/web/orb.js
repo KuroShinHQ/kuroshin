@@ -191,23 +191,27 @@ void main() {
   }
 
   // ── FAZ-5 #4 Chromatic Aberration — Liquid Glass RGB split ──
-  // Kuvvet: kenarlarda doğal güçlenme (dist²) + fare yakınlığı + ses
-  float caBase = 0.011 * (0.25 + dist * dist);
-  float caStr  = caBase * (1.0 + u_pull * 3.2 + u_amp * 1.8);
-  if (u_state == 1.0) caStr *= 1.6;  // PROCESSING: aktif kırınım
-  if (u_state == 3.0) caStr *= 3.0;  // ALARM: dramatik R/B split
-  if (u_state == 4.0) caStr *= 0.3;  // GHOST: soluk
-  // Radyal dışa yönlü kaydırma (lens kenar aberasyonu hissi)
-  vec2 caDir = normalize(uv_raw + 0.001) * caStr;
+  // Katman-1: FBM örnekleme — daha büyük offset, her zaman görünür
+  float caStr = 0.06 + dist * dist * 0.05;      // baseline: orb geneli CA
+  caStr *= (1.0 + u_pull * 5.0);                 // fare: 6× güçleniyor
+  caStr *= (1.0 + u_amp  * 0.3);                 // ses: yavaş/hafif katkı
+  if (u_state == 1.0) caStr *= 1.8;             // PROCESSING: aktif kırınım
+  if (u_state == 3.0) caStr *= 3.2;             // ALARM: dramatik split
+  if (u_state == 4.0) caStr *= 0.25;            // GHOST: soluk
+  vec2 caDir   = normalize(uv_raw + 0.001) * caStr;
   vec2 caBase2 = uv_p + 4.0 * s2;
-  float fR = fbm(caBase2 + caDir);       // kırmızı: dışa kaymış
-  float fB = fbm(caBase2 - caDir);       // mavi: içe kaymış
-  // 3 kanalı ayrı ayrı renk paletinden örnekle → RGB split
+  float fR = fbm(caBase2 + caDir);
+  float fB = fbm(caBase2 - caDir);
   vec3 color = vec3(
     mix(c1, c2, fR).r,
     mix(c1, c2, f).g,
     mix(c1, c2, fB).b
   );
+  // Katman-2: Rim CA — kenar halkasında her zaman net R/B split (FBM'den bağımsız)
+  float rimCA  = smoothstep(0.62, 0.98, dist * breath);
+  float rimCAStr = rimCA * (0.55 + u_pull * 0.65);
+  color.r = mix(color.r, rimC.r * 1.6, rimCAStr * 0.5);
+  color.b = mix(color.b, rimC.b * 0.2, rimCAStr * 0.45);
 
   // Sparkle — fare çekimine + treble'a tepki veriyor
   if (u_state == 0.0 || u_state == 2.0) {
