@@ -118,7 +118,7 @@ const ChatManager = (function () {
     send.title = 'İptal';
     send.onclick = function () {
       window.__chatAborted = true;
-      _restoreInput();
+      window.__removePending?.();
     };
   }
   function _restoreInput() {

@@ -135,22 +135,16 @@ class KuroshinAPI(QObject):
 
         def build_system_prompt():
             try:
-                p   = json.loads(PERSONA_PATH.read_text(encoding='utf-8'))
-                k   = p.get('kimlik', {})
-                kar = p.get('karakter_temeli', {})
-                kon = p.get('konusma_tarzi', {})
-                yasak = ' / '.join(f'"{x}"' for x in kon.get('yasak_kaliplar', [])[:4])
-                ozet = kar.get('ozet', '')
-                if ozet.lower().startswith('kuroshin '):
-                    ozet = ozet[9:]
+                p = json.loads(PERSONA_PATH.read_text(encoding='utf-8'))
+                k = p.get('kimlik', {})
+                lord = k.get('lordum', 'kuroshin_user')
+                unvan = k.get('unvan', 'Gölge Zekâ')
                 return (
-                    f"Sen {k.get('isim','Kuroshin')}'sin, {k.get('unvan','Gölge Zekâ')}.\n"
-                    f"Lordun: {k.get('lordum','kuroshin_user')}. {ozet[:120]}\n"
-                    f"Her yanıt '⚔️ Lordum,' ile başlar. Türkçe. Kısa ve yoğun.\n"
-                    f"YASAK: {yasak}. Emoji yok. Markdown yok."
+                    f"Sen Kuroshin'sin, {unvan}. Lord {lord}'nun asistanı.\n"
+                    f"Her yanıtın '⚔️ Lordum,' ile başlar. Kısa Türkçe."
                 )
             except Exception:
-                return "Sen Kuroshin'sin. ⚔️ Lordum, ile başla. Kısa net Türkçe."
+                return "Sen Kuroshin'sin. Her yanıt '⚔️ Lordum,' ile başlar. Kısa Türkçe."
 
         def push(msg):
             if self._win:
@@ -175,8 +169,11 @@ class KuroshinAPI(QObject):
                     ],
                     'stream': False,
                     'max_tokens': 256,
-                    'repeat_penalty': 1.15,
-                    'frequency_penalty': 0.15,
+                    'temperature': 0.7,
+                    'top_p': 0.8,
+                    'top_k': 20,
+                    'repeat_penalty': 1.1,
+                    'presence_penalty': 1.5,
                     'chat_template_kwargs': {'enable_thinking': False}
                 }).encode()
                 req = urllib.request.Request(
