@@ -104,6 +104,9 @@ class OrbWindow(QMainWindow):
         self.channel.registerObject('api', api_obj)
         self.web.page().setWebChannel(self.channel)
 
+        # Mikrofon izni — ses reaktif orb için otomatik onayla
+        self.web.page().featurePermissionRequested.connect(self._grant_permission)
+
         self.setCentralWidget(self.web)
         self.web.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
@@ -113,6 +116,12 @@ class OrbWindow(QMainWindow):
         self.web.load(QUrl.fromLocalFile(index_path))
 
         api_obj.set_window(self)
+
+    def _grant_permission(self, url, feature):
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+        self.web.page().setFeaturePermission(
+            url, feature, QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+        )
 
 
 def _make_tray_icon():

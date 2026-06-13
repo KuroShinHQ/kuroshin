@@ -62,6 +62,10 @@ uniform float u_press;
 uniform float u_burst;   // DONE flash (1.0→0.0)
 uniform vec2  u_rip_pos; // tıklanan UV [-1,1]
 uniform float u_rip_t;   // 1.0→0.0 dalga ömrü
+uniform float u_bass;    // 0-1 mikrofon bass (0-215 Hz)
+uniform float u_mid;     // 0-1 mikrofon mid  (215-2150 Hz)
+uniform float u_treble;  // 0-1 mikrofon treble (2150+ Hz)
+uniform float u_amp;     // 0-1 genel amplitude
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -120,22 +124,22 @@ void main() {
   vec2  uv   = (v_uv - 0.5) * 2.0;
   float dist = length(uv);
 
-  // Hız (state)
-  float spd = 1.0;
-  if (u_state == 1.0) spd = 3.5;
-  if (u_state == 3.0) spd = 5.0;
+  // Hız — mid frekanslar akışı hızlandırıyor
+  float spd = 1.0 + u_mid * 2.5;
+  if (u_state == 1.0) spd = 3.5 + u_mid * 3.0;
+  if (u_state == 3.0) spd = 5.0 + u_bass * 2.0;
   if (u_state == 4.0) spd = 0.3;
   spd += u_press * 4.0;
   float t = u_time * spd;
 
-  // Nefes (GHOST'ta daha derin)
-  float breathAmp = (u_state == 4.0) ? 0.08 : 0.04;
+  // Nefes — bass ile şişiyor (konuşunca / müzik çalarken orb büyür)
+  float breathAmp = (u_state == 4.0) ? 0.08 : 0.04 + u_bass * 0.14;
   float breath    = sin(t * 0.5) * breathAmp + (1.0 - breathAmp);
 
-  // Vortex kuvveti (PROCESSING'de güçlü döner)
-  float vStr = 1.2 + u_press * 2.0;
-  if (u_state == 1.0) vStr = 3.0 + sin(t) * 1.5;
-  if (u_state == 3.0) vStr = -4.0; // ters dönüş
+  // Vortex kuvveti — mid frekanslar döndürüyor
+  float vStr = 1.2 + u_press * 2.0 + u_mid * 2.5;
+  if (u_state == 1.0) vStr = 3.0 + sin(t) * 1.5 + u_mid * 3.0;
+  if (u_state == 3.0) vStr = -4.0 - u_bass * 2.0; // ters + bas güçlendirme
   if (u_state == 4.0) vStr = 0.4;
   vec2 uv_v = vortex(uv, vStr * 0.4);
 
@@ -175,10 +179,10 @@ void main() {
 
   vec3 color = mix(c1, c2, f);
 
-  // Sparkle (IDLE + DONE için)
+  // Sparkle — treble frekanslar noktaları parlatıyor
   if (u_state == 0.0 || u_state == 2.0) {
     float sp = sparkle(uv * 0.9, t * 0.4);
-    color += rimC * sp * 0.6;
+    color += rimC * sp * (0.6 + u_treble * 1.4);
   }
 
   // Press dolum (dıştan içe)
@@ -189,14 +193,16 @@ void main() {
     color = mix(color, fireColor, fill * sqrt(u_press));
   }
 
-  // Iridescent rim — RGB split (Liquid Glass)
+  // Iridescent rim — treble frekanslar rim'i parlatıyor
   float rimR = smoothstep(0.68, 1.0, dist * breath);
   float rimG = smoothstep(0.72, 1.0, dist * breath);
   float rimB = smoothstep(0.70, 1.0, dist * breath);
-  float rimMod = 0.5 + 0.5 * sin(t + f * 10.0);
+  float rimMod = 0.5 + 0.5 * sin(t + f * 10.0) + u_treble * 0.9;
   color.r = mix(color.r, rimC.r, rimR * rimMod);
   color.g = mix(color.g, rimC.g, rimG * rimMod);
   color.b = mix(color.b, rimC.b, rimB * rimMod * 1.2);
+  // Genel ses pulse — tüm orb amplitude ile nefes alır
+  color *= (1.0 + u_amp * 0.28);
 
   // PROCESSING: çift tarama halkası
   if (u_state == 1.0) {
@@ -288,8 +294,12 @@ void main() {
   const uState  = gl.getUniformLocation(prog, 'u_state');
   const uPress  = gl.getUniformLocation(prog, 'u_press');
   const uBurst  = gl.getUniformLocation(prog, 'u_burst');
-  const uRipPos = gl.getUniformLocation(prog, 'u_rip_pos');
-  const uRipT   = gl.getUniformLocation(prog, 'u_rip_t');
+  const uRipPos  = gl.getUniformLocation(prog, 'u_rip_pos');
+  const uRipT    = gl.getUniformLocation(prog, 'u_rip_t');
+  const uBass    = gl.getUniformLocation(prog, 'u_bass');
+  const uMid     = gl.getUniformLocation(prog, 'u_mid');
+  const uTreble  = gl.getUniformLocation(prog, 'u_treble');
+  const uAmp     = gl.getUniformLocation(prog, 'u_amp');
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -334,6 +344,12 @@ void main() {
     gl.uniform1f(uBurst,  doneBurst);
     gl.uniform2f(uRipPos, ripPos[0], ripPos[1]);
     gl.uniform1f(uRipT,   ripT);
+    // Ses reaktif uniform'lar — audioData yoksa sıfır (sessiz)
+    const ad = window.audioData || { bass: 0, mid: 0, treble: 0, amp: 0 };
+    gl.uniform1f(uBass,   ad.bass);
+    gl.uniform1f(uMid,    ad.mid);
+    gl.uniform1f(uTreble, ad.treble);
+    gl.uniform1f(uAmp,    ad.amp);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
