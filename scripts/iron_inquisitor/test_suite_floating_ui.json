@@ -455,5 +455,103 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "Görev Yöneticisi: setApplicationDisplayName Kuroshin (Python Launcher yerine Kuroshin)"
+  },
+  {
+    "id": "fui-bat-turboquant-tq3-k",
+    "category": "fui_turboquant",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "--cache-type-k tq3_0",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "TurboQuant: Bat [2] --cache-type-k tq3_0 (q8_0 yerine 4.68x VRAM tasarrufu)"
+  },
+  {
+    "id": "fui-bat-turboquant-tq3-v",
+    "category": "fui_turboquant",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "--cache-type-v tq3_0",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "TurboQuant: Bat [2] --cache-type-v tq3_0 (V-cache de TurboQuant ile)"
+  },
+  {
+    "id": "fui-bat-turboquant-ctx-8192",
+    "category": "fui_turboquant",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "--ctx-size 8192",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "TurboQuant: Bat [2] ctx-size 8192 (32K fazla — Mod-2 hafif kullanım için 8K yeterli)"
+  },
+  {
+    "id": "fui-bat-turboquant-wsl-path",
+    "category": "fui_turboquant",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "/opt/llama-turboquant/bin/llama-server",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "TurboQuant: Bat [2] kalıcı WSL binary yolu /opt/llama-turboquant/bin/ kullanıyor"
+  },
+  {
+    "id": "fui-bat-turboquant-pkill-stop",
+    "category": "fui_turboquant",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "pkill -9 -f 'llama-server.*8082'",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "TurboQuant: Bat [3] WSL pkill ile llama-server durdur (Windows taskkill .exe yetersiz)"
+  },
+  {
+    "id": "fui-orbstart-kuroshin-exe",
+    "category": "fui_pyinstaller",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/orb_start.bat",
+    "pattern": "Kuroshin.exe",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "PyInstaller: orb_start.bat dist\\Kuroshin\\Kuroshin.exe başlatıyor (pythonw yerine)"
+  },
+  {
+    "id": "fui-main-frozen-check",
+    "category": "fui_pyinstaller",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/main.py",
+    "pattern": "getattr(sys, 'frozen', False)",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "PyInstaller: main.py getattr(sys, frozen) check — HERE = os.path.dirname(sys.executable) (bundle path fix)"
+  },
+  {
+    "id": "fui-spec-exists",
+    "category": "fui_pyinstaller",
+    "type": "code_inspect",
+    "check": "file_exists",
+    "file": "Kuroshin.spec",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "PyInstaller: Kuroshin.spec mevcut (Rebuild: python -m PyInstaller Kuroshin.spec --noconfirm)"
+  },
+  {
+    "id": "fui-bat-shutdown-kuroshin-exe",
+    "category": "fui_pyinstaller",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "Kuroshin.bat",
+    "pattern": "taskkill /F /IM Kuroshin.exe",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "PyInstaller: Bat [4b/5] shutdown Kuroshin.exe da kapatıyor (pythonw tek başına yetmez)"
   }
 ]
