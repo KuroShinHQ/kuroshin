@@ -120,13 +120,13 @@ float floatParticles(vec2 uv, float ftime, float bass) {
     float fi    = float(i);
     // Geometrik: eşit aralıklı X, drift yok, düz dikey yükselme
     float px    = (fi / 7.0) * 1.40 - 0.70;
-    float phase = fract(fi * 0.137 + ftime * 0.035); // ~28sn/döngü, çok yavaş
+    float phase = fract(fi * 0.137 + ftime * 0.018); // ~55sn/döngü, çok yavaş
     float py    = mix(0.82, -0.95, phase);
     vec2  pos   = vec2(px, py);
     float inOrb = step(length(pos), 0.88);
     float d     = length(uv - pos);
-    // Ses → parlaklık geometrik nabızlanır (hareket değil)
-    float pulse = 1.0 + bass * sin(ftime * 8.0 + fi * 0.785) * 0.45;
+    // Ses → sabit parlaklık artışı (sin titreşimi yok — "hızlı" yanılsaması kalkıyor)
+    float pulse = 1.0 + bass * 0.25;
     float bri   = smoothstep(0.0, 0.18, phase) * (1.0 - phase) * (1.0 - phase) * pulse;
     float dot_  = smoothstep(0.026, 0.0, d);
     float glow  = smoothstep(0.080, 0.0, d) * 0.20;
