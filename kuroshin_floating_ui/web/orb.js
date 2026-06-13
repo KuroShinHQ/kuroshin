@@ -124,7 +124,7 @@ float floatParticles(vec2 uv, float ftime, float bass) {
     float phase = fract(fi * 0.137 + ftime * 0.018); // ~55sn/döngü, çok yavaş
     float py    = mix(0.82, -0.95, phase);
     vec2  pos   = vec2(px, py);
-    float inOrb = step(length(pos), 0.88);
+    float inOrb = step(length(pos), 0.80); // 0.88→0.80: zoom'da daire dışına taşmasın
     float d     = length(uv - pos);
     // Ses → sabit parlaklık artışı (sin titreşimi yok — "hızlı" yanılsaması kalkıyor)
     float pulse = 1.0 + bass * 0.25;
@@ -335,8 +335,8 @@ void main() {
     color  -= vec3(1.0) * max(0.0, -ripple) * 0.18;
   }
 
-  // Daire kırpma
-  float alpha = smoothstep(1.0, 0.97, dist);
+  // Daire kırpma — sert kenar: zoom'da edge glow taşmasın
+  float alpha = smoothstep(0.98, 0.93, dist);
 
   gl_FragColor = vec4(color, alpha);
 }`;
