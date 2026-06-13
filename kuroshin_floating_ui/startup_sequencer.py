@@ -1,5 +1,5 @@
 """
-Kuroshin FloatingUI Startup Sequencer v1.2
+Kuroshin FloatingUI Startup Sequencer v1.3
 - Önceki instance temizle
 - SYSTEM_PAUSED flag kaldır
 - Chancellor :9005 hazır mı → değilse başlat + bekle
@@ -75,13 +75,20 @@ def wait_service(port: int, label: str, check_fn, timeout: int = 45, interval: f
 
 def kill_old():
     _log("🧹 Eski instance'lar temizleniyor...")
+    # Windows: FloatingUI prosesleri
     subprocess.run(
         ["powershell", "-WindowStyle", "Hidden", "-Command",
          "Get-Process pythonw,QtWebEngineProcess -ErrorAction SilentlyContinue"
          " | Stop-Process -Force"],
         creationflags=NWIN, capture_output=True
     )
-    time.sleep(1.5)
+    # WSL: Chancellor — [5]'ten sonra race condition olabilir, garantiye al
+    subprocess.run(
+        ["wsl", "-d", "Ubuntu-22.04", "--", "bash", "-c",
+         "pkill -9 -f kuroshin_chancellor 2>/dev/null; sleep 1"],
+        creationflags=NWIN, capture_output=True
+    )
+    time.sleep(1.0)
     _log("   Temizlendi.")
 
 
@@ -145,7 +152,7 @@ def wait_bridge() -> bool:
 
 def main():
     _log("=" * 52)
-    _log("🟡 FloatingUI Startup Sequencer v1.2")
+    _log("🟡 FloatingUI Startup Sequencer v1.3")
     _log(f"   Log: {LOG}")
     _log("=" * 52)
 
