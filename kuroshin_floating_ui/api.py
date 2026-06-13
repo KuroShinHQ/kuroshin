@@ -119,6 +119,9 @@ class KuroshinAPI(QObject):
 
     def _do_send_message(self, text: str):
         import re
+        from pathlib import Path as _Path
+
+        PERSONA_PATH = _Path(r"C:\Kuroshin\soul\persona.json")
 
         def port_open(port):
             try:
@@ -130,21 +133,47 @@ class KuroshinAPI(QObject):
         def strip_think(t):
             return re.sub(r'<think>.*?</think>', '', t, flags=re.DOTALL).strip()
 
+        def build_system_prompt():
+            try:
+                p   = json.loads(PERSONA_PATH.read_text(encoding='utf-8'))
+                k   = p.get('kimlik', {})
+                kar = p.get('karakter_temeli', {})
+                kon = p.get('konusma_tarzi', {})
+                yasak = ' / '.join(f'"{x}"' for x in kon.get('yasak_kaliplar', [])[:4])
+                return (
+                    f"/no_think\n"
+                    f"Sen {k.get('isim','Kuroshin')}'sin — {kar.get('ozet','')}.\n"
+                    f"Lordun: {k.get('lordum','kuroshin_user')}. Her yanıt '⚔️ Lordum,' ile başlar.\n"
+                    f"Ton: {kon.get('genel','')} Yanıt her zaman Türkçe.\n"
+                    f"YASAK: {yasak}. Inline emoji yok. Markdown yok."
+                )
+            except Exception:
+                return '/no_think\nSen Kuroshin\'sin. ⚔️ Lordum, ile başla. Kısa net Türkçe.'
+
         def push(msg):
             if self._win:
                 self._win.runJS.emit(
+                    f"window.__removePending?.();"
                     f"ChatManager?.addMessage({json.dumps(msg)}, 'bot', true);"
                     "window.setOrbState?.('IDLE');"
                 )
 
+        def show_pending():
+            if self._win:
+                self._win.runJS.emit("window.__addPending?.();")
+
         if port_open(8082):
-            # Normal Mode: Qwen3-1.7B doğrudan
+            show_pending()
             try:
                 data = json.dumps({
                     'model': 'local',
-                    'messages': [{'role': 'user', 'content': text}],
+                    'messages': [
+                        {'role': 'system', 'content': build_system_prompt()},
+                        {'role': 'user',   'content': text}
+                    ],
                     'stream': False,
-                    'max_tokens': 1024
+                    'max_tokens': 512,
+                    'chat_template_kwargs': {'enable_thinking': False}
                 }).encode()
                 req = urllib.request.Request(
                     'http://localhost:8082/v1/chat/completions',
@@ -152,7 +181,7 @@ class KuroshinAPI(QObject):
                     headers={'Content-Type': 'application/json'},
                     method='POST'
                 )
-                resp = urllib.request.urlopen(req, timeout=60)
+                resp = urllib.request.urlopen(req, timeout=90)
                 body = json.loads(resp.read().decode())
                 raw  = body['choices'][0]['message']['content']
                 push(strip_think(raw) or '(boş yanıt)')
@@ -160,7 +189,7 @@ class KuroshinAPI(QObject):
                 push(f'⚠️ Qwen3-1.7B hata: {type(e).__name__}')
 
         elif port_open(9005):
-            # Turbo Mode: Chancellor
+            show_pending()
             try:
                 data = json.dumps({'text': text, 'source': 'floating_ui'}).encode()
                 req = urllib.request.Request(
@@ -174,6 +203,11 @@ class KuroshinAPI(QObject):
                 reply = body.get('reply', '')
                 if reply:
                     push(reply)
+                else:
+                    if self._win:
+                        self._win.runJS.emit(
+                            "window.__removePending?.();window.setOrbState?.('IDLE');"
+                        )
             except Exception as e:
                 push(f'⚠️ CH hata: {type(e).__name__}')
 

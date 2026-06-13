@@ -106,5 +106,20 @@ const ChatManager = (function () {
     setTimeout(() => addMessage('Kuroshin hazır. [dev mod]', 'bot', true), 800);
   }
 
+  // ── Thinking bar (pending) ──
+  let __pendingDiv = null;
+  window.__addPending = function () {
+    if (__pendingDiv) return;
+    const div  = document.createElement('div');
+    div.className = 'msg-bot msg-pending';
+    div.innerHTML  = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
+    area.appendChild(div);
+    scrollBottom();
+    __pendingDiv = div;
+  };
+  window.__removePending = function () {
+    if (__pendingDiv) { __pendingDiv.remove(); __pendingDiv = null; }
+  };
+
   return { addMessage, clearChat };
 })();
