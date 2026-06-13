@@ -113,22 +113,23 @@ vec2 vortex(vec2 p, float str) {
   return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
 }
 
-// Yüzen partiküller (#5) — orb içinden yukarı yükselen parıltı noktaları
-float floatParticles(vec2 uv, float ftime) {
+// Yüzen partiküller (#5) — geometrik düz yükselme, ses=parlaklık nabızı
+float floatParticles(vec2 uv, float ftime, float bass) {
   float v = 0.0;
   for (int i = 0; i < 8; i++) {
     float fi    = float(i);
-    vec2  seed  = vec2(fi * 0.731 + 1.3, fi * 1.618 + 0.5);
-    float px    = (noise(seed) - 0.5) * 1.3;
-    float phase = fract(fi * 0.137 + ftime * 0.08);   // ~12sn/döngü, çok yavaş
-    float py    = mix(0.82, -1.05, phase);             // alt → üst
-    float drift = sin(phase * 12.566 + fi * 1.9) * 0.08;
-    vec2  pos   = vec2(px + drift, py);
-    float inOrb = step(length(pos), 0.90);
+    // Geometrik: eşit aralıklı X, drift yok, düz dikey yükselme
+    float px    = (fi / 7.0) * 1.40 - 0.70;
+    float phase = fract(fi * 0.137 + ftime * 0.035); // ~28sn/döngü, çok yavaş
+    float py    = mix(0.82, -0.95, phase);
+    vec2  pos   = vec2(px, py);
+    float inOrb = step(length(pos), 0.88);
     float d     = length(uv - pos);
-    float bri   = smoothstep(0.0, 0.20, phase) * (1.0 - phase) * (1.0 - phase);
-    float dot_  = smoothstep(0.028, 0.0, d);
-    float glow  = smoothstep(0.085, 0.0, d) * 0.22;
+    // Ses → parlaklık geometrik nabızlanır (hareket değil)
+    float pulse = 1.0 + bass * sin(ftime * 8.0 + fi * 0.785) * 0.45;
+    float bri   = smoothstep(0.0, 0.18, phase) * (1.0 - phase) * (1.0 - phase) * pulse;
+    float dot_  = smoothstep(0.026, 0.0, d);
+    float glow  = smoothstep(0.080, 0.0, d) * 0.20;
     v += inOrb * bri * (dot_ + glow);
   }
   return clamp(v, 0.0, 1.0);
@@ -246,8 +247,8 @@ void main() {
 
   // Yüzen partiküller (#5) — IDLE: orb içinden yukarı yükselen parıltı
   if (u_state == 0.0) {
-    float fp = floatParticles(uv, u_time);
-    color += rimC * fp * (0.90 + u_bass * 0.10);
+    float fp = floatParticles(uv, u_time, u_bass);
+    color += rimC * fp * 0.88;
   }
 
   // Press dolum (dıştan içe)
