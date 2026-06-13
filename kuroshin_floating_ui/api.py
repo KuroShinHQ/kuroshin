@@ -112,21 +112,73 @@ class KuroshinAPI(QObject):
             return {'ch': ch.result(), 'lm1': lm1.result(), 'lm2': lm2.result(), 'wk': wk.result()}
 
     # ── Mesaj ────────────────────────────────────────
-    @pyqtSlot(str, result=str)
+    @pyqtSlot(str)
     def send_message(self, text: str):
-        try:
-            data = json.dumps({'text': text, 'source': 'floating_ui'}).encode()
-            req = urllib.request.Request(
-                'http://localhost:9005/message',
-                data=data,
-                headers={'Content-Type': 'application/json'},
-                method='POST'
-            )
-            resp = urllib.request.urlopen(req, timeout=10)
-            body = json.loads(resp.read().decode())
-            return body.get('reply', '')
-        except Exception as e:
-            return f'[CH bağlantı hatası: {type(e).__name__}]'
+        import threading
+        threading.Thread(target=self._do_send_message, args=(text,), daemon=True).start()
+
+    def _do_send_message(self, text: str):
+        import re
+
+        def port_open(port):
+            try:
+                r = urllib.request.urlopen(f'http://localhost:{port}/health', timeout=1)
+                return r.status == 200
+            except Exception:
+                return False
+
+        def strip_think(t):
+            return re.sub(r'<think>.*?</think>', '', t, flags=re.DOTALL).strip()
+
+        def push(msg):
+            if self._win:
+                self._win.runJS.emit(
+                    f"ChatManager?.addMessage({json.dumps(msg)}, 'bot', true);"
+                    "window.setOrbState?.('IDLE');"
+                )
+
+        if port_open(8082):
+            # Normal Mode: Qwen3-1.7B doğrudan
+            try:
+                data = json.dumps({
+                    'model': 'local',
+                    'messages': [{'role': 'user', 'content': text}],
+                    'stream': False,
+                    'max_tokens': 1024
+                }).encode()
+                req = urllib.request.Request(
+                    'http://localhost:8082/v1/chat/completions',
+                    data=data,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST'
+                )
+                resp = urllib.request.urlopen(req, timeout=60)
+                body = json.loads(resp.read().decode())
+                raw  = body['choices'][0]['message']['content']
+                push(strip_think(raw) or '(boş yanıt)')
+            except Exception as e:
+                push(f'⚠️ Qwen3-1.7B hata: {type(e).__name__}')
+
+        elif port_open(9005):
+            # Turbo Mode: Chancellor
+            try:
+                data = json.dumps({'text': text, 'source': 'floating_ui'}).encode()
+                req = urllib.request.Request(
+                    'http://localhost:9005/message',
+                    data=data,
+                    headers={'Content-Type': 'application/json'},
+                    method='POST'
+                )
+                resp = urllib.request.urlopen(req, timeout=15)
+                body = json.loads(resp.read().decode())
+                reply = body.get('reply', '')
+                if reply:
+                    push(reply)
+            except Exception as e:
+                push(f'⚠️ CH hata: {type(e).__name__}')
+
+        else:
+            push('⚠️ LLM yok — panelden LLM butonuna bas')
 
     # ── Sistem butonlari ─────────────────────────────
     @pyqtSlot()

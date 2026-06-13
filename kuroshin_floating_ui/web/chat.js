@@ -71,28 +71,27 @@ const ChatManager = (function () {
     addMessage(text, 'user');
     input.value = '';
 
-    // FAZ-2: Bridge WS üzerinden chancellor'a ilet
-    if (window.kuroshinSendWS?.(text)) {
-      window.setOrbState?.('PROCESSING');
+    const st = window.currentLEDStatus || {};
+
+    // LLM yok
+    if (!st.lm1 && !st.lm2) {
+      addMessage('⚠️ LLM yok — panelden LLM butonuna bas', 'bot');
       return;
     }
 
-    // Fallback: doğrudan pywebview API (bridge henüz bağlı değil)
-    if (window.pywebview?.api?.send_message) {
-      window.setOrbState?.('PROCESSING');
-      const msgDiv = addMessage('...', 'bot', false, true);
-      window.pywebview.api.send_message(text).then(resp => {
-        msgDiv.remove();
-        if (resp) addMessage(resp, 'bot', true);
-        window.setOrbState?.('IDLE');
-      }).catch(() => {
-        msgDiv.remove();
-        addMessage('Bağlantı hatası.', 'bot');
-        window.setOrbState?.('IDLE');
-      });
-    } else {
-      addMessage('[Bağlantı bekleniyor...]', 'bot');
+    window.setOrbState?.('PROCESSING');
+
+    if (st.lm2 && !st.lm1) {
+      // Normal Mode: Qwen3-1.7B → api.py routing (yanıt runJS ile gelir)
+      window.pywebview?.api?.send_message?.(text);
+      return;
     }
+
+    // Turbo Mode (lm1 aktif): WS → Bridge → Chancellor
+    if (window.kuroshinSendWS?.(text)) return;
+
+    // WS yoksa API fallback (Turbo)
+    window.pywebview?.api?.send_message?.(text);
   }
 
   input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });

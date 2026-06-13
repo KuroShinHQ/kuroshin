@@ -231,7 +231,10 @@ def main():
                      'lm1': lm1.result(),
                      'lm2': lm2.result(),
                      'wk':  wk.result()}
-            win.runJS.emit(f"typeof updateLEDs==='function'&&updateLEDs({json.dumps(s)})")
+            win.runJS.emit(
+                f"window.currentLEDStatus={json.dumps(s)};"
+                f"typeof updateLEDs==='function'&&updateLEDs({json.dumps(s)})"
+            )
             time.sleep(10)
 
     threading.Thread(target=_led_poll, args=(window,), daemon=True).start()
