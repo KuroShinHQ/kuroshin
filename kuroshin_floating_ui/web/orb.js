@@ -66,6 +66,8 @@ uniform float u_bass;    // 0-1 mikrofon bass (0-215 Hz)
 uniform float u_mid;     // 0-1 mikrofon mid  (215-2150 Hz)
 uniform float u_treble;  // 0-1 mikrofon treble (2150+ Hz)
 uniform float u_amp;     // 0-1 genel amplitude
+uniform vec2  u_mag;     // fare yön vektörü normalize [-1,1]
+uniform float u_pull;    // 0-1 fare yakınlık kuvveti
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -143,6 +145,10 @@ void main() {
   if (u_state == 4.0) vStr = 0.4;
   vec2 uv_v = vortex(uv, vStr * 0.4);
 
+  // Magnetic mouse — fluid fare yönüne doğru çekiliyor
+  // u_mag: fare yön birimi, u_pull: 0(uzak)→1(üstünde)
+  vec2 magBias = u_mag * u_pull * 0.22;  // max 0.22 UV offset
+
   // Ripple → FBM fizik displacement (dalga partikül/fluidi iter)
   vec2 ripPhys = vec2(0.0);
   if (u_rip_t > 0.0) {
@@ -157,8 +163,8 @@ void main() {
     ripPhys = normalize(rdir + 0.0001) * push * 0.28;
   }
 
-  // 3 katman domain warping + ripple displacement (partiküller fiziksel olarak itiliyor)
-  vec2 uv_p = uv_v + ripPhys;
+  // 3 katman domain warping + ripple + magnetic pull
+  vec2 uv_p = uv_v + ripPhys + magBias;
   vec2 q  = vec2(fbm(uv_p + t * 0.20), fbm(uv_p + 1.0));
   vec2 r  = vec2(fbm(uv_p + 4.0 * q + t * 0.10), fbm(uv_p + 4.0 * q + 1.0));
   vec2 s2 = vec2(fbm(uv_p + 3.0 * r + t * 0.05), fbm(uv_p + 3.0 * r + 2.7));
@@ -193,11 +199,13 @@ void main() {
     color = mix(color, fireColor, fill * sqrt(u_press));
   }
 
-  // Iridescent rim — treble frekanslar rim'i parlatıyor
+  // Iridescent rim — treble parlatıyor + fare tarafında ekstra parlaklık
   float rimR = smoothstep(0.68, 1.0, dist * breath);
   float rimG = smoothstep(0.72, 1.0, dist * breath);
   float rimB = smoothstep(0.70, 1.0, dist * breath);
-  float rimMod = 0.5 + 0.5 * sin(t + f * 10.0) + u_treble * 0.9;
+  // Fare yönündeki rim kısmı daha parlak (dot product: fare yönüne bakan yüzey)
+  float magGlow = max(0.0, dot(normalize(uv + 0.001), u_mag)) * u_pull * 0.6;
+  float rimMod  = 0.5 + 0.5 * sin(t + f * 10.0) + u_treble * 0.9 + magGlow;
   color.r = mix(color.r, rimC.r, rimR * rimMod);
   color.g = mix(color.g, rimC.g, rimG * rimMod);
   color.b = mix(color.b, rimC.b, rimB * rimMod * 1.2);
@@ -300,6 +308,8 @@ void main() {
   const uMid     = gl.getUniformLocation(prog, 'u_mid');
   const uTreble  = gl.getUniformLocation(prog, 'u_treble');
   const uAmp     = gl.getUniformLocation(prog, 'u_amp');
+  const uMag     = gl.getUniformLocation(prog, 'u_mag');
+  const uPull    = gl.getUniformLocation(prog, 'u_pull');
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -345,11 +355,14 @@ void main() {
     gl.uniform2f(uRipPos, ripPos[0], ripPos[1]);
     gl.uniform1f(uRipT,   ripT);
     // Ses reaktif uniform'lar — audioData yoksa sıfır (sessiz)
-    const ad = window.audioData || { bass: 0, mid: 0, treble: 0, amp: 0 };
+    const ad = window.audioData     || { bass: 0, mid: 0, treble: 0, amp: 0 };
+    const mi = window.mouseInfluence || { nx: 0, ny: 0, pull: 0 };
     gl.uniform1f(uBass,   ad.bass);
     gl.uniform1f(uMid,    ad.mid);
     gl.uniform1f(uTreble, ad.treble);
     gl.uniform1f(uAmp,    ad.amp);
+    gl.uniform2f(uMag,    mi.nx, mi.ny);
+    gl.uniform1f(uPull,   mi.pull);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }

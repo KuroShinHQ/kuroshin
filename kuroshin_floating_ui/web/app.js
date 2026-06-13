@@ -372,6 +372,22 @@
     return false;
   };
 
+  // ── Magnetic Mouse — orb iç fluid fare yönüne çekiliyor ───
+  window.mouseInfluence = { nx: 0, ny: 0, pull: 0 };
+  document.addEventListener('mousemove', e => {
+    const rect = orb.getBoundingClientRect();
+    const cx   = rect.left + rect.width  / 2;
+    const cy   = rect.top  + rect.height / 2;
+    // Normalize: orb yarıçapının kaç katı uzakta?
+    const r    = (rect.width / 2) || 46;
+    const dx   = (e.clientX - cx) / r;
+    const dy   = (e.clientY - cy) / r;
+    const dist = Math.hypot(dx, dy);
+    // pull: 0(çok uzak) → 1(orb üzerinde), max etki 2.5x yarıçap içinde
+    const pull = Math.max(0, 1.0 - dist / 2.5);
+    window.mouseInfluence = { nx: dx / Math.max(dist, 0.01), ny: -dy / Math.max(dist, 0.01), pull };
+  }, { passive: true });
+
   // Sayfa başlangıcında panel gizli (collapsed class var, visibility JS yönetir)
   panel.style.visibility = 'hidden';
 
