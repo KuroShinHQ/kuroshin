@@ -120,7 +120,7 @@ float floatParticles(vec2 uv, float ftime) {
     float fi    = float(i);
     vec2  seed  = vec2(fi * 0.731 + 1.3, fi * 1.618 + 0.5);
     float px    = (noise(seed) - 0.5) * 1.3;
-    float phase = fract(fi * 0.137 + ftime * 0.30);   // ~3.3sn/döngü, staggered
+    float phase = fract(fi * 0.137 + ftime * 0.08);   // ~12sn/döngü, çok yavaş
     float py    = mix(0.82, -1.05, phase);             // alt → üst
     float drift = sin(phase * 12.566 + fi * 1.9) * 0.08;
     vec2  pos   = vec2(px + drift, py);
@@ -247,7 +247,7 @@ void main() {
   // Yüzen partiküller (#5) — IDLE: orb içinden yukarı yükselen parıltı
   if (u_state == 0.0) {
     float fp = floatParticles(uv, u_time);
-    color += rimC * fp * (0.90 + u_bass * 0.55);
+    color += rimC * fp * (0.90 + u_bass * 0.10);
   }
 
   // Press dolum (dıştan içe)
