@@ -77,6 +77,10 @@
   let winStartX  = 0, winStartY   = 0;
   const DRAG_THRESHOLD = 5;
 
+  // Sürükleme hız/yön — shader trail için
+  window.orbVelocity = { vx: 0, vy: 0, speed: 0 };
+  let _prevDragX = 0, _prevDragY = 0;
+
   // ── Long-press RAM Purge (3sn basılı → otomatik) ───
   let longPressTimer     = null;
   let pressInterval      = null;
@@ -123,11 +127,21 @@
         pressInterval = null;
         window.setOrbPress?.(0);
         orb.classList.add('dragging');
+        _prevDragX = ev.screenX;
+        _prevDragY = ev.screenY;
         resetAutoHide();
       }
       if (dragging && Date.now() - lastMove > 16) {
         lastMove = Date.now();
         window.pywebview?.api?.move_window?.(winStartX + dx, winStartY + dy);
+        // Hız vektörü hesapla → shader trail için
+        const vx = ev.screenX - _prevDragX;
+        const vy = ev.screenY - _prevDragY;
+        const spd = Math.min(Math.hypot(vx, vy) / 18, 1.0);
+        const len = Math.hypot(vx, vy) || 1;
+        window.orbVelocity = { vx: vx / len, vy: -vy / len, speed: spd };
+        _prevDragX = ev.screenX;
+        _prevDragY = ev.screenY;
       }
     };
 
@@ -145,6 +159,7 @@
         const dx = ev.screenX - dragStartX;
         const dy = ev.screenY - dragStartY;
         snapToCornerIfNear(winStartX + dx, winStartY + dy);
+        window.orbVelocity = { vx: 0, vy: 0, speed: 0 };  // trail sönsün
       } else {
         // gerçek click: <250ms VE longPress hiç tetiklenmemiş (QWebChannel IPC gecikmesi 50ms+ olabilir)
         const elapsed = Date.now() - pressStart;

@@ -73,6 +73,8 @@ uniform float u_treble;  // 0-1 mikrofon treble (2150+ Hz)
 uniform float u_amp;     // 0-1 genel amplitude
 uniform vec2  u_mag;     // fare yön vektörü normalize [-1,1]
 uniform float u_pull;    // 0-1 fare yakınlık kuvveti
+uniform vec2  u_vel;     // sürükleme yön vektörü normalize [-1,1]
+uniform float u_speed;   // 0-1 sürükleme hızı (trail yoğunluğu)
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -335,6 +337,19 @@ void main() {
     color  -= vec3(1.0) * max(0.0, -ripple) * 0.18;
   }
 
+  // ── FAZ-5 #8 Sürükleme Trail — kuyruklu yıldız, hareket yönünün tersinde ──
+  if (u_speed > 0.01) {
+    // tail yönü = hareketin tersi (orb geride bıraktığı ışık)
+    vec2  tail    = -u_vel;
+    // uv noktasının tail yönüyle hizası: tam karşısı → 1.0
+    float align   = max(0.0, dot(normalize(uv + 0.001), tail));
+    // kenar bandında yoğun, merkeze doğru azalıyor
+    float trailZ  = smoothstep(0.25, 0.82, dist);
+    // pow ile yönlü koni — dar açılı ışık şeridi
+    float trailG  = pow(align, 2.2) * trailZ * u_speed * 0.80;
+    color += rimC * trailG;
+  }
+
   // Daire kırpma — sert kenar: zoom'da edge glow taşmasın
   float alpha = smoothstep(0.98, 0.93, dist);
 
@@ -383,6 +398,11 @@ void main() {
   const uAmp     = gl.getUniformLocation(prog, 'u_amp');
   const uMag     = gl.getUniformLocation(prog, 'u_mag');
   const uPull    = gl.getUniformLocation(prog, 'u_pull');
+  const uVel     = gl.getUniformLocation(prog, 'u_vel');
+  const uSpeed   = gl.getUniformLocation(prog, 'u_speed');
+
+  // Trail EMA decay — sürükleme bitti → iz yavaş söner
+  let trailVx = 0, trailVy = 0, trailSpeed = 0;
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -412,6 +432,11 @@ void main() {
     if (doneBurst > 0) doneBurst = Math.max(0, doneBurst - 0.020);
     // Ripple decay (~1.2s @ 60fps)
     if (ripT > 0) ripT = Math.max(0, ripT - 0.014);
+    // Trail decay — sürükleme bitti → ~0.5s'de söner (EMA release 0.88)
+    const ov = window.orbVelocity || { vx: 0, vy: 0, speed: 0 };
+    trailSpeed = trailSpeed * 0.88 + ov.speed * 0.12;
+    if (ov.speed > 0.01) { trailVx = ov.vx; trailVy = ov.vy; }
+    if (trailSpeed < 0.005) trailSpeed = 0;
 
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -432,6 +457,8 @@ void main() {
     gl.uniform1f(uAmp,    ad.amp);
     gl.uniform2f(uMag,    mi.nx, mi.ny);
     gl.uniform1f(uPull,   mi.pull);
+    gl.uniform2f(uVel,    trailVx, trailVy);
+    gl.uniform1f(uSpeed,  trailSpeed);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
