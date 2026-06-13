@@ -118,8 +118,9 @@ float floatParticles(vec2 uv, float ftime, float bass) {
   float v = 0.0;
   for (int i = 0; i < 8; i++) {
     float fi    = float(i);
-    // Geometrik: eşit aralıklı X, drift yok, düz dikey yükselme
-    float px    = (fi / 7.0) * 1.40 - 0.70;
+    // Geometrik: geniş X aralığı + hash varyasyon → daha dağınık görünüm
+    float px    = (fi / 7.0) * 1.60 - 0.80;
+    px += (hash(vec2(fi * 3.71, 2.13)) - 0.5) * 0.14; // sabit hash (titreşmiyor)
     float phase = fract(fi * 0.137 + ftime * 0.018); // ~55sn/döngü, çok yavaş
     float py    = mix(0.82, -0.95, phase);
     vec2  pos   = vec2(px, py);
@@ -232,16 +233,13 @@ void main() {
   // ── FAZ-5 #6 Subsurface Scattering — cam/jade derinliği, içten ışık saçılımı ──
   // sssThick: gerçek küre kalınlık haritası → merkez=1.0 (kalın), kenar=0.0 (ince)
   float sssThick = sqrt(max(0.0, 1.0 - dist * dist));
-  // iç derinlik: merkeze doğru yoğunlaşan glow (pow 1.8 → sert ama güzel gradyan)
-  float sssInner = pow(sssThick, 1.8) * 0.40;
-  // limb scatter: dist≈0.46 bandında peak → kenardan giren ışık içe dağılıyor (jade efekti)
-  float sssLimb  = exp(-pow((dist - 0.46) / 0.20, 2.0)) * 0.30;
-  // nefes + bass senkron (orb nefes alırken iç ışık da titriyor)
+  // tek yumuşak merkez glow (Gaussian ring yok — dağınık iç ışık hissi)
+  float sssGlow  = pow(sssThick, 1.4) * 0.62;
+  // nefes + bass senkron
   float sssMod   = (1.0 + sin(t * 0.5) * 0.08) * (1.0 + u_bass * 0.25);
-  if (u_state == 4.0) sssMod *= 0.30; // GHOST: soluk — iç ışık neredeyse yok
-  // rimC zaten state'e göre ayarlı: IDLE=cyan, PROC=cyan, DONE=yeşil, ALARM=kızıl, GHOST=gri
-  vec3 sssColor  = rimC * 0.50 + vec3(0.02, 0.01, 0.08); // rimC + derin mor alt ton
-  color += sssColor * (sssInner + sssLimb) * sssMod;
+  if (u_state == 4.0) sssMod *= 0.30;
+  vec3 sssColor  = rimC * 0.50 + vec3(0.02, 0.01, 0.08);
+  color += sssColor * sssGlow * sssMod;
 
   // Dış rim: kırmızı saçak (prizma kırmızıyı en çok kırar)
   color.r += ca * 0.85;
@@ -260,8 +258,9 @@ void main() {
   }
 
   // Yüzen partiküller (#5) — IDLE: orb içinden yukarı yükselen parıltı
+  // uv_raw kullan: lens distorsiyonu partikülleri titretiyordu (hız yanılsaması)
   if (u_state == 0.0) {
-    float fp = floatParticles(uv, u_time, u_bass);
+    float fp = floatParticles(uv_raw, u_time, u_bass);
     color += rimC * fp * 0.88;
   }
 
