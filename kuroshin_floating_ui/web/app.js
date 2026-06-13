@@ -324,7 +324,7 @@
 
       ws.onopen = () => {
         wsRetries = 0;
-        setLED('led-ch', true);
+        // LED durumunu Python _led_poll belirler — WS bağlantısı ≠ CH sağlığı
       };
 
       ws.onmessage = e => {
