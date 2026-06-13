@@ -247,20 +247,30 @@ html, body {
 }
 
 .sys-btn {
-  width: 40px;
-  height: 30px;
+  width: 46px;
+  height: 42px;
   border: 1px solid rgba(255,255,255,0.05);
   border-radius: 6px;
   background: transparent;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   cursor: pointer;
   transition: background 0.2s;
 }
 .sys-btn:hover { background: rgba(255,255,255,0.1); }
 .sys-btn img { width: 14px; height: 14px; opacity: 0.6; filter: invert(1); }
 .sys-btn:hover img { opacity: 1; }
+.btn-label {
+  font-size: 9px;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+}
+.sys-btn:hover .btn-label { color: rgba(255,255,255,0.8); }
 
 /* ── Floating Orb ── */
 #orb-btn {

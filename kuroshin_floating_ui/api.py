@@ -107,7 +107,7 @@ class KuroshinAPI(QObject):
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
             ch   = ex.submit(chk, 9005)
             lm1  = ex.submit(chk, 8080)   # L1 = Huihui-35B
-            lm2  = ex.submit(chk, 8082)   # L2 = Mod-2 Qwen3-1.7B
+            lm2  = ex.submit(chk, 8082)   # L2 = Mod-2 Gemma 3 4B
             wk   = ex.submit(chk, 9002)
             return {'ch': ch.result(), 'lm1': lm1.result(), 'lm2': lm2.result(), 'wk': wk.result()}
 
@@ -383,7 +383,7 @@ class KuroshinAPI(QObject):
                  "pkill -9 -f 'llama-server.*8082' 2>/dev/null; sleep 1"],
                 creationflags=NWIN
             )
-            msg = '⬛ Mod-2 (Qwen3-1.7B) durduruldu'
+            msg = '⬛ Mod-2 (Gemma 3 4B) durduruldu'
         else:
             subprocess.Popen(
                 ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash',
@@ -406,7 +406,7 @@ class KuroshinAPI(QObject):
                 if r.status == 200:
                     if self._win:
                         self._win.runJS.emit(
-                            "ChatManager?.addMessage('✅ Mod-2 hazır — Qwen3-1.7B aktif', 'bot', true);"
+                            "ChatManager?.addMessage('✅ Mod-2 hazır — Gemma 3 4B aktif', 'bot', true);"
                         )
                     return
             except Exception:
