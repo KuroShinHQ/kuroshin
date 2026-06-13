@@ -553,5 +553,94 @@
     "expect_blocked": false,
     "weight": 1.0,
     "description": "PyInstaller: Bat [4b/5] shutdown Kuroshin.exe da kapatıyor (pythonw tek başına yetmez)"
+  },
+
+  {
+    "id": "fui-ram-shellex-elevation",
+    "category": "fui_ram_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "ShellExecuteW",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM fix: ShellExecuteW runas ile UAC elevation (schtasks yerine — admin token gerektirmeyen yol)"
+  },
+  {
+    "id": "fui-ram-helper-hardcode",
+    "category": "fui_ram_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "ram_purge_helper.py",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "RAM fix: hardcoded helper path (frozen .exe'de __file__ yanlış — C:\\Kuroshin\\... sabit)"
+  },
+  {
+    "id": "fui-llm-wsl-turboquant",
+    "category": "fui_mod2_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "/opt/llama-turboquant/bin/llama-server",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Mod-2 fix: WSL TurboQuant binary kullanıyor (eski Windows .exe yerine)"
+  },
+  {
+    "id": "fui-chancellor-restart-thread",
+    "category": "fui_restart_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "_do_chancellor_restart",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Restart fix: _do_chancellor_restart thread (non-blocking) + 30s sonra CH health kontrol"
+  },
+  {
+    "id": "fui-alarm-show-impl",
+    "category": "fui_alarm_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "_do_show_alarms",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Alarm fix: _do_show_alarms gerçek uygulama (pass stub değil — alarm_config.yaml parse)"
+  },
+  {
+    "id": "fui-alarm-config-path",
+    "category": "fui_alarm_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "alarm_config.yaml",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Alarm fix: KuroRecon alarm_config.yaml okunuyor (aktif alarm listesi için)"
+  },
+  {
+    "id": "fui-send-message-http",
+    "category": "fui_chat_fix",
+    "type": "code_inspect",
+    "check": "file_contains",
+    "file": "kuroshin_floating_ui/api.py",
+    "pattern": "localhost:9005/message",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Chat fix: send_message HTTP POST localhost:9005/message (Chancellor HTTP server FAZ-2)"
+  },
+  {
+    "id": "fui-alarm-js-no-hardcode",
+    "category": "fui_alarm_fix",
+    "type": "code_inspect",
+    "check": "file_not_contains",
+    "file": "kuroshin_floating_ui/web/app.js",
+    "pattern": "Alarm listesi yap",
+    "expect_blocked": false,
+    "weight": 1.0,
+    "description": "Alarm fix: app.js hardcoded '[FAZ-3] Alarm listesi yapılandırılmadı.' mesajı kaldırıldı"
   }
 ]

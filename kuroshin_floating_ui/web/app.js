@@ -227,8 +227,8 @@
   });
 
   document.getElementById('btn-alarm')?.addEventListener('click', () => {
+    ChatManager?.addMessage('🔔 Alarm durumu yükleniyor...', 'bot');
     window.pywebview?.api?.show_alarms?.();
-    ChatManager?.addMessage('[FAZ-3] Alarm listesi yapılandırılmadı.', 'bot');
   });
 
   // ── Panel Drag (status-bar'dan) ─────────────────────

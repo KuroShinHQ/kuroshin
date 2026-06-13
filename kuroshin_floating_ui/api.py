@@ -114,7 +114,19 @@ class KuroshinAPI(QObject):
     # ── Mesaj ────────────────────────────────────────
     @pyqtSlot(str, result=str)
     def send_message(self, text: str):
-        return "[FAZ-2] Chancellor baglantisi henuz kurulmadi."
+        try:
+            data = json.dumps({'text': text, 'source': 'floating_ui'}).encode()
+            req = urllib.request.Request(
+                'http://localhost:9005/message',
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            resp = urllib.request.urlopen(req, timeout=10)
+            body = json.loads(resp.read().decode())
+            return body.get('reply', '')
+        except Exception as e:
+            return f'[CH bağlantı hatası: {type(e).__name__}]'
 
     # ── Sistem butonlari ─────────────────────────────
     @pyqtSlot()
@@ -179,32 +191,40 @@ class KuroshinAPI(QObject):
         ACCESS_DENIED = -1073741790  # 0xC0000022 signed
 
         if status == ACCESS_DENIED or status != 0:
-            # Admin yetkisi yok → scheduled task üzerinden çalıştır
-            import subprocess as _sp
-            TASK = 'KuroshinRAMPurge'
-            helper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  'ram_purge_helper.py')
-            # Task yoksa oluşturmayı dene (admin terminal gerekir — ilk seferlik)
-            chk = _sp.run(['schtasks', '/query', '/TN', TASK],
-                          capture_output=True, creationflags=0x08000000)
-            if chk.returncode != 0:
-                _sp.run(
-                    ['schtasks', '/create', '/TN', TASK,
-                     '/TR', f'pythonw "{helper}"',
-                     '/SC', 'ONCE', '/ST', '00:00', '/RU', 'SYSTEM', '/F'],
-                    capture_output=True, creationflags=0x08000000
-                )
-            result = _sp.run(['schtasks', '/run', '/TN', TASK],
-                             capture_output=True, creationflags=0x08000000)
-            if result.returncode == 0:
-                time.sleep(2)
+            # UAC elevation ile helper'ı admin olarak çalıştır
+            import sys as _sys
+            HELPER = r"C:\Kuroshin\kuroshin_floating_ui\ram_purge_helper.py"
+            RESULT_FILE = os.path.join(
+                os.environ.get('TEMP', r'C:\Windows\Temp'),
+                'kuroshin_ram_purge_result.txt'
+            )
+            try: os.remove(RESULT_FILE)
+            except: pass
+
+            if getattr(_sys, 'frozen', False):
+                r2 = subprocess.run(['where', 'pythonw.exe'], capture_output=True,
+                                    text=True, creationflags=0x08000000)
+                pyexe = r2.stdout.strip().split('\n')[0].strip() if r2.returncode == 0 else 'pythonw.exe'
+            else:
+                pyexe = _sys.executable.replace('python.exe', 'pythonw.exe')
+                if not os.path.exists(pyexe):
+                    pyexe = _sys.executable
+
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None, 'runas', pyexe, HELPER, None, 0
+            )
+            if ret > 32:  # ShellExecuteW başarısı: >32 = OK
+                for _ in range(20):
+                    time.sleep(0.5)
+                    if os.path.exists(RESULT_FILE):
+                        break
                 mem_after = _ps.virtual_memory()
                 freed_mb  = (mem_after.available - mem_before) // (1024 * 1024)
                 free_gb   = round(mem_after.available / 1073741824, 1)
-                msg = f"+{freed_mb} MB · {free_gb} GB serbest (SYSTEM)"
+                msg = f"+{freed_mb} MB · {free_gb} GB serbest (admin)"
             else:
                 free_gb = round(_ps.virtual_memory().available / 1073741824, 1)
-                msg = f"🔐 Admin gerekli · Bat [1] ile başlat · {free_gb} GB serbest"
+                msg = f"⛔ UAC iptal · {free_gb} GB serbest"
         else:
             # Admin var → kalan iki komutu da çalıştır
             for cmd_val in (MemoryFlushModifiedList, MemoryPurgeStandbyList):
@@ -264,11 +284,7 @@ class KuroshinAPI(QObject):
         threading.Thread(target=self._do_llm_toggle, daemon=True).start()
 
     def _do_llm_toggle(self):
-        import subprocess, os
-        LLAMA = r'C:\Users\pc\.docker\bin\inference\llama-server.exe'
-        MODEL = r'C:\Kuroshin\kuroshin-downloads\Qwen_Qwen3-1.7B-IQ4_XS.gguf'
-        LOG   = r'C:\Kuroshin\logs\llama_1.7b.log'
-        NWIN  = 0x08000000  # CREATE_NO_WINDOW
+        NWIN = 0x08000000  # CREATE_NO_WINDOW
 
         running = False
         try:
@@ -278,34 +294,87 @@ class KuroshinAPI(QObject):
             pass
 
         if running:
-            subprocess.Popen(['taskkill', '/f', '/im', 'llama-server.exe'],
-                             creationflags=NWIN)
+            subprocess.Popen(
+                ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
+                 "pkill -9 -f 'llama-server.*8082' 2>/dev/null; sleep 1"],
+                creationflags=NWIN
+            )
             msg = '⬛ Mod-2 (Qwen3-1.7B) durduruldu'
         else:
-            os.makedirs(os.path.dirname(LOG), exist_ok=True)
-            with open(LOG, 'a') as lf:
-                subprocess.Popen(
-                    [LLAMA, '--model', MODEL, '--port', '8082',
-                     '--ctx-size', '8192', '--n-gpu-layers', '99',
-                     '--no-warmup', '--cache-type-k', 'q8_0', '--cache-type-v', 'q8_0'],
-                    stdout=lf, stderr=lf, creationflags=NWIN
-                )
-            msg = '🟢 Mod-2 başlatılıyor... (Qwen3-1.7B IQ4_XS · port 8082)'
+            subprocess.Popen(
+                ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
+                 '/opt/llama-turboquant/bin/llama-server'
+                 ' --model /mnt/c/Kuroshin/kuroshin-downloads/Qwen_Qwen3-1.7B-IQ4_XS.gguf'
+                 ' --port 8082 --ctx-size 4096 --n-gpu-layers 99'
+                 ' --cache-type-k tq3_0 --cache-type-v tq3_0 --no-warmup'
+                 ' >> /tmp/llama_1.7b.log 2>&1'],
+                creationflags=NWIN
+            )
+            msg = '🟢 Mod-2 başlatılıyor... (Qwen3-1.7B · TurboQuant · port 8082)'
 
         if self._win:
             self._win.runJS.emit(f"ChatManager?.addMessage('{msg}', 'bot', true);")
 
     @pyqtSlot()
     def chancellor_restart(self):
+        import threading
+        threading.Thread(target=self._do_chancellor_restart, daemon=True).start()
+
+    def _do_chancellor_restart(self):
+        import time
         subprocess.Popen(
             ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
              'bash /mnt/c/Kuroshin/scripts/restart_chancellor.sh'],
             shell=False, creationflags=0x08000000
         )
+        time.sleep(30)  # Chancellor ~26sn başlıyor (restart_chancellor.sh max 26s bekler)
+        try:
+            r = urllib.request.urlopen('http://localhost:9005/health', timeout=3)
+            ok = r.status == 200
+        except Exception:
+            ok = False
+        msg = '✅ Chancellor yeniden başlatıldı' if ok else '⚠️ Restart gönderildi (CH bağlantısı bekleniyor...)'
+        if self._win:
+            self._win.runJS.emit(f"ChatManager?.addMessage('{msg}', 'bot', true);")
 
     @pyqtSlot()
     def show_alarms(self):
-        pass
+        import threading
+        threading.Thread(target=self._do_show_alarms, daemon=True).start()
+
+    def _do_show_alarms(self):
+        import re
+        config_path = r"C:\Kuroshin\KuroRecon\alarm_config.yaml"
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            parts = re.split(r'\n  - name:', content)
+            enabled = []
+            for part in parts[1:]:
+                if 'enabled:     true' not in part and 'enabled: true' not in part:
+                    continue
+                name_m  = re.search(r'^(.+?)$', part.strip(), re.MULTILINE)
+                below_m = re.search(r'below_price:\s*(\d+)', part)
+                drop_m  = re.search(r'drop_percent:\s*(\d+)', part)
+                name = name_m.group(1).strip().strip('"') if name_m else '?'
+                if below_m:
+                    enabled.append(f'· {name} < {int(below_m.group(1)):,}₺')
+                elif drop_m:
+                    enabled.append(f'· {name} %{drop_m.group(1)} düşüş')
+                else:
+                    enabled.append(f'· {name}')
+            if not enabled:
+                msg = '🔔 Aktif alarm yok\nalarm_config.yaml → enabled: true yap'
+            else:
+                msg = f'🔔 {len(enabled)} aktif:\n' + '\n'.join(enabled)
+        except FileNotFoundError:
+            msg = '⚠️ alarm_config.yaml bulunamadı'
+        except Exception as e:
+            msg = f'⚠️ Alarm hatası: {e}'
+        if self._win:
+            self._win.runJS.emit(
+                f"ChatManager?.addMessage({json.dumps(msg)}, 'bot', true);"
+            )
 
     # ── Ic yardimci ──────────────────────────────────
     def _save(self):
