@@ -137,14 +137,13 @@ class KuroshinAPI(QObject):
             try:
                 p = json.loads(PERSONA_PATH.read_text(encoding='utf-8'))
                 k = p.get('kimlik', {})
-                lord = k.get('lordum', 'kuroshin_user')
-                unvan = k.get('unvan', 'Gölge Zekâ')
                 return (
-                    f"Sen Kuroshin'sin, {unvan}. Lord {lord}'nun asistanı.\n"
-                    f"Her yanıtın '⚔️ Lordum,' ile başlar. Kısa Türkçe."
+                    f"You are Kuroshin, a sharp AI assistant. "
+                    f"Your lord is {k.get('lordum','kuroshin_user')}. "
+                    f"Always start your reply with '⚔️ Lordum,' and answer in Turkish. Be brief."
                 )
             except Exception:
-                return "Sen Kuroshin'sin. Her yanıt '⚔️ Lordum,' ile başlar. Kısa Türkçe."
+                return "You are Kuroshin. Always start with '⚔️ Lordum,' and reply in Turkish briefly."
 
         def push(msg):
             if self._win:
@@ -169,12 +168,10 @@ class KuroshinAPI(QObject):
                     ],
                     'stream': False,
                     'max_tokens': 256,
-                    'temperature': 0.7,
-                    'top_p': 0.8,
-                    'top_k': 20,
-                    'repeat_penalty': 1.1,
-                    'presence_penalty': 1.5,
-                    'chat_template_kwargs': {'enable_thinking': False}
+                    'temperature': 1.0,
+                    'top_p': 0.95,
+                    'top_k': 64,
+                    'min_p': 0.0,
                 }).encode()
                 req = urllib.request.Request(
                     'http://localhost:8082/v1/chat/completions',
@@ -391,13 +388,13 @@ class KuroshinAPI(QObject):
             subprocess.Popen(
                 ['wsl', '-d', 'Ubuntu-22.04', '--', 'bash', '-c',
                  '/opt/llama-turboquant/bin/llama-server'
-                 ' --model /mnt/c/Kuroshin/kuroshin-downloads/Qwen_Qwen3-1.7B-IQ4_XS.gguf'
-                 ' --port 8082 --host 0.0.0.0 --ctx-size 4096 --n-gpu-layers 99'
-                 ' --cache-type-k tq3_0 --cache-type-v tq3_0 --no-warmup'
-                 ' >> /tmp/llama_1.7b.log 2>&1'],
+                 ' --model /mnt/c/Kuroshin/kuroshin-downloads/gemma-3-4b-it-Q4_K_M.gguf'
+                 ' --port 8082 --host 0.0.0.0 --ctx-size 8192 --n-gpu-layers 99'
+                 ' --cache-type-k tq3_0 --cache-type-v tq3_0 --no-warmup -fa'
+                 ' >> /tmp/llama_gemma3.log 2>&1'],
                 creationflags=NWIN
             )
-            msg = '🔄 Mod-2 başlatılıyor... (Qwen3-1.7B · port 8082 · hazır olunca bildirim)'
+            msg = '🔄 Mod-2 başlatılıyor... (Gemma 3 4B · port 8082 · hazır olunca bildirim)'
             import threading as _thr
             _thr.Thread(target=self._wait_lm2_ready, daemon=True).start()
 
