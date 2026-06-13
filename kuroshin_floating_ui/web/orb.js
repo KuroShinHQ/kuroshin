@@ -191,27 +191,32 @@ void main() {
   }
 
   // ── FAZ-5 #4 Chromatic Aberration — Liquid Glass RGB split ──
-  // Katman-1: FBM örnekleme — daha büyük offset, her zaman görünür
-  float caStr = 0.06 + dist * dist * 0.05;      // baseline: orb geneli CA
-  caStr *= (1.0 + u_pull * 5.0);                 // fare: 6× güçleniyor
-  caStr *= (1.0 + u_amp  * 0.3);                 // ses: yavaş/hafif katkı
-  if (u_state == 1.0) caStr *= 1.8;             // PROCESSING: aktif kırınım
-  if (u_state == 3.0) caStr *= 3.2;             // ALARM: dramatik split
-  if (u_state == 4.0) caStr *= 0.25;            // GHOST: soluk
-  vec2 caDir   = normalize(uv_raw + 0.001) * caStr;
+  // Kuvvet: yalnızca kenarlarda aktif (smoothstep), ses pow ile yavaş/organik
+  float caDist  = smoothstep(0.28, 0.98, dist);
+  float caAudio = pow(u_amp, 2.2) * 0.28;        // pow → yavaş, sakin ses tepkisi
+  float caPull  = u_pull * 0.65;
+  float caTotal = (0.22 + caPull + caAudio) * caDist;
+  if (u_state == 1.0) caTotal *= 1.7;
+  if (u_state == 3.0) caTotal *= 3.5;
+  if (u_state == 4.0) caTotal *= 0.25;
+
+  // Katman-1: FBM örnekleme — büyük offset (0.18), görünür UV farkı
+  vec2 caDir   = normalize(uv_raw + 0.001);
   vec2 caBase2 = uv_p + 4.0 * s2;
-  float fR = fbm(caBase2 + caDir);
-  float fB = fbm(caBase2 - caDir);
+  float fbmStr = caTotal * 0.18;
+  float fR = fbm(caBase2 + caDir * fbmStr);
+  float fB = fbm(caBase2 - caDir * fbmStr);
   vec3 color = vec3(
     mix(c1, c2, fR).r,
     mix(c1, c2, f).g,
     mix(c1, c2, fB).b
   );
-  // Katman-2: Rim CA — kenar halkasında her zaman net R/B split (FBM'den bağımsız)
-  float rimCA  = smoothstep(0.62, 0.98, dist * breath);
-  float rimCAStr = rimCA * (0.55 + u_pull * 0.65);
-  color.r = mix(color.r, rimC.r * 1.6, rimCAStr * 0.5);
-  color.b = mix(color.b, rimC.b * 0.2, rimCAStr * 0.45);
+
+  // Katman-2: Doğrudan kanal yazma — her zaman net görünür split
+  // Kırmızı dışa (rim rengine doğru), mavi sönümleniyor, yeşil sıkışıyor
+  color.r  = mix(color.r, rimC.r * 1.25, caTotal * 0.58);
+  color.b  = mix(color.b, rimC.b * 0.12, caTotal * 0.48);
+  color.g *= mix(1.0, 0.70, caTotal * 0.38);
 
   // Sparkle — fare çekimine + treble'a tepki veriyor
   if (u_state == 0.0 || u_state == 2.0) {
