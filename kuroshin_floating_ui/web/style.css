@@ -317,6 +317,13 @@ html, body {
   to   { box-shadow: 0 0 32px rgba(220, 30, 30, 0.90); }
 }
 
+/* ── Sağ tık Zoom ── */
+#orb-btn.orb-zoomed {
+  transform: scale(1.4);
+  transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s, width 0.4s, height 0.4s, opacity 0.4s;
+}
+
 #webgl-orb {
   position: absolute;
   inset: 0;

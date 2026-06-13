@@ -208,6 +208,20 @@
   orb.addEventListener('mouseenter', () => { orb.classList.remove('auto-hidden'); resetAutoHide(); });
   resetAutoHide();
 
+  // ── Sağ tık Zoom Toggle ──────────────────────────────
+  let orbZoomed = false;
+  // Bu WebView'da context menü gerekmez — her yerde engelle
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  orb.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (panelOpen) return;  // panel açıkken zoom yok
+    orbZoomed = !orbZoomed;
+    orb.classList.toggle('orb-zoomed', orbZoomed);
+    resetAutoHide();
+  });
+
   // ── Sistem Butonları ─────────────────────────────────
   document.getElementById('btn-ram')?.addEventListener('click', e => {
     e.stopPropagation();
