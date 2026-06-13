@@ -139,11 +139,26 @@ void main() {
   if (u_state == 4.0) vStr = 0.4;
   vec2 uv_v = vortex(uv, vStr * 0.4);
 
-  // 3 katman domain warping (FAZ-4: daha derin sıvı hissi)
-  vec2 q  = vec2(fbm(uv_v + t * 0.20), fbm(uv_v + 1.0));
-  vec2 r  = vec2(fbm(uv_v + 4.0 * q + t * 0.10), fbm(uv_v + 4.0 * q + 1.0));
-  vec2 s2 = vec2(fbm(uv_v + 3.0 * r + t * 0.05), fbm(uv_v + 3.0 * r + 2.7));
-  float f = fbm(uv_v + 4.0 * s2);
+  // Ripple → FBM fizik displacement (dalga partikül/fluidi iter)
+  vec2 ripPhys = vec2(0.0);
+  if (u_rip_t > 0.0) {
+    float rfade   = u_rip_t * u_rip_t;
+    float relaps  = 1.0 - u_rip_t;
+    vec2  rdir    = uv - u_rip_pos;
+    float rd      = length(rdir);
+    float wFront  = relaps * 1.6;
+    // Dalga cephesindeki itme kuvveti: Gaussian × sinüs
+    float push    = exp(-abs(rd - wFront) * 9.0) * sin((rd - wFront) * 18.0) * rfade;
+    // Radyal yönde it (merkeze doğru ve dışa — su gerçeği)
+    ripPhys = normalize(rdir + 0.0001) * push * 0.28;
+  }
+
+  // 3 katman domain warping + ripple displacement (partiküller fiziksel olarak itiliyor)
+  vec2 uv_p = uv_v + ripPhys;
+  vec2 q  = vec2(fbm(uv_p + t * 0.20), fbm(uv_p + 1.0));
+  vec2 r  = vec2(fbm(uv_p + 4.0 * q + t * 0.10), fbm(uv_p + 4.0 * q + 1.0));
+  vec2 s2 = vec2(fbm(uv_p + 3.0 * r + t * 0.05), fbm(uv_p + 3.0 * r + 2.7));
+  float f = fbm(uv_p + 4.0 * s2);
 
   // Renk paleti (state)
   vec3 c1 = NAVY, c2 = PURPLE, rimC = CYAN;
@@ -214,13 +229,12 @@ void main() {
     float elapsed = 1.0 - u_rip_t;                // 0→1 zaman ilerledikçe
     vec2  ripDir  = uv - u_rip_pos;
     float rd      = length(ripDir);
-    // UV distortion: dalgalanma noktasına yakın bölgeleri büker (su optik)
+    // UV distortion: optik kırılma — ripple fizik displacement ile senkron
     float wFront  = elapsed * 1.6;
-    float distort = exp(-abs(rd - wFront) * 14.0) * sin((rd - wFront) * 28.0) * 0.045 * fade;
-    vec2  uvD     = uv + normalize(ripDir + 0.0001) * distort;
-    // Distort edilmiş UV ile rengi yeniden örnekle (basit: rengi kaydır)
+    float distort = exp(-abs(rd - wFront) * 14.0) * sin((rd - wFront) * 28.0) * 0.055 * fade;
+    vec2  uvD     = uv_p + normalize(ripDir + 0.0001) * distort;
     float fD      = fbm(uvD + 4.0 * s2);
-    color         = mix(color, mix(c1, c2, fD), abs(distort) * 18.0 * fade);
+    color         = mix(color, mix(c1, c2, fD), abs(distort) * 20.0 * fade);
     // 3 yayılan halka (dış kenarlarda sönümleme)
     float ripple  = 0.0;
     for (int i = 0; i < 3; i++) {
