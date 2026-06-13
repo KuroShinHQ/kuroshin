@@ -161,7 +161,7 @@ void main() {
   float dist  = length(uv);
 
   // Hız — mid frekanslar akışı hızlandırıyor
-  float spd = 1.0 + u_mid * 2.5;
+  float spd = 1.0 + u_mid * 0.6;
   if (u_state == 1.0) spd = 3.5 + u_mid * 3.0;
   if (u_state == 3.0) spd = 5.0 + u_bass * 2.0;
   if (u_state == 4.0) spd = 0.3;
@@ -169,11 +169,11 @@ void main() {
   float t = u_time * spd;
 
   // Nefes — bass ile şişiyor (konuşunca / müzik çalarken orb büyür)
-  float breathAmp = (u_state == 4.0) ? 0.08 : 0.04 + u_bass * 0.14;
+  float breathAmp = (u_state == 4.0) ? 0.08 : 0.04 + u_bass * 0.06;
   float breath    = sin(t * 0.5) * breathAmp + (1.0 - breathAmp);
 
   // Vortex kuvveti — mid frekanslar döndürüyor
-  float vStr = 1.2 + u_press * 2.0 + u_mid * 2.5;
+  float vStr = 1.2 + u_press * 2.0 + u_mid * 0.6;
   if (u_state == 1.0) vStr = 3.0 + sin(t) * 1.5 + u_mid * 3.0;
   if (u_state == 3.0) vStr = -4.0 - u_bass * 2.0; // ters + bas güçlendirme
   if (u_state == 4.0) vStr = 0.4;
