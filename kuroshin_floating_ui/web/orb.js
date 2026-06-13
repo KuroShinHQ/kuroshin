@@ -190,7 +190,24 @@ void main() {
     rimC = mix(rimC, vec3(1.00, 0.20, 0.04), u_press);
   }
 
-  vec3 color = mix(c1, c2, f);
+  // ── FAZ-5 #4 Chromatic Aberration — Liquid Glass RGB split ──
+  // Kuvvet: kenarlarda doğal güçlenme (dist²) + fare yakınlığı + ses
+  float caBase = 0.011 * (0.25 + dist * dist);
+  float caStr  = caBase * (1.0 + u_pull * 3.2 + u_amp * 1.8);
+  if (u_state == 1.0) caStr *= 1.6;  // PROCESSING: aktif kırınım
+  if (u_state == 3.0) caStr *= 3.0;  // ALARM: dramatik R/B split
+  if (u_state == 4.0) caStr *= 0.3;  // GHOST: soluk
+  // Radyal dışa yönlü kaydırma (lens kenar aberasyonu hissi)
+  vec2 caDir = normalize(uv_raw + 0.001) * caStr;
+  vec2 caBase2 = uv_p + 4.0 * s2;
+  float fR = fbm(caBase2 + caDir);       // kırmızı: dışa kaymış
+  float fB = fbm(caBase2 - caDir);       // mavi: içe kaymış
+  // 3 kanalı ayrı ayrı renk paletinden örnekle → RGB split
+  vec3 color = vec3(
+    mix(c1, c2, fR).r,
+    mix(c1, c2, f).g,
+    mix(c1, c2, fB).b
+  );
 
   // Sparkle — fare çekimine + treble'a tepki veriyor
   if (u_state == 0.0 || u_state == 2.0) {
