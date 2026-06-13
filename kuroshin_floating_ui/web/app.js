@@ -223,6 +223,18 @@
   orb.addEventListener('mouseenter', () => { orb.classList.remove('auto-hidden'); resetAutoHide(); });
   resetAutoHide();
 
+  // ── Günün Saatine Göre Renk ──────────────────────────
+  // 0.0 = gece (22:00-06:00), 1.0 = tam gündüz (08:00-18:00)
+  function calcTimeOfDay() {
+    const h = new Date().getHours() + new Date().getMinutes() / 60;
+    if (h < 6 || h >= 21) return 0;          // gece
+    if (h < 8)  return (h - 6) / 2;          // şafak: 0→1
+    if (h < 18) return 1;                     // gündüz
+    return 1 - (h - 18) / 3;                 // alacakaranlık: 1→0
+  }
+  window.orbTimeOfDay = calcTimeOfDay();
+  setInterval(() => { window.orbTimeOfDay = calcTimeOfDay(); }, 60000); // her dakika
+
   // ── Scroll ile Opacity ───────────────────────────────
   window.orbOpacityTarget = 1.0;
   orb.addEventListener('wheel', e => {

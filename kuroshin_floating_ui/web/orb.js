@@ -77,6 +77,7 @@ uniform vec2  u_vel;     // sürükleme yön vektörü normalize [-1,1]
 uniform float u_speed;   // 0-1 sürükleme hızı (trail yoğunluğu)
 uniform float u_opacity; // 0.15-1.0 scroll ile soluklaşma
 uniform float u_load;   // 0-1 CPU/RAM yükü (shader renk kayması)
+uniform float u_tod;    // 0-1 günün saati (0=gece, 1=gündüz)
 varying vec2  v_uv;
 
 // Kuroshin renk paleti
@@ -214,6 +215,16 @@ void main() {
   if (u_state == 3.0) { c1 = vec3(0.04,0.0,0.0); c2 = vec3(0.92,0.06,0.06); rimC = vec3(1.0,0.22,0.05); }
   else if (u_state == 2.0) { c1 = vec3(0.0,0.15,0.08); c2 = GREEN; rimC = GREEN; }
   else if (u_state == 4.0) { c1 = vec3(0.04,0.04,0.05); c2 = GREY; rimC = GREY; }
+
+  // ── FAZ-5 #11 Günün saatine göre renk — IDLE+PROC: gece navy/mor → gündüz cyan ──
+  if (u_state == 0.0 || u_state == 1.0) {
+    vec3 c1_day  = vec3(0.008, 0.035, 0.12); // gündüz c1: navy'den açık
+    vec3 c2_day  = vec3(0.06,  0.52,  0.68); // gündüz c2: canlı cyan-teal
+    vec3 rim_day = vec3(0.72,  0.96,  1.00); // gündüz rim: beyaz-cyan
+    c1   = mix(c1,   c1_day,  u_tod);
+    c2   = mix(c2,   c2_day,  u_tod);
+    rimC = mix(rimC, rim_day, u_tod);
+  }
 
   // ── FAZ-5 #10 CPU/RAM reaktif renk — IDLE+PROCESSING: mavi→turuncu kayma ──
   // ALARM/DONE/GHOST kendi renklerini korur (sadece IDLE+PROC etkilenir)
@@ -421,6 +432,7 @@ void main() {
   const uSpeed   = gl.getUniformLocation(prog, 'u_speed');
   const uOpacity = gl.getUniformLocation(prog, 'u_opacity');
   const uLoad    = gl.getUniformLocation(prog, 'u_load');
+  const uTod     = gl.getUniformLocation(prog, 'u_tod');
 
   // Trail EMA decay — sürükleme bitti → iz yavaş söner
   let trailVx = 0, trailVy = 0, trailSpeed = 0;
@@ -428,6 +440,8 @@ void main() {
   let orbOpacityVal = 1.0;
   // Load EMA — 3sn'de bir güncellenir, yavaş smooth (ani sıçrama yok)
   let orbLoadVal = 0.0;
+  // TimeOfDay — dakikada bir güncellenir, çok yavaş EMA
+  let orbTodVal = window.orbTimeOfDay ?? 0.0;
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -461,6 +475,8 @@ void main() {
     orbOpacityVal += ((window.orbOpacityTarget ?? 1.0) - orbOpacityVal) * 0.10;
     // Load EMA — yavaş smooth (3sn poll → ani renk sıçraması yok)
     orbLoadVal += ((window.orbLoad ?? 0.0) - orbLoadVal) * 0.04;
+    // ToD EMA — dakikada bir değişir, 0.005 ile ~20sn'de geçiş tamamlanır
+    orbTodVal  += ((window.orbTimeOfDay ?? orbTodVal) - orbTodVal) * 0.005;
 
     // Trail decay — sürükleme bitti → ~0.5s'de söner (EMA release 0.88)
     const ov = window.orbVelocity || { vx: 0, vy: 0, speed: 0 };
@@ -491,6 +507,7 @@ void main() {
     gl.uniform1f(uSpeed,  trailSpeed);
     gl.uniform1f(uOpacity, orbOpacityVal);
     gl.uniform1f(uLoad,    orbLoadVal);
+    gl.uniform1f(uTod,     orbTodVal);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
