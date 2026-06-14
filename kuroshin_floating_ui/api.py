@@ -27,53 +27,60 @@ class KuroshinAPI(QObject):
         if not self._win:
             return
         import ctypes as _ct
+        from PyQt6.QtCore import QTimer
         sw = _ct.windll.user32.GetSystemMetrics(0)
         sh = _ct.windll.user32.GetSystemMetrics(1)
         OW = 92; PW, PH = 370, 580
 
         if open_state:
             ox, oy = self._win.x(), self._win.y()
-            # Orb top-left screen pos (CSS: bottom:16, right:16 in 92×92 window)
-            orb_sx = ox + OW - 16 - 64   # ox+12
-            orb_sy = oy + OW - 16 - 64   # oy+12
+            # Orb top-left ekran konumu: 92x92 pencerede CSS bottom:16 right:16, orb 64x64
+            orb_sx = ox + 12   # ox + (92 - 16 - 64)
+            orb_sy = oy + 12   # oy + (92 - 16 - 64)
+
+            # Panel açılış yönü belirle
             on_right  = (orb_sx + 32) > sw // 2
             on_bottom = (orb_sy + 32) > sh // 2
-
             if on_right and on_bottom:
-                direction = 'bottom-right'
-                orb_in = (PW - 16 - 64, PH - 16 - 64)  # (290, 500)
+                direction = 'bottom-right'; orb_in = (PW - 16 - 64, PH - 16 - 64)
             elif not on_right and on_bottom:
-                direction = 'bottom-left'
-                orb_in = (16, PH - 16 - 64)             # (16, 500)
+                direction = 'bottom-left';  orb_in = (16, PH - 16 - 64)
             elif on_right:
-                direction = 'top-right'
-                orb_in = (PW - 16 - 64, 16)             # (290, 16)
+                direction = 'top-right';    orb_in = (PW - 16 - 64, 16)
             else:
-                direction = 'top-left'
-                orb_in = (16, 16)
+                direction = 'top-left';     orb_in = (16, 16)
 
             new_x = max(0, min(orb_sx - orb_in[0], sw - PW))
             new_y = max(0, min(orb_sy - orb_in[1], sh - PH))
             self._panel_dir = direction
+            # Orb ekran konumunu sakla — close'da doğru pozisyon için (bugfix: _panel_dir default hatası)
+            self._orb_before_open = (orb_sx, orb_sy)
             self._win.setGeometry(new_x, new_y, PW, PH)
             self._win.web.page().runJavaScript(
                 f"document.getElementById('ui-root').dataset.dir='{direction}';"
             )
         else:
-            direction = getattr(self, '_panel_dir', 'bottom-right')
-            px, py = self._win.x(), self._win.y()
-            if direction == 'bottom-right': orb_in = (PW-16-64, PH-16-64)
-            elif direction == 'bottom-left': orb_in = (16, PH-16-64)
-            elif direction == 'top-right':   orb_in = (PW-16-64, 16)
-            else:                            orb_in = (16, 16)
-            orb_sx = px + orb_in[0]
-            orb_sy = py + orb_in[1]
+            # FIX: _panel_dir default 'bottom-right' yanlış pozisyon hesaplıyordu (274px sapma).
+            # Çözüm: toggle_panel(True)'de sakladığımız orb ekran konumunu kullan.
+            if hasattr(self, '_orb_before_open'):
+                orb_sx, orb_sy = self._orb_before_open
+            else:
+                # Fallback: settings'teki son bilinen orb konumu
+                orb_sx = int(self._s.get('orb_x', sw - OW - 16)) + 12
+                orb_sy = int(self._s.get('orb_y', sh - OW - 16)) + 12
+
             new_x = max(0, min(orb_sx - 12, sw - OW))
             new_y = max(0, min(orb_sy - 12, sh - OW))
             self._s['orb_x'] = new_x
             self._s['orb_y'] = new_y
+
+            # hide() → setGeometry() → show() — DWM eski pozisyondaki ghost'u temizler.
+            # WA_TranslucentBackground + QWebEngineView (GPU) setGeometry sonrası eski
+            # DWM composition buffer'ı temizlemez; hide/show döngüsü bunu zorlar.
+            self._win.hide()
             self._win.setGeometry(new_x, new_y, OW, OW)
-            # Kasa/freeze sonrası window arka plana geçebilir — HWND_TOPMOST yeniden ata
+            QTimer.singleShot(30, self._win.show)   # 30ms: DWM eski buffer'ı bıraksin
+            # HWND_TOPMOST yeniden ata (kasa sonrası kaybolabilir)
             import threading as _thr
             _thr.Thread(target=self._reassert_topmost, daemon=True).start()
 
