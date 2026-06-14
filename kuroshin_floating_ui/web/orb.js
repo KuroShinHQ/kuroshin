@@ -5,8 +5,8 @@
   const canvas = document.getElementById('webgl-orb');
 
   function syncSize() {
-    const w = canvas.clientWidth  || 64;
-    const h = canvas.clientHeight || 64;
+    const w = Math.max(4, canvas.clientWidth  || 64);
+    const h = Math.max(4, canvas.clientHeight || 64);
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width  = w;
       canvas.height = h;

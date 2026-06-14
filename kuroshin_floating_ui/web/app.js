@@ -8,8 +8,9 @@
   const modeBadge = document.getElementById('mode-badge');
 
   // ── Panel Toggle ──────────────────────────────────────
-  let panelOpen = false;
-  let _closeListener = null;
+  let panelOpen  = false;
+  let _closeTimer = null;
+  let _openTimer  = null;
 
   function calcDir() {
     const sw = window.screen.width;
@@ -23,20 +24,19 @@
   }
 
   function openPanel() {
-    if (_closeListener) {
-      panel.removeEventListener('transitionend', _closeListener);
-      _closeListener = null;
-    }
+    // Yarım kalan kapanma animasyonunu iptal et
+    if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
     panelOpen = true;
     resetAutoHide();
-    // 1) transform-origin'i anında doğru köşeye ayarla (async IPC'ye bağımlı değil)
     document.getElementById('ui-root').dataset.dir = calcDir();
-    // 2) Window'u büyüt
+    // display:none olan paneli layout'a geri al — ÖNCE yap, SONRA window büyüsün
+    panel.style.display = '';
     window.pywebview?.api?.toggle_panel?.(true);
-    // 3) Window resize tamamlansın, sonra animasyon başlasın
-    setTimeout(() => {
+    // Window resize bitmesini bekle, sonra animasyonu başlat
+    _openTimer = setTimeout(() => {
+      _openTimer = null;
       panel.style.visibility = 'visible';
-      void panel.offsetHeight;
+      void panel.offsetHeight;           // reflow zorla → transition tetiklensin
       panel.classList.remove('collapsed', 'closing');
     }, 80);
   }
@@ -44,21 +44,23 @@
   function closePanel() {
     if (!panelOpen) return;
     panelOpen = false;
-    // 1) Animasyonu başlat (window hala büyük — görünür)
+    // Yarım kalan açılma timer'ını iptal et
+    if (_openTimer) { clearTimeout(_openTimer); _openTimer = null; }
+
+    // 1) Kapanış animasyonunu başlat
     panel.classList.remove('collapsed');
     panel.classList.add('closing');
 
-    _closeListener = function onDone(e) {
-      if (e.propertyName !== 'opacity') return;
-      panel.removeEventListener('transitionend', _closeListener);
-      _closeListener = null;
+    // 2) Animasyon bitince (transform 0.44s, opacity 0.30s — 460ms yeterli) pencereyi küçült
+    // transitionend yerine setTimeout: QWebEngine'de transitionend çoğunlukla tetiklenmiyor
+    _closeTimer = setTimeout(() => {
+      _closeTimer = null;
       panel.classList.remove('closing');
       panel.classList.add('collapsed');
       panel.style.visibility = 'hidden';
-      // 2) Animasyon bitti, şimdi window'u küçült
+      panel.style.display    = 'none';   // layout'tan çıkar → WebGL rAF 92×92 penceresinde donmaz
       window.pywebview?.api?.toggle_panel?.(false);
-    };
-    panel.addEventListener('transitionend', _closeListener);
+    }, 460);
   }
 
   closeBtn.addEventListener('click', e => { e.stopPropagation(); closePanel(); });
@@ -444,8 +446,9 @@
     window.mouseInfluence = { nx: dx / Math.max(dist, 0.01), ny: -dy / Math.max(dist, 0.01), pull };
   }, { passive: true });
 
-  // Sayfa başlangıcında panel gizli (collapsed class var, visibility JS yönetir)
+  // Sayfa başlangıcında panel gizli — display:none ile layouttan da çıkar
   panel.style.visibility = 'hidden';
+  panel.style.display    = 'none';
 
   // pywebview API hazır olunca bağlan
   function init() {
