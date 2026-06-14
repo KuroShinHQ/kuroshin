@@ -40,6 +40,9 @@ memory/thresholds.json
 # Lord cookies (6 Haz 2026): Sahibinden direkt erişim için, kişisel veri
 memory/sahibinden_session.json
 
+# Alt projeler (kendi git repolarına sahip)
+kurowatch/
+
 # Büyük veri dizinleri
 data/
 kuroshin-downloads/
