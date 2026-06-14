@@ -29,6 +29,7 @@
             llm_toggle:         function()      { _a.llm_toggle(); },
             chancellor_restart: function()      { _a.chancellor_restart(); },
             show_alarms:        function()      { _a.show_alarms(); },
+            set_auto_open:      function(v)     { _a.set_auto_open(v); },
             get_hw_stats:       function()      { return new Promise(function(r){ _a.get_hw_stats(r); }); },
           }
         };
@@ -106,6 +107,10 @@
       <button class="sys-btn" id="btn-alarm" title="Fiyat Alarmları">
         <img src="../assets/icons/bell.svg" alt=""/>
         <span class="btn-label">Alarm</span>
+      </button>
+      <button class="sys-btn" id="btn-autoopen" title="Başlangıçta Paneli Otomatik Aç">
+        <span id="autoopen-icon" style="font-size:16px;line-height:1;color:#444;transition:color 0.3s;">⏻</span>
+        <span class="btn-label" id="autoopen-label">Başlangıç</span>
       </button>
     </div>
 

@@ -282,6 +282,42 @@
     window.pywebview?.api?.show_alarms?.();
   });
 
+  // ── Başlangıç Auto-Open Toggle ───────────────────────
+  let _autoOpenEnabled = false;
+
+  function setAutoOpenUI(enabled) {
+    _autoOpenEnabled = enabled;
+    const icon  = document.getElementById('autoopen-icon');
+    const label = document.getElementById('autoopen-label');
+    const btn   = document.getElementById('btn-autoopen');
+    if (!icon || !label || !btn) return;
+    if (enabled) {
+      icon.style.color       = '#6ffbbe';
+      icon.style.textShadow  = '0 0 8px #6ffbbe88';
+      label.style.color      = 'rgba(111,251,190,0.8)';
+      btn.style.borderColor  = 'rgba(111,251,190,0.25)';
+    } else {
+      icon.style.color       = '#444';
+      icon.style.textShadow  = 'none';
+      label.style.color      = '';
+      btn.style.borderColor  = '';
+    }
+  }
+
+  document.getElementById('btn-autoopen')?.addEventListener('click', e => {
+    e.stopPropagation();
+    const next = !_autoOpenEnabled;
+    setAutoOpenUI(next);
+    window.pywebview?.api?.set_auto_open?.(next);
+    ChatManager?.addMessage(
+      next ? '⏻ Başlangıçta panel otomatik açılacak' : '⏻ Başlangıç auto-open kapatıldı',
+      'bot', true
+    );
+  });
+
+  // openPanel'i global yap — Python startup auto-open için
+  window.openPanel = openPanel;
+
   // ── Panel Drag (status-bar'dan) ─────────────────────
   const statusBar = document.querySelector('.status-bar');
   let panelDragging = false;
@@ -453,9 +489,9 @@
   // pywebview API hazır olunca bağlan
   function init() {
     connectBridge();
-    // settings'ten mod badge'i al
     window.pywebview?.api?.get_settings?.().then(s => {
       if (s?.mode && modeBadge) modeBadge.textContent = s.mode.toUpperCase();
+      setAutoOpenUI(!!s?.auto_open);
     });
   }
 

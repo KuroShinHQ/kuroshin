@@ -438,6 +438,11 @@ class KuroshinAPI(QObject):
         if self._win:
             self._win.runJS.emit(f"ChatManager?.addMessage('{msg}', 'bot', true);")
 
+    @pyqtSlot(bool)
+    def set_auto_open(self, enabled: bool):
+        self._s['auto_open'] = bool(enabled)
+        self._save()
+
     @pyqtSlot()
     def show_alarms(self):
         import threading

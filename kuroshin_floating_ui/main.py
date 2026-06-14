@@ -293,6 +293,14 @@ def main():
 
     threading.Thread(target=_hw_poll, args=(window,), daemon=True).start()
 
+    # Başlangıç auto-open — sayfa + pywebview init (~2s) bekle, sonra openPanel() çağır
+    if settings.get('auto_open', False):
+        def _startup_open(win):
+            import time
+            time.sleep(2.2)
+            win.runJS.emit("window.openPanel?.();")
+        threading.Thread(target=_startup_open, args=(window,), daemon=True).start()
+
     mode_mgr.start(settings.get('mode', 'lite'))
 
     sys.exit(qt_app.exec())
