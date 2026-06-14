@@ -73,9 +73,12 @@ class KuroshinAPI(QObject):
             self._s['orb_x'] = new_x
             self._s['orb_y'] = new_y
             self._win.setGeometry(new_x, new_y, OW, OW)
+            # Kasa/freeze sonrası window arka plana geçebilir — HWND_TOPMOST yeniden ata
+            import threading as _thr
+            _thr.Thread(target=self._reassert_topmost, daemon=True).start()
 
         self._s['panel_open'] = bool(open_state)
-        self._save()
+        self._save_async()
 
     @pyqtSlot(int, int, str)
     def save_position(self, x, y, corner):
@@ -489,3 +492,29 @@ class KuroshinAPI(QObject):
                 json.dump(self._s, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
+
+    def _save_async(self):
+        import threading, copy
+        data = copy.deepcopy(self._s)
+        threading.Thread(target=self._write_settings, args=(data,), daemon=True).start()
+
+    def _write_settings(self, data):
+        try:
+            with open(self._path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _reassert_topmost(self):
+        import time, ctypes as _ct
+        time.sleep(0.15)    # setGeometry işlensin
+        hwnd = _ct.windll.user32.FindWindowW(None, 'Kuroshin')
+        if hwnd:
+            HWND_TOPMOST   = -1
+            SWP_NOMOVE     = 0x0002
+            SWP_NOSIZE     = 0x0001
+            SWP_NOACTIVATE = 0x0010
+            _ct.windll.user32.SetWindowPos(
+                hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+            )

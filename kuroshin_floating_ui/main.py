@@ -225,6 +225,26 @@ def main():
     _setup_orb_mouse_hotkey(api_obj)
     threading.Thread(target=_tray_loop, args=(qt_app, window), daemon=True).start()
 
+    # Periyodik HWND_TOPMOST heartbeat — kasa/freeze sonrası orb arkaya geçmesin
+    def _topmost_heartbeat():
+        import time
+        HWND_TOPMOST   = -1
+        SWP_NOMOVE     = 0x0002
+        SWP_NOSIZE     = 0x0001
+        SWP_NOACTIVATE = 0x0010
+        while True:
+            time.sleep(5)
+            try:
+                hwnd = ctypes.windll.user32.FindWindowW(None, 'Kuroshin')
+                if hwnd:
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                    )
+            except Exception:
+                pass
+    threading.Thread(target=_topmost_heartbeat, daemon=True).start()
+
     def _led_poll(win):
         import time, concurrent.futures, urllib.request as _req
         def chk(port):

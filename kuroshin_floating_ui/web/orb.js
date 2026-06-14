@@ -442,6 +442,8 @@ void main() {
   let orbLoadVal = 0.0;
   // TimeOfDay — dakikada bir güncellenir, çok yavaş EMA
   let orbTodVal = window.orbTimeOfDay ?? 0.0;
+  // rAF watchdog — sistem kasması sonrası loop durabilir
+  let _lastRafTime = performance.now();
 
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -463,6 +465,7 @@ void main() {
   };
 
   function render(t) {
+    _lastRafTime = t || performance.now();
     if (typeof ResizeObserver === 'undefined') syncSize();
     // smooth lerp press
     pressValue += (pressTarget - pressValue) * 0.25;
@@ -511,6 +514,18 @@ void main() {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     requestAnimationFrame(render);
   }
+
+  // WebGL context kaybı (kasa/driver reset) → otomatik kurtar
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); }, false);
+  canvas.addEventListener('webglcontextrestored', () => { requestAnimationFrame(render); }, false);
+
+  // Watchdog: 3sn frame gelmezse rAF loop'u yeniden başlat
+  setInterval(() => {
+    if (performance.now() - _lastRafTime > 3000) {
+      _lastRafTime = performance.now();
+      requestAnimationFrame(render);
+    }
+  }, 2500);
 
   render(0);
 })();
