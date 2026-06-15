@@ -1,37 +1,25 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 15 Haziran 2026 (sohbet-20)
-**Süreç:** 🚀 **v11.33.4** — KuroRecon Fiyat Alarm ✅ + Floating UI ✅ + KuroWatch FAZ-3 Gelişmiş Player ✅
+**Son Güncelleme:** 15 Haziran 2026 (sohbet-29)
+**Süreç:** 🚀 **v11.33.4** — KuroWatch FAZ-1~7 TAMAMLANDI ✅ | sohbet-27 DB reset sonrası UI test/fix devam
 
 ---
 
-## 🔵 FLOATING UI — Kuroshin Masaüstü Asistanı (12 Haz 2026)
+## ✅ FLOATING UI — TAMAMLANDI (12-14 Haz 2026)
 
-**Hedef:** Pluely/Omi tarzı, Windows 11 Mica cam efektli, always-on-top yüzen asistan penceresi.  
-**Mimari:** `docs/FLOATING_UI_MIMARISI.md` — tam diyagram + faz planı  
-**Stack:** PyQt6 + PyQt-Frameless-Window + win32mica + WebSocket (9003)
+**Durum:** FAZ-1~5 + kritik bug fix'ler tamamlandı. Commits: `93c45df`, `fe3418b`, `38cf7b4` + daha fazlası.
 
-**FAZ-1 — Temel Pencere:**
-- [ ] **F1-1** `kuroshin_floating_ui/` dizini oluştur, `requirements.txt` hazırla
-- [ ] **F1-2** `floating_window.py` — FramelessWindow + Mica efekti + always-on-top
-- [ ] **F1-3** Sürüklenebilir başlık, system tray ikonu, sağ tık menü
-- [ ] **F1-4** `settings.json` — pozisyon + opacity kalıcı kayıt
-- [ ] **F1-5** Bat [1]'e FloatingUI başlatma + Bat [5]'e kapatma ekle
-- [ ] **F1-TEST** Bat ile açılıp kapandığı canlı kanıtlanır
+Yapılanlar:
+- FAZ-1: pywebview→PyQt6, şeffaf pencere, orb WebGL shader, snap, auto-hide
+- FAZ-2: Bridge WS :9003, Chancellor SSE push, LED poll
+- FAZ-3~5: Ses reaktif shader, magnetic mouse, lens bulge, CA, partiküller, SSS, trail, scroll opacity
+- FAZ-6: Alarm pipeline, panel animasyon, calcDir
+- Bug fix: Panel kapanma (setTimeout), orb donma (display:none), ghost/yanlış pozisyon, race condition
 
-**FAZ-2 — IPC Köprüsü:**
-- [ ] **F2-1** `kuroshin_floating_bridge.py` — WebSocket sunucu :9003
-- [ ] **F2-2** `bridge_client.py` — asyncio WebSocket istemci (QThread içinde)
-- [ ] **F2-3** Sistem durum yayını (Chancellor/Llama/Walker LED'leri — 5s)
-- [ ] **F2-4** Chancellor hook: `send_msg()` → bridge'e bildir
-- [ ] **F2-TEST** Gerçek Chancellor mesajı FloatingUI'da görünüyor (canlı log)
-
-**FAZ-3 — Tam İnteraktif:**
-- [ ] **F3-1** `input_widget.py` — mesaj yaz → Chancellor'a gönder
-- [ ] **F3-2** Akan yazı animasyonu (typewriter, QTimer)
-- [ ] **F3-3** Pulse animasyonu (işleme göstergesi)
-- [ ] **F3-4** Fiyat alarm bildirimi (shake + köşe popup)
-- [ ] **F3-5** Market stream progress bar
-- [ ] **F3-TEST** Uçtan uca: FloatingUI yaz → Chancellor → akan yanıt
+**Açık (askıda):**
+- [ ] Zoom artifact (#7) — daire dışı artifact
+- [ ] Sürükleme kasması (#8) — hafif kasma
+- [ ] CPU/RAM reaktif renk canlı test (#10)
+- [ ] Günün saatine göre renk canlı test (#11)
 
 ---
 
@@ -88,6 +76,36 @@
 - `scripts/_test_ty_json2.py` — Trendyol JSON parse KANIT (24 ürün)
 - `scripts/_test_epey_hb_json.py` — Epey #fiyatlar + HB kart analizi
 - `scripts/_test_hb_sah.py` — HB/Sahibinden URL denemesi
+
+---
+
+## 🎬 KUROWATCH — Aktif Görevler (15 Haz 2026)
+
+**FAZ Durumu:** FAZ-1~7 TAMAMLANDI ✅ | sohbet-27 DB reset sonrası UI test/fix devam
+
+### ✅ Tamamlanan FAZlar
+- FAZ-1: Tracker MVP (backend + frontend + SPA)
+- FAZ-2: MAL OAuth + IGDB + MangaDex scraper
+- FAZ-3: Player + Downloader (yt-dlp, daisy-chain, manga reader)
+- FAZ-4: Chromaprint intro + FFmpeg outro tespiti
+- FAZ-5: Manga çevirisi (manga-image-translator GPU)
+- FAZ-6: Chrome/Firefox Extension (MV3, popup UI)
+- FAZ-7: Push bildirimleri + Game Sessions + MAL sync
+
+### 🔴 Sohbet-29 Sonrası Açık Testler
+- [ ] **KW-TEST-1** Manga Oku butonu — chapter URL var mı, butonu çalışıyor mu?
+- [ ] **KW-TEST-2** Game detail — % tamamlanma slider, mark butonu gizli mi?
+- [ ] **KW-TEST-3** Manhwa filter — 11 manhwa görünüyor mu?
+- [ ] **KW-TEST-4** Bölüm sync edilmemiş içerikler — "AniList'ten Yükle" çalışıyor mu?
+
+### 💡 Sonraki İşler (Lord kararı)
+- [ ] **KW-STREAM** Türk siteden direkt stream — yt-dlp iframe parse, KuroWatch içinde oynat
+- [ ] **KW-JJK** Jujutsu Kaisen: hem manga hem anime aynı anda takip çözümü
+- [ ] **KW-PUSH** git push origin main — Lord isteyince
+
+### ⚠️ Kritik Not
+Tailwind compile-time CSS — JS'de YENİ renk class eklerken daima `inline style` kullan.
+Örn: `bg-[#00d4ff]/10` değil → `style="background:#00d4ff1a"`
 
 ---
 
