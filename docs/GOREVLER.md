@@ -1,6 +1,90 @@
 # Kuroshin OS — Aktif Görevler (GÖREV MASASI)
-**Son Güncelleme:** 15 Haziran 2026 (sohbet-29)
-**Süreç:** 🚀 **v11.33.4** — KuroWatch FAZ-1~7 TAMAMLANDI ✅ | sohbet-27 DB reset sonrası UI test/fix devam
+**Son Güncelleme:** 20 Haziran 2026 (sohbet-37 sonu)
+**Süreç:** 🚀 **v11.33.4** — KuroWatch sohbet-38 görev listesi (Android + UX)
+
+---
+
+## 🔥 KuroWatch sohbet-38 GÖREVLER (Öncelik Sırası)
+
+### GÖREV-A: Android PWA Kurulumu ← ÖNCELİKLİ
+**Hedef:** Aynı WiFi'daki Android telefona KuroWatch'u PWA olarak kur.
+
+```
+[ ] A-1: Uvicorn --host 0.0.0.0 (Kuroshin.bat KuroWatch satırı güncelle)
+[ ] A-2: Windows Firewall: 8099 inbound rule aç (netsh veya PowerShell)
+[ ] A-3: manifest.json version:"1.0.0" ekle
+[ ] A-4: sw.js (service worker) offline cache kontrol — static asset'ler cache'lenmeli
+[ ] A-5: PC local IP tespiti: ipconfig → 192.168.x.x  
+[ ] A-6: Telefon: Chrome → http://192.168.x.x:8099 → ⋮ → "Ana ekrana ekle"
+[ ] A-7: Test: Telefon WiFi'dan app açılıyor mu? Export/Import çalışıyor mu?
+```
+
+Not:
+- Export: `GET /api/export` → JSON → AirDrop/Drive → PC `POST /api/import`
+- Backend host 0.0.0.0 → PC IP değişse bile aynı başlatma komutu çalışır
+- icons/icon-192.png + icon-512.png zaten var → PWA install için yeterli
+
+### GÖREV-B: Akıllı İzle Butonu (Bölüm URL'i)
+**Hedef:** Detail'deki "İzle/Oku" butonu my_progress'e karşılık gelen episode.url'ini açsın.
+
+```
+[ ] B-1: renderDetail() — primarySite shortcut yerine:
+         episodes[my_progress - 1].url varsa onu aç
+         yoksa site genel URL (mevcut davranış)
+[ ] B-2: Bölümler sekmesinde mevcut bölüm satırı vurgula (border highlight)
+[ ] B-3: Detaildeki "İzle" butonu üstünde küçük etiket: "Bölüm X'ten devam"
+```
+
+Dosyalar: `frontend/app.js` → renderDetail() siteShortcut bloğu
+
+### GÖREV-C: İlerleme Kolayca Düzenleme (Mobil)
+**Hedef:** +1'in yanında geri gitme ve direkt sayı girme.
+
+```
+[ ] C-1: Detail header "Bölüm X / Y" alanına dokunca quick-edit pop-up
+         − | [input] | + | Kaydet
+         → PATCH /api/content/{id} my_progress:N
+[ ] C-2: Minimum 0, maksimum total (total 0 ise sınırsız)
+[ ] C-3: Kaydet → detail yenile + home grid güncelle
+```
+
+Dosyalar: `frontend/app.js` → renderDetail() progress bölümü + yeni _showProgressEdit()
+
+### GÖREV-D: İndirme Kalite Ayarları (480p + Ayrı Ayarlar)
+**Hedef:** 480p/720p/1080p seçimi, manuel ve daisy chain için ayrı.
+
+```
+[ ] D-1: config.json defaults: download_quality_manual:"720p", download_quality_auto:"480p"
+[ ] D-2: Settings UI — 2 ayrı buton grubu:
+         "Manuel İndirme": [480p] [720p] [1080p]  
+         "Otomatik (Daisy Chain)": [480p] [720p] [1080p]
+[ ] D-3: manager.py _queue_worker — quality: config.download_quality_auto okusun
+[ ] D-4: ep-dl-btn tıklanınca download_quality_manual kullan
+[ ] D-5: index.html — Settings sekmesine iki yeni buton grubu ekle
+```
+
+Dosyalar: `frontend/app.js`, `frontend/index.html`, `backend/downloader/manager.py`, `backend/main.py` _DEFAULTS
+
+### GÖREV-E: Etiket Otomatik Tamamlama
+**Hedef:** Tag input yazarken mevcut etiketler dropdown'dan seçilsin.
+
+```
+[ ] E-1: app.js _renderTagInput(el) — input keyup → GET /api/tags → filtrele → dropdown
+[ ] E-2: Dropdown: max 5 öneri, tıklayınca input temizle + tag ekle
+[ ] E-3: Detail "Etiketler" sekmesinde + buton → bu input kullanılsın
+[ ] E-4: Etiket zaten eklenmiş → öneri listesinden çıkar
+```
+
+Dosyalar: `frontend/app.js` → renderDetailTags() bölümü
+
+### GÖREV-F: Search Özelleştirme ← TASARIM BEKLENIYOR
+**Hedef:** Search ekranı Lord inisiyatifi ile özelleştir.
+
+```
+[ ] F-1: (sohbet-38 başında Lord'a sor: hangi filtreler/sıralama isteniyor?)
+```
+
+---
 
 ---
 
