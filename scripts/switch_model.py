@@ -40,6 +40,7 @@ MODEL_CONTEXT = {
     "8b": 32768,
     "14b": 16384,
     "30b": 16384,
+    "32b": 16384,
     "35b": 16384,
     "a3b": 16384,
     # E-16 (29 May 2026): Qwen3-30B-A3B-Instruct-2507 — 262K natif, 8GB VRAM'de 64K güvenli
@@ -57,6 +58,16 @@ MODEL_HINTS = [
         "match": "huihui-qwen3.6-35b-a3b",
         "label": "Huihui-Qwen3.6-35B-A3B abliterated IQ4_XS (MoE)",
         "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe", "huihui"],
+    },
+    {
+        "match": "deepseek-r1-distill-qwen-32b",
+        "label": "DeepSeek-R1-Distill-Qwen-32B abliterated Q4_K_M",
+        "aliases": ["deepseek", "r1", "deepseek-r1", "ds32b"],
+    },
+    {
+        "match": "qwen3-coder-30b",
+        "label": "Qwen3-Coder-30B-A3B-Instruct Q4_K_M",
+        "aliases": ["coder", "qwen3-coder", "coder30b"],
     },
     # E-16 (29 May 2026): 2507 modeli denendi, A/B'de Huihui yenmedi (Lordum %10-33 vs %60,
     # ihlal 9-11 vs 2). Model silindi. Bu girişi referans için tutmuyoruz.
@@ -321,7 +332,7 @@ def start_llama(model_path: str) -> bool:
         # start_llama.sh active_model.json'dan okur, doğru parametrelerle başlatır
         subprocess.Popen(["bash", "/mnt/c/Kuroshin/scripts/start_llama.sh"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for i in range(45):
+        for i in range(120):
             time.sleep(2)
             try:
                 import urllib.request
@@ -332,7 +343,7 @@ def start_llama(model_path: str) -> bool:
                         return True
             except Exception:
                 pass
-        _log("Llama-server 90s icinde yanit vermedi.")
+        _log("Llama-server 240s icinde yanit vermedi.")
         return False
     except Exception as e:
         _log(f"Baslatma hatasi: {e}")

@@ -25,6 +25,10 @@ echo "Model: $MODEL_NAME (ctx=$CTX)"
 is_moe=0
 echo "$MODEL_NAME" | grep -qiE '(a3b|moe|-ax)' && is_moe=1
 
+# Reasoning model tespiti: isimde deepseek, r1, thinking, veya reasoning varsa
+is_reasoning=0
+echo "$MODEL_NAME" | grep -qiE '(deepseek|r1|thinking|reasoning)' && is_reasoning=1
+
 if [ $is_moe -eq 1 ]; then
     # --reasoning-budget: think bloğunu 2K ile sınırla (FAZ B 1 Haz 2026: 3072→2048 %33 hız)
     EXTRA_PARAMS='-ot "exps=CPU" --reasoning-budget 2048'
@@ -32,6 +36,10 @@ if [ $is_moe -eq 1 ]; then
 else
     EXTRA_PARAMS="--spec-type ngram-cache --draft-max 16 --draft-min 2 --draft-p-min 0.7"
     echo "Dense modu: speculative decoding aktif"
+    if [ $is_reasoning -eq 1 ]; then
+        EXTRA_PARAMS="$EXTRA_PARAMS --reasoning-budget 2048"
+        echo "Reasoning model tespiti: --reasoning-budget 2048 parametresi eklendi"
+    fi
 fi
 
 pkill -9 -f llama-server 2>/dev/null
