@@ -69,6 +69,16 @@ MODEL_HINTS = [
         "label": "Qwen3-Coder-30B-A3B-Instruct Q4_K_M",
         "aliases": ["coder", "qwen3-coder", "coder30b"],
     },
+    {
+        "match": "qwen3-coder-30b-udq4xl",
+        "label": "Qwen3-Coder-30B-A3B-Instruct UD-Q4_K_XL (Unsloth Dynamic)",
+        "aliases": ["codxl", "qwen3-coder-udq4xl"],
+    },
+    {
+        "match": "qwen3-coder-30b-iq4xs",
+        "label": "Qwen3-Coder-30B-A3B-Instruct IQ4_XS (importance 4-bit)",
+        "aliases": ["codxs", "qwen3-coder-iq4xs"],
+    },
     # E-16 (29 May 2026): 2507 modeli denendi, A/B'de Huihui yenmedi (Lordum %10-33 vs %60,
     # ihlal 9-11 vs 2). Model silindi. Bu girişi referans için tutmuyoruz.
     {
@@ -325,6 +335,22 @@ def start_llama(model_path: str) -> bool:
     model_name = Path(model_path).name
     ctx = _get_context_size(model_name)
     _log(f"Baslatiliyor (start_llama.sh): {model_name} (ctx={ctx})")
+    
+    # FIX: start_llama.sh'ın güncel modeli okuyabilmesi için active_model.json'ı ÖNCE yaz
+    active_meta = _describe_model(Path(model_path), model_name)
+    _write_state(
+        {
+            "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            "active_model": model_name,
+            "label": active_meta["label"],
+            "path": model_path,
+            "context_size": active_meta["context_size"],
+            "size_gb": active_meta["size_gb"],
+            "aliases": active_meta["aliases"],
+            "tok_s": 0.0,
+        }
+    )
+
     try:
         # Önce port temizliği — switch sırasında socket TIME_WAIT'te kalabilir
         subprocess.run(["bash", "-c", "fuser -k 8080/tcp 2>/dev/null; pkill -9 -f llama-server 2>/dev/null; sleep 2"],
