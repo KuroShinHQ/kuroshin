@@ -1,10 +1,10 @@
 # MODEL SWITCHER TEST SONUÇLARI VE DEĞERLENDİRME RAPORU
 
 **Oluşturulma Tarihi:** 5 Temmuz 2026  
-**Son Güncelleme:** 5 Temmuz 2026 (v2 — DeepSeek 32B iptal, 14B önerisi eklendi)  
+**Son Güncelleme:** 6 Temmuz 2026 (v3 — UD-Q4_K_XL eklendi, IQ4_XS/Huihui/DeepSeek 32B silindi)  
 **Hedef Sistem:** Kuroshin OS (RTX 4060 Laptop 8GB VRAM + 32GB RAM)  
 **Test Aracı:** Iron Inquisitor v5.2  
-**Durum:** DeepSeek R1 32B bu hardware'de çalışmaz  
+**Durum:** Qwen3-Coder-30B UD-Q4_K_XL aktif günlük sürücü  
 
 ---
 
@@ -12,9 +12,11 @@
 Bu doküman, Kuroshin projesinin yerel yapay zeka beynini en doğru adaya taşımak için hazırlanmış resmi test planıdır. Sistemde aktif olan mevcut 35B modeli ile önerilen iki yeni 30B/32B seviyesindeki model yerel donanımımız ve otonom yazılım ajanımız (OpenClaude / Iron Inquisitor) üzerinde kıyaslanmıştır.
 
 ### Test Edilen Modeller:
-1. **Model A (Mevcut):** `Huihui-Qwen3.6-35B-A3B-Claude-4.7-Opus-abliterated.i1-IQ4_XS.gguf` (17.44 GB ✅ TEST EDİLDİ)
-2. **Model B (Düşünme/Mantık Odaklı):** `DeepSeek-R1-Distill-Qwen-32B-abliterated-Q4_K_M.gguf` (19.85 GB ❌ BU HARDWARE'DE ÇALIŞMAZ — silindi)
-3. **Model C (Ajan/Hız Odaklı):** `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (18.54 GB ✅ TEST EDİLDİ)
+1. ~~**Model A (Mevcut):** `Huihui-Qwen3.6-35B-A3B...` (17.44 GB ❌ JSON'da 0/5, silindi)~~
+2. ~~**Model B (Düşünme/Mantık):** `DeepSeek-R1-Distill-Qwen-32B...` (19.85 GB ❌ 0.048 tok/s, silindi)~~
+3. ~~**Model C (Ajan/Hız):** `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (18.54 GB, 17/21 %81 — yedek)~~
+4. **Model D (AKTIF):** `Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf` (16.45 GB ✅ **18/21 %85.7**, Unsloth Dynamic 2.0)
+5. ~~**Model E (Test):** `Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf` (15.25 GB ❌ 16/21 %77.6, silindi)~~
 
 ## 2. ESKI TEST SONUÇLARI (run_benchmarks.py — 238 eski infra testi)
 
@@ -53,30 +55,35 @@ Kullanıcının sorusu üzerine incelendi: **Huihui aslında daha eski/yetersiz 
 
 ---
 
-## 3. YENI MODEL_SELECT TEST SONUÇLARI (5 Temmuz 2026)
+## 3. YENI MODEL_SELECT TEST SONUÇLARI (6 Temmuz 2026)
 
 21 yeni kategori bazlı test (`model_test` tipi): reasoning (8), code_gen (6), json (5), context (2).
 
 ### 3.1. Karsilastirma
 
-| Model | PASS | TOPLAM | BASARI | Reasoning | Code Gen | JSON | Context |
-|---|---|---|---|---|---|---|---|
-| **Qwen3-Coder 30B** | 17 | 21 | **%81** | 5/8 | 6/6 | 4/5 | 2/2 |
-| **Huihui 35B** | 12 | 21 | **%57** | 6/8 | 4/6 | 0/5 | 2/2 |
-| **DeepSeek R1 32B** | — | 21* | **TEST DISI** | — | — | — | — |
+| Model | PASS | TOPLAM | BASARI | Reasoning | Code Gen | JSON | Context | Hiz |
+|---|---|---|---|---|---|---|---|---|
+| **UD-Q4_K_XL (AKTIF)** | 18 | 21 | **%85.7** | 6/8 | 6/6 | 4/5 | 2/2 | ~13 tok/s |
+| **Q4_K_M (yedek)** | 17 | 21 | **%81** | 5/8 | 6/6 | 4/5 | 2/2 | ~14-21 tok/s |
+| ~~Huihui 35B~~ | 12 | 21 | **%57** | 6/8 | 4/6 | 0/5 | 2/2 | silindi |
+| ~~IQ4_XS~~ | 16 | 21 | **%77.6** | 4/8 | 6/6 | 4/5 | 2/2 | silindi |
+| ~~DeepSeek 32B~~ | — | 21* | **TEST DISI** | — | — | — | — | silindi |
 
 *\*DeepSeek R1 32B test edilemedi — sebebi icin Bkz. Bolum 4*
 
 ### 3.2. Gozlemler
 
-| Kategori | Qwen3-Coder 30B | Huihui 35B |
+| Kategori | UD-Q4_K_XL (Unsloth Dynamic) | Q4_K_M (standart) |
 |---|---|---|
-| Reasoning (mantik) | 5/8 (%63) — basit islemlerde basarili, cogul adimda zorlaniyor | 6/8 (%75) — daha iyi mantik yurutuyor |
-| Code Gen (kod) | 6/6 (%100) — MUKEMMEL, tum kodlar syntax hatasiz | 4/6 (%67) — bazen syntax hatasi, eksik kod |
-| JSON adherence | 4/5 (%80) — cogu JSON dogru | 0/5 (%0) — HICBIRI dogru JSON degil! |
-| Context follow | 2/2 (%100) — talimatlari takip ediyor | 2/2 (%100) — takip ediyor |
+| Reasoning (mantik) | **6/8 (%75)** — saat acisini dogru hesaplar (7.5°) | 5/8 (%63) — saat acisinda 15° der (akrep hareketini atlar) |
+| Code Gen (kod) | 6/6 (%100) — MUKEMMEL | 6/6 (%100) — MUKEMMEL |
+| JSON adherence | 4/5 (%80) | 4/5 (%80) |
+| Context follow | 2/2 (%100) | 2/2 (%100) |
+| Dosya boyutu | **16.5 GB** (daha kucuk) | 18.6 GB |
 
-**Cikarim:** Qwen3-Coder kod ve JSON'da net ustun. Huihui mantikta daha iyi ama JSON formatinda tamamen basarisiz — bu MCP tool calling icin kritik bir eksik.
+**FARK:** UD-Q4_K_XL, Q4_K_M'den 1 reasoning test fazla gecer. A/B dogrulamada farkin **reason-02** (saat 3:15 aci sorusu) oldugu tespit edildi: UD `7.5` dogru yanitlarken, Q4_K_M `15` yanlisini verir. Bu, Unsloth Dynamic quant'in ince detaylarda daha iyi koruma sagladigini gosterir.
+
+**Cikarim:** UD-Q4_K_XL en iyi secenek — daha kucuk (%11 daha az disk), daha kaliteli (+1 test). Hiz farki (~13 vs ~14-21 tok/s) hissedilir degil.
 
 ---
 
@@ -177,12 +184,14 @@ Modeller sırasıyla aktif edilerek `python3 inquisitor_v5.py` üzerinden şu te
 
 | Model | PASS | Detay |
 |---|---|---|
-| **Qwen3-Coder 30B** | 17/21 (%81) | Kod+JSON'da net lider. Huihui'den daha iyi tool calling adayi. |
-| **Huihui 35B** | 12/21 (%57) | Mantikta iyi ama JSON'da 0/5 — tool calling icin buyuk risk. |
-| **DeepSeek R1 32B** | TEST DISI | Bu hardware'de kullanilamaz (0.048 tok/s). |
+| **UD-Q4_K_XL (AKTIF)** | **18/21 (%85.7)** | En iyi quant. Kod+JSON+reasoning dengesi. ~13 tok/s. |
+| ~~Q4_K_M (yedek)~~ | 17/21 (%81) | Silindi. UD'den 1 test geri, daha buyuk dosya. |
+| ~~IQ4_XS~~ | 16/21 (%77.6) | Silindi. Bekleneni veremedi. |
+| ~~Huihui 35B~~ | 12/21 (%57) | Silindi. JSON'da 0/5. |
+| ~~DeepSeek R1 32B~~ | TEST DISI | Silindi. 0.048 tok/s. |
 
 ### Oneri:
-**Qwen3-Coder 30B** öne çıkıyor. Huihui'den daha hızlı (21 vs 17 tok/s), JSON'da çok daha başarılı (%80 vs %0), kod üretiminde kusursuz (6/6). DeepSeek R1 32B bu hardware'de çalışmaz.
+**Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL** gunluk surucu olarak kullaniliyor. Q4_K_M'den daha kucuk (16.5 vs 18.6 GB), daha kaliteli (18/21 vs 17/21). Hizi (~13 tok/s) akici kullanim icin yeterli.
 
 ### Derinlemesine Düşünme İçin (Opsiyonel):
 Eğer mantık/muhakeme yeteneği kritikse ve Huihui/Qwen3'ün reasoning skoru yetersiz geliyorsa, **DeepSeek R1 Distill Qwen 14B** denenebilir. 14B, 8GB VRAM'a tamamen sığar (Q4_K_M ~9GB), ~35 tok/s hızında çalışır ve CoT düşünme yeteneğini korur. Dezavantajı: toplam parametre az olduğu için genel bilgi ve kod yeteneği 30B/35B seviyesinde olmaz.
