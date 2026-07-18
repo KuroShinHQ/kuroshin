@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <img alt="Status" src="https://img.shields.io/badge/status-stable%20v1.2-blue">
+  <img alt="Status" src="https://img.shields.io/badge/status-Public%20v1.2-brightgreen">
   <img alt="License" src="https://img.shields.io/github/license/KuroShinHQ/kuroshin">
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
   <img alt="Model" src="https://img.shields.io/badge/LLM-Qwen3--35B--A3B%20IQ4__XS-orange">
