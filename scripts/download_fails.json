@@ -1,0 +1,26 @@
+[
+  {
+    "id": 354,
+    "title": "Howl's Moving Castle (Yürüyen Şato)",
+    "type": "anime",
+    "ep": 1,
+    "url": "https://www.turkanime.tv/video/howl-s-moving-castle-1-bolum",
+    "error": "[Playwright] HTTP 404"
+  },
+  {
+    "id": 462,
+    "title": "My Neighbor Totoro (Tonari no Totoro)",
+    "type": "anime",
+    "ep": 1,
+    "url": "https://www.turkanime.tv/video/tonari-no-totoro-1-bolum",
+    "error": "[Playwright] HTTP 404"
+  },
+  {
+    "id": 557,
+    "title": "Spirited Away (Sen to Chihiro no Kamikakushi)",
+    "type": "anime",
+    "ep": 1,
+    "url": "https://www.turkanime.tv/video/spirited-away-1-bolum",
+    "error": "[Playwright] HTTP 404"
+  }
+]

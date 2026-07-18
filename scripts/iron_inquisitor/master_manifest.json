@@ -23,6 +23,14 @@
       {"file": "test_suite_circuit_breaker.json","domain": "circuit_breaker",      "tests": 5}
     ]
   },
+  "tier_model_select": {
+    "description": "Model karşılaştırma testleri — reasoning, code gen, JSON, context (5 Temmuz 2026)",
+    "suites": [
+      {"file": "test_suite_model_reasoning_ds.json", "domain": "model_reasoning",  "tests": 8},
+      {"file": "test_suite_model_codegen.json",   "domain": "model_codegen",    "tests": 6},
+      {"file": "test_suite_model_json.json",      "domain": "model_json+context", "tests": 7}
+    ]
+  },
   "tier_historical": {
     "description": "Tarihsel kanıt — manuel komut, regression değil",
     "suites": [
@@ -34,13 +42,15 @@
   "totals": {
     "tier_core_tests": 199,
     "tier_extended_tests": 50,
+    "tier_model_select_tests": 21,
     "tier_historical_tests": 30,
-    "grand_total": 279
+    "grand_total": 300
   },
   "usage": {
     "default": "python3 inquisitor_v5.py --manifest master_manifest.json",
     "core_only": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core",
     "extended_paket": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core,extended",
+    "model_select": "python3 inquisitor_v5.py --manifest master_manifest.json --tier model_select",
     "tam_butun": "python3 inquisitor_v5.py --manifest master_manifest.json --tier all",
     "tek_kategori": "python3 inquisitor_v5.py --manifest master_manifest.json --tier core --category security_v5",
     "skip_passed": "python3 inquisitor_v5.py --manifest master_manifest.json --skip-passed"

@@ -1,9 +1,10 @@
 {
-  "orb_x": 559,
-  "orb_y": 4,
+  "orb_x": 1828,
+  "orb_y": 0,
   "orb_corner": "free",
   "mode": "lite",
   "panel_open": false,
   "opacity": 0.92,
-  "theme": "dark"
+  "theme": "dark",
+  "auto_open": false
 }

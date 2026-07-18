@@ -1,0 +1,62 @@
+[
+  {
+    "id": "model-code-01",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 2.0,
+    "timeout": 1500,
+    "prompt": "Python'da bir Fibonacci sayısı üreten fonksiyon yaz. Fonksiyon parametre olarak n alsın ve n'e kadar olan Fibonacci sayılarını liste olarak döndürsün. Sadece Python kodunu yaz, ``` işaretleri içinde.",
+    "expect_pass": "fibonacci"
+  },
+  {
+    "id": "model-code-02",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 2.0,
+    "timeout": 1500,
+    "prompt": "Python'da bir dosyadaki tüm satırları okuyup, satırları ters sırada yeni bir dosyaya yazan fonksiyon yaz. Sadece Python kodunu yaz, ``` işaretleri içinde.",
+    "expect_pass": "with open"
+  },
+  {
+    "id": "model-code-03",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Python'da bir dictionary içindeki en yüksek 3 değeri (value) ve anahtarlarını (key) döndüren fonksiyon yaz. Sadece Python kodunu yaz, ``` içinde.",
+    "expect_pass": "sorted"
+  },
+  {
+    "id": "model-code-04",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 2.5,
+    "timeout": 1500,
+    "prompt": "Python'da iki matrisi çarpan bir fonksiyon yaz. Fonksiyon iki liste (iç içe) alsın ve çarpım sonucunu döndürsün. ``` içinde yaz.",
+    "expect_pass": "range(len"
+  },
+  {
+    "id": "model-code-05",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 2.5,
+    "timeout": 1500,
+    "prompt": "Python'da bir JSON dosyasını okuyup, içindeki 'name' alanına göre sıralayıp yeni bir JSON dosyasına yazan fonksiyon yaz. Kodun tamamını ``` içinde yaz.",
+    "expect_pass": "json.load"
+  },
+  {
+    "id": "model-code-06",
+    "type": "model_test",
+    "check": "code_gen",
+    "category": "model_codegen",
+    "weight": 3.0,
+    "timeout": 1800,
+    "prompt": "Python'da bir URL'den HTTP GET ile veri çekip, sonucu JSON olarak döndüren ve hata durumlarını yöneten bir fonksiyon yaz. requests veya urllib kullan. Kodun tamamını ``` içinde yaz.",
+    "expect_pass": "request"
+  }
+]

@@ -134,3 +134,16 @@ Desktop/
 
 # Aider geçici dosyaları
 .aider*
+
+# === Public release cleanup — never commit these ===
+CLAUDE.md
+docs/DEVAM.md
+docs/kanitlar/
+orb_err.txt
+temizlik_raporu.txt
+test_prompts.json
+Kuroshin.bat
+Kuroshin.spec
+opencode.json
+docs/GITHUB_REPO_DOC_UPDATE.md
+docs/OTONOM_ALISVERIS_PROTOKOLU.md

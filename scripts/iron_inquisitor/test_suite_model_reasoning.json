@@ -1,0 +1,82 @@
+[
+  {
+    "id": "model-reason-01",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Bir çiftlikte tavuklar ve koyunlar var. Toplam 35 hayvan ve 100 bacak var. Kaç tavuk, kaç koyun var? Sadece sayıları virgülle ayırarak yaz: tavuk_sayısı, koyun_sayısı",
+    "answer_hint": "20,15"
+  },
+  {
+    "id": "model-reason-02",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Saat 3:15'te akrep ve yelkovan arasındaki açı kaç derecedir? Sadece sayıyı derece cinsinden yaz.",
+    "answer_hint": "7.5"
+  },
+  {
+    "id": "model-reason-03",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Bir trende 7 vagon var. Her vagonda 4 sıra koltuk ve her sırada 6 koltuk var. Trenin tamamındaki toplam koltuk sayısı nedir? Sadece sayıyı yaz.",
+    "answer_hint": "168"
+  },
+  {
+    "id": "model-reason-04",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.5,
+    "timeout": 150,
+    "prompt": "Bir su deposu iki muslukla dolduruluyor. Birinci musluk deposu tek başına 6 saatte, ikinci musluk 8 saatte dolduruyor. Depo boşken iki musluk birlikte açılırsa, depo kaç saatte dolar? Cevabı saat cinsinden ondalıklı yaz.",
+    "answer_hint": "3.43"
+  },
+  {
+    "id": "model-reason-05",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 3.0,
+    "timeout": 180,
+    "prompt": "Ali, Veli'den 5 yaş büyüktür. 10 yıl sonra Ali'nin yaşı Veli'nin yaşının 1.5 katı olacak. Ali ve Veli şu an kaç yaşında? Sırasıyla virgülle yaz: Ali,Veli",
+    "answer_hint": "25,20"
+  },
+  {
+    "id": "model-reason-06",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 3.0,
+    "timeout": 180,
+    "prompt": "Python'da bir liste içindeki tek sayıların toplamını bulan bir fonksiyon yaz. Ardından şu listeyi test et: [3, 7, 2, 9, 4, 11, 6]. Sonucu söyle.",
+    "answer_hint": "30"
+  },
+  {
+    "id": "model-reason-07",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Iki zar atıldığında toplamlarının 7 gelme olasılığı nedir? Kesir olarak yaz (ör: 1/6).",
+    "answer_hint": "1/6"
+  },
+  {
+    "id": "model-reason-08",
+    "type": "model_test",
+    "check": "reasoning",
+    "category": "model_reasoning",
+    "weight": 2.0,
+    "timeout": 120,
+    "prompt": "Aşağıdaki dizide soru işareti yerine hangi sayı gelmelidir? 2, 6, 18, 54, ? Sadece sayıyı yaz.",
+    "answer_hint": "162"
+  }
+]

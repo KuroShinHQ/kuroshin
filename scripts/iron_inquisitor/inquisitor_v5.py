@@ -500,6 +500,95 @@ def run_test(test: dict) -> dict:
         elapsed = round(time.time() - t_start, 2)
         return make_result(test, status, score, elapsed, output, note)
 
+    # ── Model capability test (5 Temmuz 2026 — model seçimi için) ──
+    # Direct model API çağrısı: reasoning, code_gen, json_adherence, context_follow
+    if test.get("type") == "model_test":
+        import urllib.request as _um, json as _jm, re as _re_mt
+        check_type = test.get("check", "")
+        timeout = test.get("timeout", 120)
+        prompt = test.get("prompt", "")
+        blocked = False; detail = ""
+
+        def _model_query(p, max_tok=1024, temp=0.3, fmt=None):
+            body = {"model": "", "messages": [{"role": "user", "content": p}],
+                    "max_tokens": max_tok, "temperature": temp}
+            if fmt: body["response_format"] = fmt
+            req = _um.Request("http://127.0.0.1:8080/v1/chat/completions",
+                data=_jm.dumps(body).encode(),
+                headers={"Content-Type": "application/json"})
+            with _um.urlopen(req, timeout=timeout) as rsp:
+                msg = _jm.loads(rsp.read())["choices"][0]["message"]
+            return (msg.get("content") or msg.get("reasoning_content") or "").strip()
+
+        try:
+            if check_type == "reasoning":
+                answer_hint = test.get("answer_hint", "")
+                content = _model_query(prompt, max_tok=1024, temp=0.3)
+                # Numerik karşılaştırma — virgül/nokta duyarsız, sıra duyarsız
+                def _norm_nums(s):
+                    nums = _re_mt.findall(r'\d+\.?\d*', s.replace(',', '.'))
+                    return {str(float(n)) if '.' in n else str(int(n)) for n in nums}
+                hint_nums = _norm_nums(answer_hint)
+                resp_nums = _norm_nums(content)
+                if hint_nums and resp_nums:
+                    hits = len(hint_nums & resp_nums)
+                    score = hits / len(hint_nums)
+                else:
+                    score = 0.5 if len(content) > 20 else 0
+                blocked = score < 0.5
+                detail = f"skor:{score:.2f} | yanıt:{content[:160]}"
+
+            elif check_type == "code_gen":
+                content = _model_query(prompt, max_tok=2048, temp=0.2)
+                code_blocks = _re_mt.findall(r'```(?:\w+)?\n(.*?)```', content, _re_mt.DOTALL)
+                if not code_blocks:
+                    blocked = True; detail = "Kod bloğu yok"
+                else:
+                    try:
+                        compile(code_blocks[0], "<test>", "exec")
+                        expect_pass = test.get("expect_pass", "")
+                        blocked = bool(expect_pass and expect_pass not in content)
+                        detail = "syntax:OK" if not blocked else f"expect_pass eksik: {expect_pass}"
+                    except SyntaxError as se:
+                        blocked = True; detail = f"SYNTAX: {se}"
+
+            elif check_type == "json_adherence":
+                content = _model_query(prompt, max_tok=1024, temp=0.2)
+                content_clean = _re_mt.sub(r'^.*?(\{)', r'\1', content, count=1)
+                content_clean = _re_mt.sub(r'(\})[^}]*$', r'\1', content_clean)
+                try:
+                    parsed = _jm.loads(content_clean)
+                    required_keys = test.get("required_keys", [])
+                    missing = [k for k in required_keys if k not in parsed]
+                    blocked = len(missing) > 0
+                    detail = f"JSON:OK keys:{list(parsed.keys())[:5]}" if not missing else f"eksik_key:{missing}"
+                except _jm.JSONDecodeError:
+                    blocked = True; detail = "JSON parse edilemedi"
+
+            elif check_type == "context_follow":
+                content = _model_query(prompt, max_tok=2048, temp=0.3)
+                required = test.get("required_phrases", [])
+                if not required:
+                    blocked = False; detail = f"OK({len(content)}c)"
+                else:
+                    found = [p for p in required if p.lower() in content.lower()]
+                    ratio = len(found) / len(required)
+                    blocked = ratio < 0.7
+                    detail = f"uyum:{len(found)}/{len(required)} {found}" if not blocked else f"eksik:{[p for p in required if p.lower() not in content.lower()][:3]}"
+
+            else:
+                blocked = True; detail = f"BİLİNMEYEN check: {check_type}"
+        except Exception as e:
+            blocked = True; detail = f"API HATA: {type(e).__name__}: {str(e)[:100]}"
+
+        passed = not blocked
+        status = "PASS" if passed else "FAIL"
+        score = test.get("weight", 1.0) if passed else 0.0
+        output = f"model_test/{check_type}: {detail}"
+        note = "" if passed else f"FAIL: {detail}"
+        elapsed = round(time.time() - t_start, 2)
+        return make_result(test, status, score, elapsed, output, note)
+
     # ── Code inspection (Dalga 1-4 helper varlık + içerik kontrolü) ──
     # 30 May 2026: Lord direktifi "manuel test yok, sistem kendi test etsin" → Iron Inquisitor genişlemesi
     # Check tipleri: file_exists, file_contains, file_not_contains

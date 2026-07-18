@@ -1,0 +1,72 @@
+[
+  {
+    "id": "model-json-01",
+    "type": "model_test",
+    "check": "json_adherence",
+    "category": "model_json",
+    "weight": 2.0,
+    "timeout": 900,
+    "prompt": "Sadece geçerli JSON formatında yanıt ver. Bir kişinin adı, yaşı ve meslek bilgilerini içeren bir JSON objesi döndür. Örnek: {\"name\": \"Ali\", \"age\": 30, \"job\": \"engineer\"}",
+    "required_keys": ["name", "age", "job"]
+  },
+  {
+    "id": "model-json-02",
+    "type": "model_test",
+    "check": "json_adherence",
+    "category": "model_json",
+    "weight": 2.0,
+    "timeout": 900,
+    "prompt": "Sadece JSON dizisi formatında yanıt ver. 3 tane şehir adı ve nüfuslarını içeren bir JSON dizisi döndür. Örnek: [{\"city\": \"İstanbul\", \"population\": 15000000}, {\"city\": \"Ankara\", \"population\": 5000000}]",
+    "required_keys": ["city", "population"]
+  },
+  {
+    "id": "model-json-03",
+    "type": "model_test",
+    "check": "json_adherence",
+    "category": "model_json",
+    "weight": 2.5,
+    "timeout": 1200,
+    "prompt": "Sadece JSON formatında yanıt ver. Bir kullanıcı profili objesi döndür. İçinde: username (string), email (string), roles (string listesi), settings (dict: theme, notifications bool). Tüm alanlar zorunlu.",
+    "required_keys": ["username", "email", "roles", "settings"]
+  },
+  {
+    "id": "model-json-04",
+    "type": "model_test",
+    "check": "json_adherence",
+    "category": "model_json",
+    "weight": 3.0,
+    "timeout": 1200,
+    "prompt": "Sadece JSON formatında yanıt ver. Bir e-ticaret sipariş objesi oluştur. İçermeli: order_id (string), customer (dict: name, address), items (array of dicts: product_id, quantity, price), total (number), status (string).",
+    "required_keys": ["order_id", "customer", "items", "total", "status"]
+  },
+  {
+    "id": "model-json-05",
+    "type": "model_test",
+    "check": "json_adherence",
+    "category": "model_json",
+    "weight": 2.0,
+    "timeout": 900,
+    "prompt": "Sadece JSON formatında yanıt ver. Bir API yanıt objesi: success (bool), data (dict veya null), error (dict: code int, message string veya null).",
+    "required_keys": ["success", "data", "error"]
+  },
+  {
+    "id": "model-context-01",
+    "type": "model_test",
+    "check": "context_follow",
+    "category": "model_context",
+    "weight": 2.5,
+    "timeout": 1200,
+    "prompt": "Şu 3 adımı sırasıyla yap:\n1. Kuroshin'in ne olduğunu 1 cümleyle açıkla.\n2. Türkçe yanıt verdiğini belirt.\n3. Hangi model olduğunu söyle (tam adınla).\n\nHer adımın başına [ADIM1], [ADIM2], [ADIM3] yaz.",
+    "required_phrases": ["[ADIM1]", "[ADIM2]", "[ADIM3]", "Kuroshin"]
+  },
+  {
+    "id": "model-context-02",
+    "type": "model_test",
+    "check": "context_follow",
+    "category": "model_context",
+    "weight": 2.5,
+    "timeout": 1200,
+    "prompt": "Sana bir kod parçası vereceğim. Önce [ANALİZ] etiketiyle ne yaptığını açıkla, sonra [HATA] etiketiyle varsa hataları söyle, sonra [DÜZELTME] etiketiyle düzeltilmiş halini göster.\n\nKod:\ndef topla(a, b)\n    return a + b\n    print(\"Sonuç:\", topla(3, 5))\n",
+    "required_phrases": ["[ANALİZ]", "[HATA]", "[DÜZELTME]"]
+  }
+]
