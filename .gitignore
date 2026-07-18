@@ -1,4 +1,4 @@
-# Model dosyaları (GB'larca)
+﻿# Model dosyalarÄ± (GB'larca)
 *.gguf
 *.bin
 *.safetensors
@@ -7,11 +7,11 @@
 models/
 finetune/
 
-# Log dosyaları
+# Log dosyalarÄ±
 logs/
 *.log
 
-# Python ortamı
+# Python ortamÄ±
 venv/
 .venv/
 __pycache__/
@@ -23,7 +23,7 @@ __pycache__/
 # Node.js
 node_modules/
 
-# Geçici ve yedek dosyalar
+# GeÃ§ici ve yedek dosyalar
 *.tmp
 *.bak
 backup/
@@ -38,25 +38,25 @@ outputs/
 !.env.example
 config/secrets*
 memory/thresholds.json
-# Lord cookies (6 Haz 2026): Sahibinden direkt erişim için, kişisel veri
+# Lord cookies (6 Haz 2026): Sahibinden direkt eriÅŸim iÃ§in, kiÅŸisel veri
 memory/sahibinden_session.json
 
-# Alt projeler (kendi git repolarına sahip)
+# Alt projeler (kendi git repolarÄ±na sahip)
 kurowatch/
 
-# Büyük veri dizinleri
+# BÃ¼yÃ¼k veri dizinleri
 data/
 kuroshin-downloads/
 openclaude-main_BACKUP/
 openclaude-main_BACKUP_PROTOKOL_3/
 Kuroshin_CORE_v4.2.9_MASTER/
 
-# ChromaDB vektör veritabanı
+# ChromaDB vektÃ¶r veritabanÄ±
 memory/chroma/
 memory/walker_chroma/
 memory/chromadb/
 
-# Çalışma zamanı hafıza dosyaları (kişisel veri)
+# Ã‡alÄ±ÅŸma zamanÄ± hafÄ±za dosyalarÄ± (kiÅŸisel veri)
 memory/active_model.json
 memory/active_model.json.bak*
 memory/energy_budget.json
@@ -88,33 +88,34 @@ memory/genparams_ab_reports/
 memory/ab_test_reports/
 memory/runtime/
 
-# PyInstaller build çıktıları
+# PyInstaller build Ã§Ä±ktÄ±larÄ±
 dist/
 build_pyi/
 
-# Iron Inquisitor raporları (runtime kanıt)
+# Iron Inquisitor raporlarÄ± (runtime kanÄ±t)
 scripts/iron_inquisitor/reports/
 
-# Storage + büyük binary
+# Storage + bÃ¼yÃ¼k binary
 storage/
 backupkuroshin*.7z
 agents/nul
 
-# Soul çalışma zamanı
-soul/mood_state.json
+# Soul Ã§alÄ±ÅŸma zamanÄ±
+soul/
+# soul/mood_state.json (covered by soul/ above)
 
-# Raporlar (büyük + runtime)
+# Raporlar (bÃ¼yÃ¼k + runtime)
 reports/
 
-# OS dosyaları
+# OS dosyalarÄ±
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# PID dosyaları
+# PID dosyalarÄ±
 *.pid
 
-# OpenClaw workspace (ayrı git repo, garip isimli klasör)
+# OpenClaw workspace (ayrÄ± git repo, garip isimli klasÃ¶r)
 CUserspc.openclawworkspace/
 C:\Users\pc\.openclaw\workspace/
 .claw/
@@ -128,15 +129,15 @@ openclaude-main_BACKUP_PROTOKOL_3/
 # Claude settings
 .claude/
 
-# Büyük binary/asset klasörleri
+# BÃ¼yÃ¼k binary/asset klasÃ¶rleri
 kuroshin avatar vrm/
 tools/storage/
 Desktop/
 
-# Aider geçici dosyaları
+# Aider geÃ§ici dosyalarÄ±
 .aider*
 
-# === Public release cleanup — never commit these ===
+# === Public release cleanup â€” never commit these ===
 **/CLAUDE.md
 docs/DEVAM.md
 docs/kanitlar/
@@ -148,3 +149,4 @@ Kuroshin.spec
 opencode.json
 docs/GITHUB_REPO_DOC_UPDATE.md
 docs/OTONOM_ALISVERIS_PROTOKOLU.md
+
