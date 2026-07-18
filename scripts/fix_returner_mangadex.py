@@ -9,7 +9,7 @@ DB_PATH = "/mnt/c/Kuroshin/kurowatch/memory/kurowatch.db"
 MANGA_ID = "6a468761-5bd6-4de0-a0cb-47cb456ac2e0"
 CONTENT_ID = 10
 
-MDX_HEADERS = {"User-Agent": "kurowatch/1.0 (contact: REDACTED)"}
+MDX_HEADERS = {"User-Agent": "kurowatch/1.0"}
 
 def fetch_chapters():
     """MangaDex API'den tüm İngilizce chapter'ları çek (offset ile sayfalama)."""

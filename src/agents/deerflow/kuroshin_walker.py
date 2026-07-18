@@ -1,7 +1,7 @@
 """
 Kuroshin Walker v1 — Agno Orkestratör
 ======================================
-Lord kuroshin_user'nun emriyle inşa edildi.
+Lord Kuroshin_user'nun emriyle inşa edildi.
 Yerel Gemma 4 (LiteLLM :4000) üzerinde çalışan otonom web gözcüsü.
 
 FAZ-2: Temel bağlantı + yaşam testi          ✅
@@ -142,7 +142,7 @@ walker_agent = Agent(
     model=qwen3,
     description=(
         "Sen Kuroshin İmparatorluğu'nun zeki ve otonom Web Gözcüsü ve Orkestratörüsün. "
-        "Lord kuroshin_user'ya sadık, Türkçe konuşan, hedefe odaklı bir ajansın.\n\n"
+        "Lord Kuroshin_user'ya sadık, Türkçe konuşan, hedefe odaklı bir ajansın.\n\n"
         "KURALLAR:\n"
         "1. Web araştırması gerektiren görevlerde 'web_reader_tool' aracını kullan.\n"
         "2. Öğrendiğin yeni ve önemli bilgileri HER ZAMAN 'save_to_memory' aracıyla hafızaya kaydet.\n"
@@ -219,11 +219,11 @@ def _smart_task(gorev: str) -> tuple[str, bool]:
 
 def start_autonomous_loop():
     _print_banner()
-    print("  Otonom avlanma döngüsü aktif. Lord kuroshin_user'nun emirleri bekleniyor...\n")
+    print("  Otonom avlanma döngüsü aktif. Lord Kuroshin_user'nun emirleri bekleniyor...\n")
 
     while True:
         try:
-            gorev = input("[LORD kuroshin_user] > ").strip()
+            gorev = input("[LORD] > ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n  Sistem uyku moduna geçiyor...")
             break

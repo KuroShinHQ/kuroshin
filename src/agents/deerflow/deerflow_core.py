@@ -2,7 +2,7 @@
 """
 🔱 DEERFLOW CORE v2.1 - OTONOM WEB GÖZCÜSÜ 🔱
 =============================================
-Lord kuroshin_user'nun emriyle internetin derinliklerinde avlanır.
+Lord Kuroshin_user'ın emriyle internetin derinliklerinde avlanır.
 Placeholder veriler imha edildi, gerçek otonom arama aktifleştirildi.
 """
 

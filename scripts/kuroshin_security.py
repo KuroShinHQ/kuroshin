@@ -21,9 +21,13 @@ import unicodedata as _unicodedata
 import hashlib as _hashlib
 import json as _json_sec
 import datetime as _datetime_sec
+import os as _os_sec
 from pathlib import Path
 
 _log = logging.getLogger("kuroshin.security")
+
+# Owner e-mail whitelist (env-driven, hardcoded PII yok)
+_OWNER_EMAIL_WHITELIST = (_os_sec.getenv("KUROSHIN_OWNER_EMAIL") or "").lower()
 
 # ─── 1. SYSTEM_COMMAND BLACKLIST ───────────────────────────────────────────────
 
@@ -1377,8 +1381,8 @@ def detect_data_exfiltration(text: str) -> tuple[bool, list]:
     for pat, label in _EXFIL_PATTERNS:
         for m in _re_v6.finditer(pat, text):
             preview = m.group(0)
-            # 1 PII e-mail (Lord whitelist) leak degilse aci yapmasin
-            if label.startswith("Email") and "REDACTED" in preview.lower():
+            # 1 PII e-mail (owner whitelist via env) leak degilse aci yapmasin
+            if label.startswith("Email") and _OWNER_EMAIL_WHITELIST and _OWNER_EMAIL_WHITELIST in preview.lower():
                 continue
             hits.append({
                 "label": label,
