@@ -1,2 +1,0 @@
-﻿SAHIBINDEN_KEY = "[REDACTED]"
-AWS_KEY = "dummy"
