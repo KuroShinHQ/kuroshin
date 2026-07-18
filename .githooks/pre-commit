@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit hook: secret/PII scanner
+# Redirects to scripts/pre_commit_secret_scan.py (tracked, reusable)
+# To disable temporarily: git commit --no-verify
+
+PYTHON=""
+for c in python python3 py; do
+  command -v $c >/dev/null 2>&1 && PYTHON=$c && break
+done
+
+if [ -z "$PYTHON" ]; then
+  echo "[pre-commit] WARNING: Python not found on PATH, skipping secret scan" >&2
+  exit 0
+fi
+
+ROOT=$(git rev-parse --show-toplevel)
+exec $PYTHON "$ROOT/scripts/pre_commit_secret_scan.py"
