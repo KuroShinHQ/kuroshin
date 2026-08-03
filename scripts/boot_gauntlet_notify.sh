@@ -1,7 +1,8 @@
 #!/bin/bash
 # Gauntlet sonucunu Telegram'a gönderir
-TOKEN="YOUR_TELEGRAM_TOKEN_HERE"
-CHAT_ID="YOUR_TELEGRAM_CHAT_ID_HERE"
+# .env dosyasindan okunur (export TELEGRAM_TOKEN=... / export TELEGRAM_CHAT_ID=...)
+TOKEN="${TELEGRAM_TOKEN:?TELEGRAM_TOKEN .env'de tanimli degil — export TELEGRAM_TOKEN=...}"
+CHAT_ID="${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID .env'de tanimli degil — export TELEGRAM_CHAT_ID=...}"
 
 TOTAL=7
 LINES=""
