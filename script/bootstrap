@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Scripts to Rule Them All: script/bootstrap (kuroshin)
+# Amac: bagimliliklari kurar.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ -f "$ROOT/requirements.txt" ]; then
+  echo "[bootstrap] kuroshin requirements kuruluyor..."
+  python3 -m pip install --quiet -r "$ROOT/requirements.txt" || echo "[bootstrap] pip uyarisi (devam)" >&2
+fi
+
+for sub in KuroRecon kuroshin_floating_ui; do
+  if [ -f "$ROOT/$sub/requirements.txt" ]; then
+    echo "[bootstrap] $sub requirements kuruluyor..."
+    python3 -m pip install --quiet -r "$ROOT/$sub/requirements.txt" || true
+  fi
+done
+
+if [ -d "$ROOT/tools" ] && [ -f "$ROOT/tools/package.json" ]; then
+  echo "[bootstrap] tools npm kuruluyor..."
+  (cd "$ROOT/tools" && npm install --silent) || echo "[bootstrap] npm uyarisi (devam)" >&2
+fi
+
+echo "[bootstrap] tamam"

@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Scripts to Rule Them All: script/test (kuroshin)
+# Amac: temel dogrulama.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fail=0
+
+for f in "$ROOT"/agents/*.py; do
+  [ -e "$f" ] || continue
+  echo "[test] syntax: $(basename "$f")"
+  python3 -m py_compile "$f" || fail=1
+done
+
+[ "$fail" -eq 0 ] && echo "[test] tamam" || { echo "[test] BASARISIZ" >&2; exit 1; }
