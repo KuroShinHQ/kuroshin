@@ -150,3 +150,6 @@ opencode.json
 docs/GITHUB_REPO_DOC_UPDATE.md
 docs/OTONOM_ALISVERIS_PROTOKOLU.md
 
+
+# Kirik gitlink kalintilari (submodule degil, bos dizin)
+github_repos/
