@@ -116,8 +116,8 @@ desktop.ini
 *.pid
 
 # OpenClaw workspace (ayrÄ± git repo, garip isimli klasÃ¶r)
-CUserspc.openclawworkspace/
-C:\Users\pc\.openclaw\workspace/
+openclaw-workspace/
+%USERPROFILE%\.openclaw\workspace/
 .claw/
 openclaude-main/
 openclaude-main_BACKUP/
