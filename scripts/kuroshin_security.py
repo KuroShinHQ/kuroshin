@@ -333,8 +333,8 @@ def sanitize_web_content(content: str, max_chars: int = 8000) -> str:
 # ─── 3. PATH TRAVERSAL KORUMASI ────────────────────────────────────────────────
 
 _ALLOWED_WRITE_ROOTS = [
-    Path("/mnt/c/Kuroshin"),
-    Path("/mnt/c/Users/pc/Desktop"),
+    Path(os.environ.get("KUROSHIN_HOME", os.environ.get("KUROSHIN_ROOT", "/mnt/c/KuroshinHQ"))).resolve(),
+    Path(os.path.expanduser("~/Desktop")),
     Path("/root/kuroshin"),
 ]
 

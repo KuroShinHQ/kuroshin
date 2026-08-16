@@ -9,7 +9,8 @@ Persona: Şansölye — operasyonel, sert, sadık
 
 # SYSTEM_PAUSED.flag boot-time check (Lord direktifi 2 Haz 2026 — auto-restart engelle)
 import sys as _sys_pause, os as _os_pause
-if _os_pause.path.exists("/mnt/c/Kuroshin/memory/SYSTEM_PAUSED.flag"):
+if _os_pause.path.exists("/mnt/c/Kuroshin/memory/SYSTEM_PAUSED.flag") or _os_pause.path.exists(
+        _os_pause.path.join(_os_pause.environ.get("KUROSHIN_HOME", "/mnt/c/KuroshinHQ"), "memory", "SYSTEM_PAUSED.flag")):
     print("[SYSTEM_PAUSED] kuroshin_chancellor.py boot atlandi — Lord menu 5 ile sistemi durdurdu")
     _sys_pause.exit(0)
 
@@ -653,7 +654,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Herhangi bir yere dosya yaz ve oluştur. Masaüstü dahil her path için kullan. Örnekler: path='Desktop/test.py', path='scripts/test.py', path='/mnt/c/Users/pc/Desktop/test.py'",
+            "description": "Herhangi bir yere dosya yaz ve oluştur. Masaüstü dahil her path için kullan. Örnekler: path='Desktop/test.py', path='scripts/test.py', path='~/Desktop/test.py'",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -668,11 +669,11 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Dosya içeriğini oku. Masaüstü: path='/mnt/c/Users/pc/Desktop/dosya.py' veya sadece dosya adı 'dosya.py' (masaüstünde arar).",
+            "description": "Dosya içeriğini oku. Masaüstü: path='~/Desktop/dosya.py' veya sadece dosya adı 'dosya.py' (masaüstünde arar).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Dosya yolu — masaüstü için '/mnt/c/Users/pc/Desktop/dosya.py' veya sadece 'dosya.py'"}
+                    "path": {"type": "string", "description": "Dosya yolu — masaüstü için '~/Desktop/dosya.py' veya sadece 'dosya.py'"}
                 },
                 "required": ["path"]
             }
@@ -2242,10 +2243,10 @@ def run_tool(name: str, args: dict) -> str:
                 # Uyar ama yazmayı durdurma — kullanıcı bilerek yazıyor olabilir
             # Masaüstü veya proje dışı path → doğrudan Python ile yaz
             low = path.lower().replace("\\", "/")
-            if "desktop" in low or "users/pc" in low or low.startswith("/mnt/c/users"):
+            if "desktop" in low or "users/" in low or low.startswith("/mnt/c/users"):
                 wsl_path = path.replace("\\", "/")
                 if not wsl_path.startswith("/mnt/"):
-                    wsl_path = "/mnt/c/Users/pc/Desktop/" + Path(path).name
+                    wsl_path = os.path.expanduser("~/Desktop/") + Path(path).name
                 try:
                     Path(wsl_path).parent.mkdir(parents=True, exist_ok=True)
                     Path(wsl_path).write_text(content, encoding="utf-8")
@@ -2268,9 +2269,9 @@ def run_tool(name: str, args: dict) -> str:
             # Önce WSL path olarak dene (masaüstü, /mnt/ vs.)
             wsl_path = path.replace("\\", "/")
             low = path.lower().replace("\\", "/")
-            if wsl_path.startswith("/mnt/") or "desktop" in low or "users/pc" in low:
+            if wsl_path.startswith("/mnt/") or "desktop" in low or "users/" in low:
                 if not wsl_path.startswith("/mnt/"):
-                    wsl_path = "/mnt/c/Users/pc/Desktop/" + Path(path).name
+                    wsl_path = os.path.expanduser("~/Desktop/") + Path(path).name
                 try:
                     content = Path(wsl_path).read_text(encoding="utf-8")
                     return content[:2000] if content else "(boş dosya)"
@@ -2278,7 +2279,7 @@ def run_tool(name: str, args: dict) -> str:
                     return f"⚠️ Okuma hatası: {e}"
             # Göreli path (sadece dosya adı) → önce masaüstünde ara, sonra bridge
             if "/" not in path and "\\" not in path:
-                desktop_path = Path(f"/mnt/c/Users/pc/Desktop/{path}")
+                desktop_path = Path(os.path.expanduser("~/Desktop")) / path
                 if desktop_path.exists():
                     content = desktop_path.read_text(encoding="utf-8")
                     return content[:2000] if content else "(boş dosya)"
