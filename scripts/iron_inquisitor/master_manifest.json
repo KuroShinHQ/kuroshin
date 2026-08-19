@@ -24,11 +24,12 @@
     ]
   },
   "tier_model_select": {
-    "description": "Model karşılaştırma testleri — reasoning, code gen, JSON, context (5 Temmuz 2026)",
+    "description": "Model karşılaştırma testleri — reasoning, code gen, JSON, context, red/sansür (5 Temmuz + 19 Ağustos 2026)",
     "suites": [
       {"file": "test_suite_model_reasoning_ds.json", "domain": "model_reasoning",  "tests": 8},
       {"file": "test_suite_model_codegen.json",   "domain": "model_codegen",    "tests": 6},
-      {"file": "test_suite_model_json.json",      "domain": "model_json+context", "tests": 7}
+      {"file": "test_suite_model_json.json",      "domain": "model_json+context", "tests": 7},
+      {"file": "test_suite_model_red.json",       "domain": "model_red_sansur", "tests": 10}
     ]
   },
   "tier_historical": {
