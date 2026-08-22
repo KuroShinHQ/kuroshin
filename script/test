@@ -1,15 +1,33 @@
 #!/usr/bin/env bash
 # Scripts to Rule Them All: script/test (kuroshin)
-# Amac: temel dogrulama.
+# Birim testler: security guard + chancellor textops (servis/ag gerektirmez).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fail=0
+cd "$ROOT"
 
-for f in "$ROOT"/agents/*.py; do
-  [ -e "$f" ] || continue
-  echo "[test] syntax: $(basename "$f")"
-  python3 -m py_compile "$f" || fail=1
-done
+PYTHON="${PYTHON:-python3}"
 
-[ "$fail" -eq 0 ] && echo "[test] tamam" || { echo "[test] BASARISIZ" >&2; exit 1; }
+echo "[test] 1/2 — kritik modul import saglamasi..."
+KUROSHIN_HOME="${KUROSHIN_HOME:-$ROOT}" "$PYTHON" - <<'EOF'
+import os
+import sys
+from pathlib import Path
+
+root = Path.cwd()
+sys.path.insert(0, str(root))
+sys.path.insert(0, str(root / "scripts"))
+
+import kuroshin_security  # noqa: F401
+print("[test] OK: kuroshin_security import")
+
+# chancellor agir bagimliliklidir; yalnizca derlenebilir oldugunu dogrula
+import py_compile
+py_compile.compile(str(root / "agents" / "kuroshin_chancellor.py"), doraise=True)
+print("[test] OK: kuroshin_chancellor derleniyor")
+EOF
+
+echo "[test] 2/2 — birim testler..."
+"$PYTHON" -m pytest tests/unit -q
+
+echo "[test] tamam"

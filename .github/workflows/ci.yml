@@ -10,21 +10,25 @@ permissions:
 
 jobs:
   test:
+    name: unit tests (security guard + chancellor textops)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Dependencies
+
+      - name: Install dependencies (fail hard — hata gizlenmez)
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt || true
-      - name: Scripts to Rule Them All — test
-        run: |
-          chmod +x script/test 2>/dev/null || true
-          bash script/test 2>/dev/null || python3 -m py_compile agents/*.py scripts/*.py 2>/dev/null || true
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install pytest pytest-asyncio python-dotenv requests
+
+      - name: Run unit tests (tests/unit)
+        run: python -m pytest tests/unit -v
 
   secrets:
     runs-on: ubuntu-latest

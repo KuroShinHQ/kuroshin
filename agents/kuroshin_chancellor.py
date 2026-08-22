@@ -9,8 +9,9 @@ Persona: Şansölye — operasyonel, sert, sadık
 
 # SYSTEM_PAUSED.flag boot-time check (Lord direktifi 2 Haz 2026 — auto-restart engelle)
 import sys as _sys_pause, os as _os_pause
-if _os_pause.path.exists("/mnt/c/Kuroshin/memory/SYSTEM_PAUSED.flag") or _os_pause.path.exists(
-        _os_pause.path.join(_os_pause.environ.get("KUROSHIN_HOME", "/mnt/c/KuroshinHQ"), "memory", "SYSTEM_PAUSED.flag")):
+_PAUSE_ROOT = _os_pause.environ.get("KUROSHIN_HOME",
+    _os_pause.environ.get("KUROSHIN_ROOT", str(_os_pause.path.join(str(_os_pause.path.expanduser("~")), "KuroshinHQ"))))
+if _os_pause.path.exists(_os_pause.path.join(_PAUSE_ROOT, "memory", "SYSTEM_PAUSED.flag")):
     print("[SYSTEM_PAUSED] kuroshin_chancellor.py boot atlandi — Lord menu 5 ile sistemi durdurdu")
     _sys_pause.exit(0)
 
@@ -24,6 +25,10 @@ import os
 import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Tasinabilir kok dizini: tum veri yollari bundan turetilir (hardcoded /mnt/c yok).
+KUROSHIN_ROOT = Path(os.environ.get("KUROSHIN_HOME",
+    os.environ.get("KUROSHIN_ROOT", str(Path.home() / "KuroshinHQ"))))
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Güvenlik modülü
@@ -54,7 +59,7 @@ socket.getaddrinfo = _ipv4_only
 TOKEN        = os.getenv("TELEGRAM_TOKEN", "")
 ALLOWED_ID   = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
 LLAMA_URL    = "http://127.0.0.1:8080/v1/chat/completions"
-_STATE_FILE  = Path("/mnt/c/Kuroshin/memory/active_model.json")
+_STATE_FILE  = KUROSHIN_ROOT / "memory" / "active_model.json"
 
 def _load_active_model() -> str:
     try:
@@ -70,8 +75,9 @@ WALKER_URL   = "http://127.0.0.1:9002/task"
 COUNCIL_URL  = "http://127.0.0.1:9004/task"
 TELEGRAM_URL = f"https://api.telegram.org/bot{TOKEN}"
 MAX_LEN      = 4000
-LOG_PATH         = "/mnt/c/Kuroshin/logs/chancellor.log"
-AKTIVITE_LOG_DIR = Path("/mnt/c/Kuroshin/logs/aktivite")
+LOG_PATH         = str(KUROSHIN_ROOT / "logs" / "chancellor.log")
+Path(LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+AKTIVITE_LOG_DIR = KUROSHIN_ROOT / "logs" / "aktivite"
 
 # ── LOGGING (RotatingFileHandler 5MB/3 backup) ────────
 import logging
@@ -156,7 +162,7 @@ _RESPONSE_LEAK_PATTERNS = [
 ]
 
 # ── THINK CHAIN LOGGER — TK-01 / TK-02 / TK-03 / TK-04 ─
-_THINK_CHAIN_DIR = Path("/mnt/c/Kuroshin/logs/think_chain")
+_THINK_CHAIN_DIR = KUROSHIN_ROOT / "logs" / "think_chain"
 _TK02_STEPS = ["[NİYET]", "[STRATEJİ]", "[GÜVENLİK]", "[RAFİNE]"]
 
 _EN_FUNC_RE = _re_global.compile(
@@ -231,7 +237,7 @@ def _get_grounding_context() -> str:
         pass
 
     # Aktif görev
-    _tasks_f = Path("/mnt/c/Kuroshin/memory/tasks.json")
+    _tasks_f = KUROSHIN_ROOT / "memory" / "tasks.json"
     try:
         if _tasks_f.exists():
             _tasks = json.loads(_tasks_f.read_text(encoding="utf-8"))
@@ -249,7 +255,7 @@ def _get_grounding_context() -> str:
 
 # ── TK-05: Verifiable Audit Trails ───────────────────
 import hashlib as _hashlib_audit
-_AUDIT_DIR       = Path("/mnt/c/Kuroshin/logs/audits")
+_AUDIT_DIR       = KUROSHIN_ROOT / "logs" / "audits"
 _AUDIT_PREV_HASH = ""   # in-memory hash zinciri
 
 def _audit_write(entry: dict) -> None:
@@ -473,8 +479,9 @@ def send_msg(chat_id: int, text: str):
     # KK-v6 RED-EXFIL (2 Haz 2026 BORÇ-5): output sızıntı taraması
     try:
         import sys as _sys_exf
-        if "/mnt/c/Kuroshin/scripts" not in _sys_exf.path:
-            _sys_exf.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent / "scripts")
+        if _SCRIPTS_DIR not in _sys_exf.path:
+            _sys_exf.path.insert(0, _SCRIPTS_DIR)
         from kuroshin_security import detect_data_exfiltration as _det_exf
         _leaked, _hits = _det_exf(text)
         if _leaked and _hits:
@@ -1067,7 +1074,7 @@ TOOLS = [
 ]
 
 # ── RUH SİSTEMİ ──────────────────────────────────────
-SOUL_DIR       = Path("/mnt/c/Kuroshin/soul")
+SOUL_DIR       = KUROSHIN_ROOT / "soul"
 PERSONA_PATH   = SOUL_DIR / "persona.json"
 MOOD_PATH      = SOUL_DIR / "mood_state.json"
 THINK_LOG_PATH = Path("/mnt/c/Kuroshin/logs/ic_ses.log")
@@ -1187,8 +1194,9 @@ def _get_hybrid_rag():
         return _HYBRID_RAG["obj"]
     try:
         import sys as _sys
-        if "/mnt/c/Kuroshin/scripts" not in _sys.path:
-            _sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent / "scripts")
+        if _SCRIPTS_DIR not in _sys.path:
+            _sys.path.insert(0, _SCRIPTS_DIR)
         from kuroshin_rag import HybridRAG
         rag = HybridRAG()
         _HYBRID_RAG["obj"] = rag
@@ -1341,8 +1349,9 @@ def _get_episodic():
         return _EPISODIC["obj"]
     try:
         import sys as _sys
-        if "/mnt/c/Kuroshin/scripts" not in _sys.path:
-            _sys.path.insert(0, "/mnt/c/Kuroshin/scripts")
+        _SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent / "scripts")
+        if _SCRIPTS_DIR not in _sys.path:
+            _sys.path.insert(0, _SCRIPTS_DIR)
         from kuroshin_episodic import EpisodicMemory
         em = EpisodicMemory()
         _EPISODIC["obj"] = em

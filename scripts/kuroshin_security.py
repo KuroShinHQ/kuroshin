@@ -213,6 +213,9 @@ _INJECTION_PATTERNS = [
     r"\[(?:SYSTEM|ADMIN|ROOT|OVERRIDE|MASTER|COMMAND|DIRECTIVE)\]\s*[:>]",
     r"(?:remember|memorize|save|store)\s+.{0,20}(?:this\s+)?(?:rule|instruction|command|directive)\s+(?:for|from)\s+(?:now|always)",
     r"(?:permanent|persistent|always)\s+(?:instruction|rule|behavior|mode)\s*:",
+    # Satir basi SYSTEM:/ADMIN: taklidi (chat-template impersonation, 2026-08 denetim)
+    r"(?:\A|\r?\n)\s{0,8}SYSTEM\s*[:>]",
+    r"(?:\A|\r?\n)\s{0,8}ADMIN\s+MODE\s*[:>]",
 ]
 
 _COMPILED = [re.compile(p, re.IGNORECASE | re.DOTALL) for p in _INJECTION_PATTERNS]
@@ -333,8 +336,8 @@ def sanitize_web_content(content: str, max_chars: int = 8000) -> str:
 # ─── 3. PATH TRAVERSAL KORUMASI ────────────────────────────────────────────────
 
 _ALLOWED_WRITE_ROOTS = [
-    Path(os.environ.get("KUROSHIN_HOME", os.environ.get("KUROSHIN_ROOT", "/mnt/c/KuroshinHQ"))).resolve(),
-    Path(os.path.expanduser("~/Desktop")),
+    Path(_os_sec.environ.get("KUROSHIN_HOME", _os_sec.environ.get("KUROSHIN_ROOT", "/mnt/c/KuroshinHQ"))).resolve(),
+    Path(_os_sec.path.expanduser("~/Desktop")),
     Path("/root/kuroshin"),
 ]
 
