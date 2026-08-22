@@ -20,12 +20,12 @@ import sys
 import time
 from pathlib import Path
 
-BASE_DIR = Path("/mnt/c/Kuroshin")
+BASE_DIR = Path("/mnt/c/KuroshinHQ/_hub")
 MODELS_DIR = Path("/root/kuroshin/models")
 MODELS_DIR_WIN = BASE_DIR / "models"
-HISTORY_FILE = BASE_DIR / "memory" / "model_history.json"
-LOG_FILE = BASE_DIR / "logs" / "model_switch.log"
-STATE_FILE = BASE_DIR / "memory" / "active_model.json"
+HISTORY_FILE = BASE_DIR / "shared-memory" / "model_history.json"
+LOG_FILE = BASE_DIR / "shared-logs" / "model_switch.log"
+STATE_FILE = BASE_DIR / "shared-memory" / "active_model.json"
 CLI_JSON_MODE = False
 
 LLAMA_URL = "http://127.0.0.1:8080"
@@ -43,66 +43,37 @@ MODEL_CONTEXT = {
     "32b": 16384,
     "35b": 16384,
     "a3b": 16384,
+    # UD-Q4_K_XL modeli için 32K stabil
+    "ud-q4": 32768,
     # E-16 (29 May 2026): Qwen3-30B-A3B-Instruct-2507 — 262K natif, 8GB VRAM'de 64K güvenli
     "2507": 65536,
     "30b-a3b-2507": 65536,
+    # SOHBET-168 (26 Jul 2026): Laguna S 2.1 — 262K natif, WSL 27GB'da 8K stabil
+    "laguna": 8192,
+    "iq1_s": 8192,
+    "iq1_m": 8192,
+    "27b": 32768,
+    "q4h": 32768,
+    # Qwen3.5-9B abliterated: 256K natif, KV CPU'da (-nkvo)
+    "qwen3.5-9b": 262144,
+    "qwen35-9b": 262144,
+    "9b": 262144,
+    # Qwen3.5-35B-A3B uncensored aggressive: 262K natif, MoE (KV cok kucuk - DeltaNet)
+    "35b-a3b": 262144,
 }
 
 MODEL_HINTS = [
     {
-        "match": "qwen3-8b-abliterated",
-        "label": "Qwen3-8B abliterated Q5_K_M",
-        "aliases": ["qwen3", "qwen3-abliterated", "qwen3-8b", "main"],
+        "match": "qwen3.5-9b",
+        "label": "Qwen3.5-9B abliterated v2-MAX i1-IQ4_NL (hizli, 256K, sansursuz)",
+        "aliases": ["9b", "hizli", "hauhau", "v2max", "qwen35-9b", "main", "default"],
     },
     {
-        "match": "huihui-qwen3.6-35b-a3b",
-        "label": "Huihui-Qwen3.6-35B-A3B abliterated IQ4_XS (MoE)",
-        "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe", "huihui"],
-    },
-    {
-        "match": "deepseek-r1-distill-qwen-32b",
-        "label": "DeepSeek-R1-Distill-Qwen-32B abliterated Q4_K_M",
-        "aliases": ["deepseek", "r1", "deepseek-r1", "ds32b"],
-    },
-    {
-        "match": "qwen3-coder-30b",
-        "label": "Qwen3-Coder-30B-A3B-Instruct Q4_K_M",
-        "aliases": ["coder", "qwen3-coder", "coder30b"],
-    },
-    {
-        "match": "qwen3-coder-30b-udq4xl",
-        "label": "Qwen3-Coder-30B-A3B-Instruct UD-Q4_K_XL (Unsloth Dynamic)",
-        "aliases": ["codxl", "qwen3-coder-udq4xl"],
-    },
-    {
-        "match": "qwen3-coder-30b-iq4xs",
-        "label": "Qwen3-Coder-30B-A3B-Instruct IQ4_XS (importance 4-bit)",
-        "aliases": ["codxs", "qwen3-coder-iq4xs"],
-    },
-    # E-16 (29 May 2026): 2507 modeli denendi, A/B'de Huihui yenmedi (Lordum %10-33 vs %60,
-    # ihlal 9-11 vs 2). Model silindi. Bu girişi referans için tutmuyoruz.
-    {
-        "match": "qwen3.6-35b-a3b",
-        "label": "Qwen3.6-35B-A3B MoE",
-        "aliases": ["qwen3.6", "qwen36", "35b-a3b", "a3b", "moe"],
-    },
-    {
-        "match": "qwen2.5-coder",
-        "label": "Qwen2.5-Coder",
-        "aliases": ["qwen2.5", "qwen-coder", "coder"],
-    },
-    {
-        "match": "thinking-claude",
-        "label": "Thinking-Claude 1.2B",
-        "aliases": ["thinking", "thinking-claude", "claude-1.2b"],
-    },
-    {
-        "match": "gemma",
-        "label": "Gemma",
-        "aliases": ["gemma", "gemma4"],
+        "match": "35b-a3b",
+        "label": "Qwen3.5-35B-A3B Uncensored Aggressive IQ4_XS (vision, 262K, sansursuz)",
+        "aliases": ["35b-a3b", "a3b", "moe", "hauhau35", "uncensored35", "vision", "aggresive"],
     },
 ]
-
 
 def _log(msg: str):
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -270,6 +241,8 @@ def list_models() -> list[dict]:
         for file_path in sorted(scan_dir.glob("*.gguf")):
             if file_path.name in seen:
                 continue
+            if file_path.name.lower().startswith("mmproj"):
+                continue
             seen.add(file_path.name)
             models.append(_describe_model(file_path, active))
     return models
@@ -356,7 +329,7 @@ def start_llama(model_path: str) -> bool:
         subprocess.run(["bash", "-c", "fuser -k 8080/tcp 2>/dev/null; pkill -9 -f llama-server 2>/dev/null; sleep 2"],
                        timeout=10)
         # start_llama.sh active_model.json'dan okur, doğru parametrelerle başlatır
-        subprocess.Popen(["bash", "/mnt/c/Kuroshin/scripts/start_llama.sh"],
+        subprocess.Popen(["bash", "/mnt/c/KuroshinHQ/_hub/shared-scripts/start_llama.sh"],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for i in range(120):
             time.sleep(2)
@@ -652,7 +625,7 @@ def cmd_ab_test(model_a: str, model_b: str, json_mode: bool = False) -> None:
         "model_a": model_a, "model_b": model_b,
         "summary": summary, "details": results,
     }
-    rep_path = Path("/mnt/c/Kuroshin/memory/ab_test_reports")
+    rep_path = Path("/mnt/c/KuroshinHQ/_hub/shared-memory/ab_test_reports")
     rep_path.mkdir(parents=True, exist_ok=True)
     out_f = rep_path / f"ab_{__import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     out_f.write_text(json.dumps(rep, ensure_ascii=False, indent=2), encoding="utf-8")

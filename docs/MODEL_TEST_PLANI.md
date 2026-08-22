@@ -1,10 +1,31 @@
 # MODEL SWITCHER TEST SONUÇLARI VE DEĞERLENDİRME RAPORU
 
 **Oluşturulma Tarihi:** 5 Temmuz 2026  
-**Son Güncelleme:** 6 Temmuz 2026 (v3 — UD-Q4_K_XL eklendi, IQ4_XS/Huihui/DeepSeek 32B silindi)  
+**Son Güncelleme:** 20 Ağustos 2026 (v4 — Qwen3.5-35B-A3B Uncensored Aggressive AKTIF)  
 **Hedef Sistem:** Kuroshin OS (RTX 4060 Laptop 8GB VRAM + 32GB RAM)  
-**Test Aracı:** Iron Inquisitor v5.2  
-**Durum:** Qwen3-Coder-30B UD-Q4_K_XL aktif günlük sürücü  
+**Test Aracı:** Iron Inquisitor v5.2 + RED suite + Vision testi  
+**Durum:** Qwen3.5-35B-A3B Uncensored Aggressive IQ4_XS (vision, 262K) aktif günlük sürücü
+
+---
+
+## 0. GÜNCEL DURUM (20 Ağustos 2026 — v4)
+
+**AKTIF MODEL:** `Qwen3.5-35B-A3B-Uncensored-HauhauCS-Aggressive-IQ4_XS.gguf` (17.37 GB)
+
+| Kriter | Sonuç |
+|---|---|
+| **RED/Sansür (10 test)** | **10/10 = 0 REDDETTI** (ransomware, SQLi, phishing, wifi, skimmer, uyuşturucu, uçak, patlayıcı + 2 kontrol) |
+| **Vision (screenshot)** | ✅ GECTİ (mmproj f16, 334 tensor — Playwright screenshot analizi) |
+| **Context** | **262K GARANTİ** (213.728 token gerçek test OK; /slots n_ctx=262144) |
+| **Hız** | 12.1 tok/s (switch testi), 24-25 t/s (decode log), prefill ~500-630 t/s |
+| **Kaynak** | RAM 19/27GB, VRAM 5.8/8GB — taşma yok |
+| **Yükleme** | 94s |
+
+**Neden seçildi:** RED 10/10 (önceki orcarouter 9/10'da 1 timeout, Coder 4/10 red), vision TEK bu modelde var (browser-use gereksinimi), MoE 3B aktif sayesinde hız 9B'ye yakın ama kalite 27B+ seviyesinde. HauhauCS'in 0/465 reddetme iddiası yerelde DOĞRULANDI.
+
+**Altyapı değişiklikleri (20 Ağu):** switch_model.py (MODEL_CONTEXT `35b-a3b: 262144`, MODEL_HINTS, mmproj filtresi), start_llama.sh (`--mmproj` + `--jinja` + embeddings kapalı — result_norm/result_embd tensör yok GGML_ASSERT koruması), opencode.jsonc (`qwen3.5-35b-a3b` 262K), kuroshin-nexus.bat v2.11. 9B (5.05GB) yedek olarak duruyor (`switch 9b`).
+
+**Not:** Reasoning/Codegen full 31 test bu modelle henüz koşulmadı (RED + vision odaklı). İstenirse inquisitor_v5 full suite koşulup Bölüm 3-4 ile aynı tabloda karşılaştırılabilir. Detaylı kıyas: `_hub/docs/MODEL_KARSILASTIRMA_20260819.md`.
 
 ---
 

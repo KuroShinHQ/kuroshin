@@ -1,0 +1,1 @@
+"""Iron Inquisitor v6 — checks paketi: test tipi ayrimi (model/mcp/security/system)."""
